@@ -1,0 +1,156 @@
+MSGS 100          # <--- DON'T FORGET TO UPDATE THIS COUNT
+
+#  "<key>"     <unused number>   "<string>"
+
+#******************************
+#  OpenJKDF2 added UI strings
+#******************************
+   "OPENJKDF2_EXAMPLE"    0  "Example!"
+
+#******************************
+#  Gameplay
+#******************************
+   "GUIEXT_SHOW_SABER_CROSSHAIR"          0 "Show Crosshair with lightsaber"
+   "GUIEXT_SHOW_SABER_CROSSHAIR_HINT"     0 "Display the crosshair when the lightsaber is equipped?"
+   "GUIEXT_SHOW_FIST_CROSSHAIR"           0 "Show Crosshair with fist"
+   "GUIEXT_SHOW_FIST_CROSSHAIR_HINT"      0 "Display the crosshair when the fists are equipped?"
+   "GUIEXT_DISABLE_WAGGLE"                0 "Disable Weapon Waggle"
+   "GUIEXT_DISABLE_WAGGLE_HINT"           0 "Disable weapon waggle when moving?"
+   "GUIEXT_CROSSHAIR_SCALE"               0 "Crosshair Scale"
+   "GUIEXT_CROSSHAIR_SCALE_HINT"          0 "Adjust the size of the crosshair (from 0% to 200%)"
+
+#******************************
+#  Display
+#******************************
+   "GUIEXT_FOV"                           0 "FOV"
+   "GUIEXT_FOV_HINT"                      0 "Set FOV"
+   "GUIEXT_FOV_VERTICAL"                  0 "FOV is vertical (Hor+)"
+   "GUIEXT_EN_FULLSCREEN"                 0 "Enable Fullscreen"
+   "GUIEXT_EN_HIDPI"                      0 "Enable HiDPI"
+   "GUIEXT_EN_TEXTURE_FILTERING"          0 "Enable Texture Filtering"
+   "GUIEXT_EN_SQUARE_ASPECT"              0 "Use 1:1 aspect"
+   "GUIEXT_FPS_LIMIT"                     0 "FPS Limit"
+   "GUIEXT_FPS_LIMIT_HINT"                0 "Set FPS limit"
+   "GUIEXT_EN_VSYNC"                      0 "Enable VSync"
+   "GUIEXT_EN_BLOOM"                      0 "Enable Bloom"
+   "GUIEXT_EN_SSAO"                       0 "Enable SSAO"
+   "GUIEXT_SSAA_MULT"                     0 "SSAA Multiplier:"
+   "GUIEXT_GAMMA_VAL"                     0 "Gamma Value:"
+   "GUIEXT_HUD_SCALE"                     0 "HUD Scale:"
+
+   "GUIEXT_EN_JKGFXMOD"                   0 "Enable jkgfxmod"
+   "GUIEXT_EN_JKGFXMOD_HINT"              0 "Override in-game textures with textures from jkgm folder?"
+   "GUIEXT_EN_TEXTURE_PRECACHE"           0 "Enable texture precaching"
+   "GUIEXT_EN_TEXTURE_PRECACHE_HINT"      0 "Load all material textures ahead-of-time instead of just-in-time?"
+
+# TWL-only for now
+   "GUIEXT_EN_EMISSIVE_TEXTURES"          0 "Enable emissive textures"
+   "GUIEXT_EN_EMISSIVE_TEXTURES_HINT"     0 "Display textures which glow in the dark."
+   "GUIEXT_EN_CLASSIC_LIGHTING"           0 "Enable classic lighting"
+   "GUIEXT_EN_CLASSIC_LIGHTING_HINT"      0 "Use the original 256-color light tables."
+
+
+#******************************
+#  Sound
+#******************************
+  "GUIEXT_CUTSCENE_VOLUME"                0 "Cutscene Volume"
+  "GUIEXT_CUTSCENE_VOLUME_HINT"           0 "Set the volume of audio during cutscenes"
+
+#******************************
+#  Quake Console and Updates
+#******************************
+   "GUIEXT_UPDATE_IS_AVAIL"                   0 "An update is available: %S => %S"
+   "GUIEXT_UPDATE_CLICK_TO_DL"                0 "Click here to download."
+   "GUIEXT_UPDATE_DOWNLOADING"                0 "Downloading..."
+   "GUIEXT_UPDATE_COMPLETE_RESTART"           0 "Update complete, restart to apply."
+   "GUIEXT_UPDATE_COMPLETE_SEMIAUTO"          0 "Update downloaded, complete installation and restart."
+
+
+#******************************
+#  Multiplayer Setup
+#******************************
+   "GUIEXT_DEDICATED_SERVER"        0 "Dedicated Server"
+   "GUIEXT_DEDICATED_SERVER_HINT"   0 "Launch server without participating as a player."
+   "GUIEXT_COOP"                    0 "Experimental Co-op"
+   "GUIEXT_COOP_HINT"               0 "Launch server with actors enabled."
+   "GUIEXT_SERVER_PORT"             0 "Server Port:"
+
+   #"GUIEXT_"                0 ""
+
+#******************************
+#  General
+#******************************
+   "GUIEXT_DISABLE_MISSION_CONFIRMATION"        0 "Disable mission start confirmation"
+   "GUIEXT_DISABLE_MISSION_CONFIRMATION_HINT"   0 "Enter the mission as soon as the level is loaded?"
+
+   "GUIEXT_INCONSISTENT_PHYS"                   0 "Restore inconsistent physics"
+   "GUIEXT_INCONSISTENT_PHYS_HINT"              0 "Sets physics delta to the render framerate instead of 150Hz?"
+
+   "GUIEXT_CORPSE_DESPAWN"                      0 "Disable corpse despawning"
+   "GUIEXT_CORPSE_DESPAWN_HINT"                 0 "Prevent despawn for corpse bodies?"
+
+   "GUIEXT_50HZ_MIDAIR_PHYS"                    0 "Restore 50Hz midair player physics"
+   "GUIEXT_50HZ_MIDAIR_PHYS_HINT"               0 "Step player physics and POV at 50Hz while midair?"
+
+#******************************
+#  Controls
+#******************************
+   "KEY_JOY1_B9"                                0 "Joy 1 Button 9"
+   "KEY_JOY1_B10"                               0 "Joy 1 Button 10"
+   "KEY_JOY1_B11"                               0 "Joy 1 Button 11"
+   "KEY_JOY1_B12"                               0 "Joy 1 Button 12"
+   "KEY_JOY1_B13"                               0 "Joy 1 Button 13"
+   "KEY_JOY1_B14"                               0 "Joy 1 Button 14"
+   "KEY_JOY1_B15"                               0 "Joy 1 Button 15"
+   "KEY_JOY1_B16"                               0 "Joy 1 Button 16"
+   "KEY_JOY1_B17"                               0 "Joy 1 Button 17"
+   "KEY_JOY1_B18"                               0 "Joy 1 Button 18"
+   "KEY_JOY1_B19"                               0 "Joy 1 Button 19"
+   "KEY_JOY1_B20"                               0 "Joy 1 Button 20"
+   "KEY_JOY1_B21"                               0 "Joy 1 Button 21"
+   "KEY_JOY1_B22"                               0 "Joy 1 Button 22"
+   "KEY_JOY1_B23"                               0 "Joy 1 Button 23"
+   "KEY_JOY1_B24"                               0 "Joy 1 Button 24"
+   "KEY_JOY1_B25"                               0 "Joy 1 Button 25"
+   "KEY_JOY1_B26"                               0 "Joy 1 Button 26"
+   "KEY_JOY1_B27"                               0 "Joy 1 Button 27"
+
+   "KEY_JOY2_B9"                                0 "Joy 2 Button 9"
+   "KEY_JOY2_B10"                               0 "Joy 2 Button 10"
+   "KEY_JOY2_B11"                               0 "Joy 2 Button 11"
+   "KEY_JOY2_B12"                               0 "Joy 2 Button 12"
+   "KEY_JOY2_B13"                               0 "Joy 2 Button 13"
+   "KEY_JOY2_B14"                               0 "Joy 2 Button 14"
+   "KEY_JOY2_B15"                               0 "Joy 2 Button 15"
+   "KEY_JOY2_B16"                               0 "Joy 2 Button 16"
+   "KEY_JOY2_B17"                               0 "Joy 2 Button 17"
+   "KEY_JOY2_B18"                               0 "Joy 2 Button 18"
+   "KEY_JOY2_B19"                               0 "Joy 2 Button 19"
+   "KEY_JOY2_B20"                               0 "Joy 2 Button 20"
+   "KEY_JOY2_B21"                               0 "Joy 2 Button 21"
+   "KEY_JOY2_B22"                               0 "Joy 2 Button 22"
+   "KEY_JOY2_B23"                               0 "Joy 2 Button 23"
+   "KEY_JOY2_B24"                               0 "Joy 2 Button 24"
+   "KEY_JOY2_B25"                               0 "Joy 2 Button 25"
+   "KEY_JOY2_B26"                               0 "Joy 2 Button 26"
+   "KEY_JOY2_B27"                               0 "Joy 2 Button 27"
+
+   "KEY_MOUSE_B5"                               0 "Mouse Button 5"
+   "KEY_MOUSE_B6"                               0 "Mouse Button 6"
+   "KEY_MOUSE_B7"                               0 "Mouse Button 7"
+   "KEY_MOUSE_B8"                               0 "Mouse Button 8"
+
+#******************************
+#  Control Setup strings
+#******************************/
+
+   ### Names for the control functions (actions).
+   ### They match the names returned in sithControl_EnumBindings() and
+   ### CONTROL_FUNCTION_NAMES in sithControl.h
+   "GAMERESTORE"     0 "Game Restore"
+   "GAMERECORD"      0 "Game Record"
+   "DEBUG"           0 "Debug"
+   "USELASTSELECTED" 0 "Use Selected Skill/Item"
+
+
+END

@@ -1,0 +1,39 @@
+name: Windows SDL2
+
+on:
+  push:
+    branches: 
+      - master
+  pull_request:
+    branches:
+      - master
+
+jobs:
+  build:
+
+    runs-on: ubuntu-24.04
+
+    env:
+      OPENJKDF2_BUILD_DIR: /tmp/OpenJKDF2
+    steps:
+      - uses: actions/checkout@v3
+        with:
+          submodules: recursive
+        name: Checkout
+      - name: Install Packages
+        run: |
+          sudo apt-get update -qq &&
+          sudo apt-get install \
+                       -y --no-install-suggests --no-install-recommends \
+                       build-essential devscripts cmake make python3 python3-pip imagemagick &&
+          sudo apt-get install -y zsh mingw-w64 clang libopenal-dev libglew-dev &&
+          sudo update-alternatives --set x86_64-w64-mingw32-gcc /usr/bin/x86_64-w64-mingw32-gcc-posix &&
+          sudo update-alternatives --set x86_64-w64-mingw32-g++ /usr/bin/x86_64-w64-mingw32-g++-posix &&
+          sudo pip3 install cogapp
+      - name: Generate CMake Build System
+        run: |
+          cmake --toolchain cmake_modules/toolchain_mingw.cmake \
+                -DCMAKE_BUILD_TYPE=Debug -DGITHUB_RUNNER_COMPILE=1 \
+                -B "$OPENJKDF2_BUILD_DIR"
+      - name: Make
+        run: make -C "$OPENJKDF2_BUILD_DIR" -j $(nproc)

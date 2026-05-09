@@ -1,0 +1,147 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<component type="desktop">
+  <id>org.openjkdf2.OpenJKDF2</id>
+  <metadata_license>0BSD</metadata_license>
+  <project_license>0BSD</project_license>
+  <name>OpenJKDF2</name>
+  <summary>A cross-platform reimplementation of &#x201c;Jedi Knight: Dark Forces II&#x201d;</summary>
+  <summary xml:lang="de">Eine Plattformen &#x00fc;bergreifende Reimplementierung von &#x201e;Jedi Knight: Dark Forces II&#x201c;</summary>
+  <summary xml:lang="pl">Wieloplatformowa reimplementacja &#x201e;Jedi Knight: Dark Forces II&#x201d;</summary>
+  <description>
+    <p>
+      OpenJKDF2 is an open-source re-implementation of &#x201c;Jedi Knight: Dark Forces II&#x201d; (JKDF2).
+      OpenJKDF2 removes the hassle of rendering and input compatibility shims, while also
+      providing in-app guided installation steps, cross-platform multiplayer, and a host
+      of graphical (and other) improvements:
+    </p>
+    <p xml:lang="de">
+      OpenJKDF2 ist eine quelloffene Reimplementierung von &#x201e;Jedi Knight: Dark Forces II&#x201c; (JKDF2).
+      OpenJKDF2 befreit nicht nur vom &#x00c4;rger mit der Grafikdarstellung sowie von Inkompatibilit&#x00e4;ten mit Eingabeger&#x00e4;ten,
+      sondern bietet auch anwendungsgef&#x00fc;hrte Installationsschritte, Plattformen &#x00fc;bergreifende Mehrspieler&#x2011;Unterst&#x00fc;tzung
+      und eine F&#x00fc;lle von grafischen (und Anderen) Verbesserungen.
+    </p>
+    <p xml:lang="pl">
+      OpenJKDF2, to otwarto&#x017a;r&#x00f3;d&#x0142;owa reimplementacja &#x201e;Jedi Knight: Dark Forces II&#x201d; (JKDF2).
+      OpenJKDF2 usuwa k&#x0142;opoty z grafik&#x0105; i kompatybilno&#x015b;ci&#x0105; urz&#x0105;dze&#x0144; sterowniczych,
+      zapewnia kroki instalacyjne providing in-app guided installation steps, obs&#x0142;uguje wieloplatformow&#x0105; wieloosobow&#x0105; gr&#x0119;
+      i dodaje mn&#x00f3;stwo graficznych (jak i innych) ulepsze&#x0144;.
+    </p>
+    <p>
+      Jedi Knight&#x2122; Dark Forces II is Copyright &#x00a9; Lucasfilm Ltd. 1997-2009.
+      An original &#x201c;Jedi Knight: Dark Forces II&#x201d; game disk, or original licensed assets from Steam or GOG, are required in order to play OpenJKDF2.
+    </p>
+    <p xml:lang="de">
+      &#x201e;Jedi Knight&#x2122; Dark Forces II&#x201c; ist urheberrechtlich durch Lucasfilm Ltd. 1997-2009 gesch&#x00fc;tzt.
+      Eine original &#x201e;Jedi Knight: Dark Forces II&#x201c;&#x2011;Spieldisk oder &#x00fc;ber Steam bzw. GOG original lizenzierte Spielwerke werden ben&#x00f6;tigt um OpenJKDF2 zu spielen.
+    </p>
+    <p xml:lang="pl">
+      Lucasfilm Ltd. jest w&#x0142;a&#x015b;cicielem prawa autorskiego do &#x201e;Jedi Knight&#x2122; Dark Forces II&#x201d; z lat 1997 do 2009.
+      Aby wykorzysta&#x0107; OpenJKDF2 do odtwarzania &#x201e;Jedi Knight: Dark Forces II&#x201d;, niezb&#x0119;dny jest oryginalny dysk lub licencjonowane oryginalne zasoby gry ze Steam lub GOG.
+    </p>
+  </description>
+  <screenshots>
+    <screenshot type="default">
+      <image>https://github.com/shinyquagsire23/OpenJKDF2/raw/master/docs/images/screenshot.png</image>
+      <caption>A screenshot of the game running in OpenJKDF2</caption>
+    </screenshot>
+  </screenshots>
+  <developer_name>Max Thomas</developer_name>
+  <url type="homepage">https://github.com/shinyquagsire23/OpenJKDF2</url>
+  <url type="bugtracker">https://github.com/shinyquagsire23/OpenJKDF2/issues</url>
+  <url type="contact">https://github.com/shinyquagsire23/OpenJKDF2/issues</url>
+  <url type="vcs-browser">https://github.com/shinyquagsire23/OpenJKDF2</url>
+  <launchable type="desktop-id">org.openjkdf2.OpenJKDF2.desktop</launchable>
+  <provides>
+    <binary>openjkdf2</binary>
+  </provides>
+  <supports>
+    <control>gamepad</control>
+  </supports>
+  <recommends>
+    <control>pointing</control>
+    <control>keyboard</control>
+  </recommends>
+  <content_rating type="oars-1.1">
+    <content_attribute id="violence-fantasy">moderate</content_attribute>
+    <content_attribute id="violence-bloodshed">mild</content_attribute>
+    <content_attribute id="social-chat">intense</content_attribute>
+  </content_rating>
+  <releases>
+    <!--NEXT_RELEASE_HERE-->
+    <release version="0.9.8" date="2025-12-06" />
+    <release version="0.9.7" date="2025-12-02" />
+    <release version="0.9.6" date="2024-12-07" />
+    <release version="0.9.5" date="2024-11-29" />
+    <release version="0.9.4" date="2024-11-28" />
+    <release version="0.9.3" date="2024-11-28" />
+    <release version="0.9.2" date="2024-11-16" />
+    <release version="0.9.1" date="2023-11-15" />
+    <release version="0.9.0" date="2023-06-15" />
+    <release version="0.8.19" date="2023-06-08" />
+    <release version="0.8.18" date="2023-03-29" />
+    <release version="0.8.17" date="2023-03-26" />
+    <release version="0.8.16" date="2023-03-17">
+      <description>
+        <p>
+          What&#x2019;s new in &#x201c;Jedi Knight: Dark Forces II&#x201d;:
+        </p>
+        <ul>
+          <li>OpenGL hardware rendering with emissive textures, bloom, and ambient occlusion.</li>
+          <li>Ultrawide and HiDPI monitor support, with configurable FOV and scaled HUD elements.</li>
+          <li>Configurable FPS caps (including VSync and fixed animations)</li>
+          <li>Cross-platform multiplayer support, including IPv6.</li>
+          <li>SDL2 joystick/controller support.</li>
+          <li>Various fixes and improvements for bugs in the original game.</li>
+          <li>Native support for Linux and macOS.</li>
+          <li>Built-in support jkgfxmod texture packs.</li>
+          <li>Built-in support for GOG/Steam Ogg Vorbis soundtracks, with fixed looping.</li>
+          <li>Aspect-correct cutscene rendering, and windowed rendering without screen mode switching.</li>
+        </ul>
+      </description>
+    </release>
+    <release version="0.8.15" date="2023-02-25" />
+    <release version="0.8.14" date="2023-02-11" />
+    <release version="0.8.13" date="2023-02-10" />
+    <release version="0.8.12" date="2023-02-07" />
+    <release version="0.8.11" date="2023-02-05" />
+    <release version="0.8.10" date="2023-02-04" />
+    <release version="0.8.9" date="2023-02-04" />
+    <release version="0.8.8" date="2023-01-30" />
+    <release version="0.8.7" date="2023-01-28" />
+    <release version="0.8.6" date="2023-01-27" />
+    <release version="0.8.5" date="2023-01-26" />
+    <release version="0.8.4" date="2023-01-25" />
+    <release version="0.8.3" date="2023-01-22" />
+    <release version="0.8.2" date="2023-01-18" />
+    <release version="0.8.1" date="2023-01-16" />
+    <release version="0.8.0" date="2023-01-15" />
+    <release version="0.7.13" date="2023-01-15" />
+    <release version="0.7.12" date="2023-01-14" />
+    <release version="0.7.11" date="2023-01-11" />
+    <release version="0.7.10" date="2023-01-10" />
+    <release version="0.7.9" date="2023-01-09" />
+    <release version="0.7.8" date="2023-01-08" />
+    <release version="0.7.7" date="2023-01-07" />
+    <release version="0.7.6" date="2023-01-04" />
+    <release version="0.7.5" date="2023-01-03" />
+    <release version="0.7.4" date="2023-01-02" />
+    <release version="0.7.3" date="2023-01-01" />
+    <release version="0.7.2" date="2023-01-01" />
+    <release version="0.7.1" date="2022-12-29" />
+    <release version="0.7.0" date="2022-12-25" />
+    <release version="0.6.16" date="2022-12-22" />
+    <release version="0.6.15" date="2022-10-22" />
+    <release version="0.6.14" date="2022-10-18" />
+    <release version="0.6.13" date="2022-10-15" />
+    <release version="0.6.12" date="2022-10-13" />
+    <release version="0.6.11" date="2022-10-11" />
+    <release version="0.6.10" date="2022-10-10" />
+    <release version="0.6.9" date="2022-10-09" />
+    <release version="0.6.8" date="2022-09-15" />
+    <release version="0.6.7" date="2022-09-14" />
+    <release version="0.6.6" date="2022-09-14" />
+    <release version="0.6.5" date="2022-09-10" />
+    <release version="0.6.4" date="2022-09-10" />
+    <release version="0.6.3" date="2022-09-10" />
+  </releases>
+</component>

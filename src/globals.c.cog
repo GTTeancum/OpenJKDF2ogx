@@ -1,0 +1,203 @@
+#include "globals.h"
+
+#include "General/stdStrTable.h"
+#include "Primitives/rdModel3.h"
+#include "Primitives/rdVector.h"
+#include "Primitives/rdMatrix.h"
+#include "Raster/rdFace.h"
+#include "Raster/rdCache.h"
+#include "Engine/rdKeyframe.h"
+#include "Engine/sithRender.h"
+#include "World/sithWorld.h"
+#include "World/sithSector.h"
+#include "World/sithThing.h"
+
+#include "jk.h"
+
+#ifdef TARGET_TWL
+#define MAYBE_UNUSED __attribute__((unused))
+#else
+#define MAYBE_UNUSED
+#endif
+
+#define NO_REINIT // HACK
+
+#ifdef NO_JK_MMAP
+// Vars
+[[[cog
+    import cog
+
+    addrs = []
+
+    f = open(symbols_fpath, "r")
+    for line in f.readlines():
+        if "//" in line:
+            line = line.split("//")[0]
+        if "#" in line:
+            line = line.split("#")[0]
+        parts = line.replace("\n", "").replace("\r", "").split(" ")
+        if len(parts) < 3:
+            continue
+        
+        name = parts[0]
+        addr = parts[1]
+        c_type = " ".join(parts[2:])
+        c_type_post = ""
+        c_val = "";
+
+        if addr in addrs:
+            cog.outl("aaaaaaaa duplicate addr %s" % addr)
+        else:
+            addrs += [addr]
+        
+        if "=" in c_type:
+            c_val = c_type.split("=")[1]
+            c_type = c_type.split("=")[0]
+        
+        if c_type == "func":
+            continue
+        
+        if c_val == "":
+            if c_type == "int":
+                c_val = "0"
+            elif c_type == "float":
+                c_val = "0.0f"
+            elif c_type == "flex_t":
+                c_val = "0.0f"
+            elif c_type == "flex_d_t":
+                c_val = "0.0f"
+            elif c_type == "flex32_t":
+                c_val = "0.0f"
+            elif c_type == "flex64_t":
+                c_val = "0.0f"
+            elif c_type == "cog_flex_t":
+                c_val = "0.0f"
+            elif c_type == "double":
+                c_val = "0.0f"
+            elif "*" in c_type and "[" not in c_type:
+                c_val = "NULL"
+            else:
+                c_val = "{0}"
+        
+        if "[" in c_type:
+            s = c_type.split("[")
+            c_type = s[0]
+            c_type_post = "[" + s[1] 
+        
+        cog.outl("%s %s%s MAYBE_UNUSED = %s;" % (c_type, name, c_type_post, c_val))
+
+]]]
+[[[end]]]
+#endif
+
+void OpenJKDF2_Globals_Reset()
+{
+// Vars
+[[[cog
+    import cog
+
+    addrs = []
+
+    f = open(symbols_fpath, "r")
+    for line in f.readlines():
+        if "//" in line:
+            line = line.split("//")[0]
+        if "#" in line:
+            line = line.split("#")[0]
+        parts = line.replace("\n", "").replace("\r", "").split(" ")
+        if len(parts) < 3:
+            continue
+        
+        name = parts[0]
+        addr = parts[1]
+        c_type = " ".join(parts[2:])
+        c_type_post = ""
+        c_val = "";
+
+        if addr in addrs:
+            cog.outl("aaaaaaaa duplicate addr %s" % addr)
+        else:
+            addrs += [addr]
+        
+        if "=" in c_type:
+            c_val = c_type.split("=")[1]
+            c_type = c_type.split("=")[0]
+        
+        if c_type == "func":
+            continue
+        
+        c_type_is_int_like = False
+        if c_type == "int" or c_type == "int32_t" or c_type == "uint32_t" or c_type == "uint16_t" or c_type == "int16_t":
+            c_type_is_int_like = True
+
+        if c_val == "":
+            if c_type_is_int_like:
+                c_val = "0"
+            elif c_type == "float":
+                c_val = "0.0f"
+            elif c_type == "flex_t":
+                c_val = "0.0f"
+            elif c_type == "flex_d_t":
+                c_val = "0.0f"
+            elif c_type == "flex32_t":
+                c_val = "0.0f"
+            elif c_type == "flex64_t":
+                c_val = "0.0f"
+            elif c_type == "cog_flex_t":
+                c_val = "0.0f"
+            elif c_type == "double":
+                c_val = "0.0f"
+            elif "*" in c_type and "[" not in c_type:
+                c_val = "NULL"
+            else:
+                c_val = "{0}"
+        
+        if "[" in c_type:
+            s = c_type.split("[")
+            c_type = s[0]
+            c_type_post = "[" + s[1] 
+        
+        if "NO_REINIT" in c_type or "NO_REINIT" in c_type_post:
+            cog.outl("// NO_REINIT for %s" % (name))
+        elif c_val == "NULL" or c_val == "0" or c_val == "0.0f" or c_type_is_int_like:
+            cog.outl("%s = %s;" % (name, c_val))
+        elif c_val == "{0}":
+            cog.outl("_memset_inline(&%s, 0, sizeof(%s));" % (name, name))
+        else:
+            cog.outl("%s __%s_origValue%s = %s;" % (c_type, name, c_type_post, c_val))
+            cog.outl("_memcpy(&%s, &__%s_origValue, sizeof(%s));" % (name, name, name))
+
+]]]
+[[[end]]]
+}
+
+[[[cog
+    import cog
+    import glob
+    import os
+    from pathlib import Path
+    
+    cog.outl("// %s" % embedded_resources)
+    cog.outl("// %s" % project_root)
+    project_root_conv = (str(Path(project_root)) + os.sep).replace("\\", "/") 
+    embed_files = embedded_resources.split("+")
+    cog.outl("const size_t embeddedResource_aFiles_num = %d;" % (len(embed_files),))
+    cog.outl("const embeddedResource_t embeddedResource_aFiles[%d] = {" % (len(embed_files),))
+
+    for fpath in embed_files:
+        cog.outl("// %s" % fpath)
+        fpath_ = fpath.replace(project_root_conv, "").replace("\\", "/").replace("resource/", "")
+        fname = os.path.basename(fpath)
+        contents = open(fpath, "r").read()
+
+        cog.outl("{\"%s\", " % (fpath_,))
+
+        for line in contents.split("\n"):
+            cog.outl("\"%s\"" % (line.replace("\"", "\\\"") + "\\n"))
+
+        cog.outl(", 0x%x}," % (len(contents),))
+
+    cog.outl("};")
+
+]]]
+[[[end]]]

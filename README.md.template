@@ -1,0 +1,130 @@
+# OpenJKDF2
+
+![MacOS Screenshot](docs/images/screenshot.png)
+
+## [Latest Releases](https://github.com/shinyquagsire23/OpenJKDF2/releases) | [Report a crash or bug](https://github.com/shinyquagsire23/OpenJKDF2/issues)
+
+OpenJKDF2 is a function-by-function reimplementation of DF2 in C, with 64-bit ports to Windows 7+, macOS 10.15+, and Linux. Files are organized as closely to the original game as possible, based on symbols from the Grim Fandango Remaster Android/Linux/macOS port, as well as scattered assertions from various other games. It also contains the original versions of `byacc` and `flex` used for COG script parsing.
+
+OpenJKDF2 does *not* include any original game assets; a valid copy of JKDF2 is *required* and can be purchased from [GOG](https://www.gog.com/game/star_wars_jedi_knight_dark_forces_ii) or [Steam](https://store.steampowered.com/app/32380/STAR_WARS_Jedi_Knight_Dark_Forces_II/). The GOG version is recommended, since it is DRM-free and also includes the soundtrack in Ogg Vorbis format. If you'd like to try before you buy, a WebAssembly demo of OpenJKDF2 can be found at https://maxthomas.dev/openjkdf2/.
+
+Support for playing the original soundtrack from Ogg Vorbis files is primarily supported for the GOG and Steam versions of the game assets. Original disk soundtracks can also be loaded from `MUSIC/1/Track<1..11>.ogg` and `MUSIC/2/Track<1..11>.ogg` for each disk's soundtrack. If files are missing, it will instead attempt to use a GOG track number from `MUSIC/Track<12..32>.ogg`. Dumping the soundtrack from disks at install time is planned for a future release of OpenJKDF2, but is not currently implemented.
+
+## Platforms
+OpenJKDF2 supports the following configurations:
+
+| Configuration | Renderer | Description |
+| --- | --- | --- |
+| 64-bit Windows/SDL2 | OpenGL 3.3 | 64-bit Windows compilation with SDL2 and OpenAL. DirectX dependencies are replaced with SDL2 and OpenAL. |
+| MacOS x86_64/AArch64 | OpenGL 3.3 | 64-bit MacOS compilation with SDL2 and OpenAL. All release packages include both Intel and ARM64. |
+| 64-bit Linux/SDL2 | OpenGL 3.3 | 64-bit Linux compilation with SDL2 and OpenAL. |
+| Emscripten/WebAssembly | WebGL 2/OpenGL ES 3 | WebAssembly with SDL2 and OpenAL. Runs in a web browser. Since WASM only supports 32-bit pointers, this will likely be less buggy than 64-bit, but less performant. |
+| x86 Linux/SDL2, mmap blobs | OpenGL 3.3 | 32-bit Linux compilation with SDL2 and OpenAL. JK.EXE is memory mapped into the process and used as a "binary blob"; Unimplemented functions will fall back to JK.EXE implementations. |
+| 32-bit Linux/SDL2, blobless | OpenGL 3.3 | 32-bit Linux compilation with SDL2 and OpenAL. The output executable is a swap-in replacement for JK.EXE, but will be missing functions and will crash on reaching unimplemented code. |
+| x86 Win32/MinGW DLL | Software/DirectX | Win32 hooked build, JK.EXE is patched to load `df2_reimpl.dll` execute `hook_init_win` before JK.EXE's `main` function. Unimplemented functions will fall back to JK.EXE implementations. `df2_reimpl_kvm.dll` is used for the KVM target |
+
+The following implementations are in-progress or planned:
+
+| Configuration | Renderer | Description | Status |
+| --- | --- | --- |
+| Android | OpenGL ES 3 | Not a huge priority, but would be nice to have. | It compiles and renders! Input/menuing is lacking. |
+| iOS | Metal? | Not a huge priority, but would be nice to have. | Not started |
+| Switch libnx | OpenGL ES 3 | Not a huge priority, but would be nice to have. | Not started |
+| 32-bit Windows/SDL2 | OpenGL 3.3 | Windows compilation with SDL2 and OpenAL. DirectX dependencies are replaced with SDL2 and OpenAL. Targeting Windows XP ~ Windows 7 | Not started |
+| 32-bit Windows/DirectX | Direct3D 3 | Faithful decompilation with original DirectX bindings/renderer. | Not started |
+
+Linux building works on AArch64/RPi4 with llvmpipe, but V3D GLES has trouble with palettes.
+
+OpenJKDF2 requires game data from a licensed copy of Jedi Knight: Dark Forces II in order to run; No game assets are provided by OpenJKDF2. On Linux, paths and filenames may be case-sensitive. Your directory structure should look something like this:
+```
+.
+├── JK.EXE
+├── MUSIC
+│   ├── Track12.ogg
+│   ├── Track13.ogg
+│   ├── Track14.ogg
+│   ├── Track15.ogg
+│   ├── Track16.ogg
+│   ├── Track17.ogg
+│   ├── Track18.ogg
+│   ├── Track22.ogg
+│   ├── Track23.ogg
+│   ├── Track24.ogg
+│   ├── Track25.ogg
+│   ├── Track26.ogg
+│   ├── Track27.ogg
+│   ├── Track28.ogg
+│   ├── Track29.ogg
+│   ├── Track30.ogg
+│   ├── Track31.ogg
+│   └── Track32.ogg
+├── episode
+│   ├── JK1.gob
+│   ├── JK1CTF.gob
+│   └── JK1MP.gob
+├── openjkdf2-64
+├── player
+└── resource
+    ├── Res1hi.gob
+    ├── Res2.gob
+    ├── jk_.cd
+    └── video
+        ├── 01-02A.SMK
+        ├── 03-04A.SMK
+        ├── 06A.SMK
+        ├── 08-10A.SMK
+        ├── 12A.SMK
+        ├── 16A.SMK
+        ├── 18-19A.SMK
+        ├── 21A.SMK
+        ├── 23A.SMK
+        ├── 25A.SMK
+        ├── 27A.SMK
+        ├── 33-34A.SMK
+        ├── 36A.SMK
+        ├── 38A.SMK
+        ├── 39A.SMK
+        ├── 41-42A.SMK
+        ├── 41DA.SMK
+        ├── 41DSA.SMK
+        ├── 44A.SMK
+        ├── 46A.SMK
+        ├── 48A.SMK
+        ├── 50A.SMK
+        ├── 52-53A.SMK
+        ├── 54A.SMK
+        └── 57A.SMK
+```
+
+## Building
+
+See [here](BUILDING.md) for instructions.
+
+## Contributing
+
+Contributions in the form of code cleanup and documentation are highly welcomed. See [CONTRIBUTING.md](CONTRIBUTING.md) for details on what kinds of cleanup tasks still need to be done. OpenJKDF2 is not currently accepting monetary donations, however [detailed bug and crash reports](https://github.com/shinyquagsire23/OpenJKDF2/issues) are always appreciated, including bugs/crashes involving mods.
+
+## TL;DR: What Isn't Implemented, Yet
+ - Load Configuration and Save Configuration in Setup > Controls > Options
+ - Using plus or minus to resize the screen (with SDL2, resolution auto-resizes to window size)
+
+## Usage with original JK.EXE and DirectX using hooks
+See [here](HOOKS.md) for instructions.
+
+## Methodology
+The bulk of research and documentation occurs in IDA. Every function has been identified to a file prefix (ie `stdHashTable_`) with a corresponding .c/.h file. RenderDroid (`rd*`) and LEC stdlib (`std*`) functions are 90% canonically named, based on symbols from Grim Fandango Remastered.
+
+Reverse engineering is a parallel effort between structure documentation and function identification. Once structures are sufficiently documented, Hex-Rays can be used for decompilation. While most Hex-Rays output works outright, many loops and structures require manual intervention. Output is generally cleaned and tidied to remove redunant stack variables or too-deep nesting. `sizeof` and obvious inlining and macros should also be adjusted as appropriate.
+
+Engine variables and yet-to-be-decompiled functions are referenced using `define` macros and static function pointers, respectively. Once a file is decompiled enough that an engine variable is no longer referenced by non-decompiled code, the variables can be declared in their respective C files. For decompiled functions which are only referenced by non-decompiled functions, a `hook_function` call is added in `main.c` to redirect code execution to `df2_reimpl.dll` from `JK.EXE`.
+
+Progress is tracked using `analyze.py`, `output.map` and `ida_copypaste_funclist_nostdlib.txt`: After compiling `df2_reimpl.dll`, symbols can be compared against the `.idb` to determine how much of the original `.text` is actually in use, and how much has been hooked and replaced.
+
+If you'd like a copy of my IDB to examine functions which haven't been decompiled yet (or for any other use), let me know.
+
+## Current Progress
+
+Generated using `analyze.py`. Some filenames may be inaccurate or incomplete (see `ida_copypaste_funclist_nostdlib.txt` for a full function name listing).
+
+```
+

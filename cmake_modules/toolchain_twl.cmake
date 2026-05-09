@@ -1,0 +1,56 @@
+# CMake toolchain file
+set(CMAKE_SYSTEM_NAME Generic)
+set(CMAKE_SYSTEM_VERSION "0.0.0")
+set(CMAKE_SYSTEM_PROCESSOR arm)
+
+if(DEFINED ENV{BLOCKSDS})
+    set(BLOCKSDS $ENV{BLOCKSDS})
+else()
+    set(BLOCKSDS /opt/blocksds/core)
+endif()
+
+if(DEFINED ENV{BLOCKSDSEXT})
+    set(BLOCKSDSEXT $ENV{BLOCKSDSEXT})
+else()
+    set(BLOCKSDSEXT /opt/blocksds/external)
+endif()
+
+if(DEFINED ENV{WONDERFUL_TOOLCHAIN})
+    set(WONDERFUL_TOOLCHAIN $ENV{WONDERFUL_TOOLCHAIN})
+else()
+    set(WONDERFUL_TOOLCHAIN /opt/wonderful)
+endif()
+
+if(DEFINED ENV{NDSTOOL})
+    set(NDSTOOL $ENV{NDSTOOL})
+else()
+    set(NDSTOOL ${BLOCKSDS}/tools/ndstool/ndstool)
+endif()
+
+if(DEFINED ENV{LIBNDS})
+    set(LIBNDS $ENV{LIBNDS})
+else()
+    set(LIBNDS ${BLOCKSDS}/libs/libnds)
+endif()
+
+set(TOOLCHAIN_PREFIX arm-none-eabi)
+set(TOOLCHAIN_PREFIX_PATH ${WONDERFUL_TOOLCHAIN}/toolchain/gcc-arm-none-eabi/bin/${TOOLCHAIN_PREFIX})
+set(BLOCKSDS_SPECS ${BLOCKSDS}/sys/crts/ds_arm9.specs)
+
+set(CMAKE_C_COMPILER   "${TOOLCHAIN_PREFIX_PATH}-gcc" CACHE STRING "C compiler" FORCE)
+set(CMAKE_CXX_COMPILER "${TOOLCHAIN_PREFIX_PATH}-g++" CACHE STRING "C++ compiler" FORCE)
+
+#set(CMAKE_C_COMPILER_WORKS 1)
+#set(CMAKE_CXX_COMPILER_WORKS 1)
+
+set(CMAKE_C_FLAGS_INIT "")
+set(CMAKE_CXX_FLAGS_INIT ${CMAKE_C_FLAGS_INIT})
+
+set(CMAKE_FIND_ROOT_PATH_MODE_PROGRAM NEVER)
+set(CMAKE_FIND_ROOT_PATH_MODE_LIBRARY ONLY)
+set(CMAKE_FIND_ROOT_PATH_MODE_INCLUDE ONLY)
+set(CMAKE_FIND_ROOT_PATH_MODE_PACKAGE ONLY)
+
+set(PLAT_TWL TRUE)
+
+message( STATUS "Nintendo DSi ARM32 toolchain invoked" )
