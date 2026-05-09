@@ -241,18 +241,6 @@ int std3D_StartScene(void)
      * subsequent glBegin. */
     glClear(GL_COLOR_BUFFER_BIT | GL_DEPTH_BUFFER_BIT | GL_STENCIL_BUFFER_BIT);
 
-    /* Diagnostic per-frame triangle.  The engine's render path stops
-     * submitting DrawRenderList after level load (faces=0 from sithRender),
-     * so a triangle drawn from DrawRenderList is cleared next frame and
-     * disappears.  Drawing it here forces a fresh triangle every frame,
-     * isolating "is the renderer producing visible pixels?" from "is the
-     * engine submitting geometry?". */
-    glBegin(GL_TRIANGLES);
-    glColor4f(1.0f, 0.0f, 0.0f, 1.0f);  glVertex3f(160.0f, 240.0f, 0.0f);
-    glColor4f(0.0f, 1.0f, 0.0f, 1.0f);  glVertex3f(320.0f,  60.0f, 0.0f);
-    glColor4f(0.0f, 0.0f, 1.0f, 1.0f);  glVertex3f(480.0f, 240.0f, 0.0f);
-    glEnd();
-
     g_sceneOpen     = 1;
     GL_numVertices  = 0;
     GL_verticesDone = 0;
@@ -344,28 +332,76 @@ void std3D_ResetRenderList(void)
 
 /* ====================================================================== */
 /* std3D_DrawRenderList                                                   */
-/* Diagnostic build: discard engine geometry, draw a single RGB triangle. */
+/*                                                                        */
+/* Engine flow:                                                           */
+/*   rdCache stages vertices (D3DVERTEX) + tri indices (rdTri) via        */
+/*   AddRenderListVertices/Tris, then calls DrawRenderList.  We translate */
+/*   each tri into a glBegin(GL_TRIANGLES) ... glEnd block, emitting per- */
+/*   vertex glColor4f / glTexCoord2f / glVertex3f.                        */
+/*                                                                        */
+/* Texture binding is currently disabled (cache is stubbed; tris draw as  */
+/* colored polygons via vertex DIFFUSE).  When the texture cache is wired */
+/* up to glTexImage2D + glBindTexture this becomes the path that handles  */
+/* texture state changes per tri.                                         */
 /* ====================================================================== */
 void std3D_DrawRenderList(void)
 {
+    int i;
     if (!g_initialized || !g_sceneOpen) return;
+    if (GL_numTris == 0 || !GL_verticesDone) return;
 
-    if (GL_numTris > 0)
     {
-        static int _fl = 0;
-        if (_fl < 3) { XDBGF("DIAG: nTris=%d\n", GL_numTris); _fl++; }
+        static int _f = 0;
+        if (_f < 3)
+        {
+            XDBGF("DRL: nTris=%d nVerts=%d\n", GL_numTris, GL_numVertices);
+            _f++;
+        }
     }
 
-    /* Discard staged engine geometry — DIAG draws a hardcoded triangle. */
-    GL_numVertices = 0; GL_verticesDone = 0; GL_numTris = 0; GL_numLines = 0;
+    /* One glBegin/glEnd per triangle.  FakeGL's vertex buffer accumulates
+     * and merges adjacent draws of the same primitive type internally, so
+     * the cost of one Begin/End per tri is just the glBegin/glEnd no-op
+     * checks — actual GPU submission happens at flush time (next clear /
+     * SwapBuffers). */
+    for (i = 0; i < GL_numTris; ++i)
+    {
+        rdTri      *t  = &GL_tmpTris[i];
+        D3DVERTEX  *a  = &GL_tmpVertices[t->v1];
+        D3DVERTEX  *b  = &GL_tmpVertices[t->v2];
+        D3DVERTEX  *c  = &GL_tmpVertices[t->v3];
 
-    { static int _dc=0; if(_dc<3){ XDBG("DIAG: glBegin TRIANGLES\n"); _dc++; } }
-    glBegin(GL_TRIANGLES);
-    glColor4f(1.0f, 0.0f, 0.0f, 1.0f);  glVertex3f(160.0f, 240.0f, 0.0f);
-    glColor4f(0.0f, 1.0f, 0.0f, 1.0f);  glVertex3f(320.0f,  60.0f, 0.0f);
-    glColor4f(0.0f, 0.0f, 1.0f, 1.0f);  glVertex3f(480.0f, 240.0f, 0.0f);
-    glEnd();
-    { static int _dd=0; if(_dd<3){ XDBG("DIAG: glEnd done\n"); _dd++; } }
+        glBegin(GL_TRIANGLES);
+
+        glColor4f(((a->color >> 16) & 0xFF) / 255.0f,
+                  ((a->color >>  8) & 0xFF) / 255.0f,
+                  ((a->color      ) & 0xFF) / 255.0f,
+                  ((a->color >> 24) & 0xFF) / 255.0f);
+        glTexCoord2f(a->tu, a->tv);
+        glVertex3f(a->x, a->y, a->z);
+
+        glColor4f(((b->color >> 16) & 0xFF) / 255.0f,
+                  ((b->color >>  8) & 0xFF) / 255.0f,
+                  ((b->color      ) & 0xFF) / 255.0f,
+                  ((b->color >> 24) & 0xFF) / 255.0f);
+        glTexCoord2f(b->tu, b->tv);
+        glVertex3f(b->x, b->y, b->z);
+
+        glColor4f(((c->color >> 16) & 0xFF) / 255.0f,
+                  ((c->color >>  8) & 0xFF) / 255.0f,
+                  ((c->color      ) & 0xFF) / 255.0f,
+                  ((c->color >> 24) & 0xFF) / 255.0f);
+        glTexCoord2f(c->tu, c->tv);
+        glVertex3f(c->x, c->y, c->z);
+
+        glEnd();
+    }
+
+    /* Reset staging — engine may build a new batch in the same frame. */
+    GL_numVertices  = 0;
+    GL_verticesDone = 0;
+    GL_numTris      = 0;
+    GL_numLines     = 0;
 }
 
 /* ====================================================================== */
