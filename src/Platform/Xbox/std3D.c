@@ -359,11 +359,15 @@ void std3D_DrawRenderList(void)
         }
     }
 
-    /* One glBegin/glEnd per triangle.  FakeGL's vertex buffer accumulates
-     * and merges adjacent draws of the same primitive type internally, so
-     * the cost of one Begin/End per tri is just the glBegin/glEnd no-op
-     * checks — actual GPU submission happens at flush time (next clear /
-     * SwapBuffers). */
+    /* One glBegin/glEnd per triangle.  FakeGL's USE_BEGINEND path on Xbox
+     * (gl_fakegl.cpp:1380-1432) submits each Begin/End as its own NV2A
+     * inline-mode primitive — no buffering between draws.
+     *
+     * No glTexCoord2f calls yet: the texture cache is stubbed (no real
+     * textures registered with FakeGL) and the working diagnostic in
+     * StartScene also omitted texcoords.  Adding them when no texture is
+     * bound caused the per-tri triangle to disappear; reinstate when the
+     * texture-cache path actually uploads textures via glTexImage2D. */
     for (i = 0; i < GL_numTris; ++i)
     {
         rdTri      *t  = &GL_tmpTris[i];
@@ -377,21 +381,18 @@ void std3D_DrawRenderList(void)
                   ((a->color >>  8) & 0xFF) / 255.0f,
                   ((a->color      ) & 0xFF) / 255.0f,
                   ((a->color >> 24) & 0xFF) / 255.0f);
-        glTexCoord2f(a->tu, a->tv);
         glVertex3f(a->x, a->y, a->z);
 
         glColor4f(((b->color >> 16) & 0xFF) / 255.0f,
                   ((b->color >>  8) & 0xFF) / 255.0f,
                   ((b->color      ) & 0xFF) / 255.0f,
                   ((b->color >> 24) & 0xFF) / 255.0f);
-        glTexCoord2f(b->tu, b->tv);
         glVertex3f(b->x, b->y, b->z);
 
         glColor4f(((c->color >> 16) & 0xFF) / 255.0f,
                   ((c->color >>  8) & 0xFF) / 255.0f,
                   ((c->color      ) & 0xFF) / 255.0f,
                   ((c->color >> 24) & 0xFF) / 255.0f);
-        glTexCoord2f(c->tu, c->tv);
         glVertex3f(c->x, c->y, c->z);
 
         glEnd();
