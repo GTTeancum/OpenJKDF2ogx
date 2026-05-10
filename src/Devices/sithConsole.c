@@ -1,5 +1,7 @@
 #include "sithConsole.h"
 
+#include <stdlib.h>  /* malloc/free — VC71 doesn't get them transitively here */
+
 #include "Main/sithCommand.h"
 #include "Win95/stdSound.h"
 #include "Devices/sithSound.h"

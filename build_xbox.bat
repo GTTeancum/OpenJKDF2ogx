@@ -117,6 +117,7 @@ for %%F in (
     src\wprintf.c
     src\Win95\std.c
     src\General\stdString.c
+    src\General\stdStrTable.c
     src\General\stdHashTable.c
     src\General\stdMath.c
     src\General\stdMemory.c
@@ -129,6 +130,7 @@ for %%F in (
     src\World\sithSector.c
     src\World\sithSurface.c
     src\World\sithThing.c
+    src\World\sithActor.c
     src\World\sithModel.c
     src\World\sithSprite.c
     src\World\sithTemplate.c
@@ -173,10 +175,38 @@ for %%F in (
     src\Cog\jkCog.c
     src\Cog\lex.yy.c
     src\Cog\y.tab.c
+    src\AI\sithAI.c
+    src\AI\sithAIAwareness.c
+    src\AI\sithAICmd.c
     src\AI\sithAIClass.c
+    src\Devices\sithConsole.c
     src\Devices\sithControl.c
     src\Devices\sithSound.c
     src\Devices\sithSoundMixer.c
+    src\Engine\sithParticle.c
+    src\Engine\sithPuppet.c
+    src\Gameplay\sithEvent.c
+    src\Gameplay\sithInventory.c
+    src\Gameplay\sithOverlayMap.c
+    src\Gameplay\sithPlayerActions.c
+    src\General\sithStrTable.c
+    src\Main\sithCommand.c
+    src\World\sithArchLighting.c
+    src\World\sithExplosion.c
+    src\World\sithItem.c
+    src\World\sithMap.c
+    src\World\sithTrackThing.c
+    src\World\sithWeapon.c
+    src\World\jkPlayer.c
+    src\Gameplay\jkSaber.c
+    src\Main\jkAI.c
+    src\Main\jkEpisode.c
+    src\Main\jkGame.c
+    src\Main\jkHud.c
+    src\Main\jkHudInv.c
+    src\Main\jkHudScope.c
+    src\Main\jkHudCameraView.c
+    src\Main\jkStrings.c
     src\Platform\Xbox\std3D.c
     src\Platform\Xbox\std3D_draw.cpp
     src\Platform\Xbox\fakeglx.cpp

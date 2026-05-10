@@ -975,6 +975,27 @@ int sithControl_HandlePlayer(sithThing *player, flex_t deltaSecs)
     if ( player->moveType != SITH_MT_PHYSICS )
         return 0;
 
+#ifdef TARGET_XBOX
+    /* Phase 4: trace why character doesn't move despite axes being non-zero.
+     * Log: typeflags (SITH_AF_DISABLED gate), attach_flags (Movement vs
+     * FreeCam branch), thingflags (DEAD gate), sithCamera_state, and
+     * post-call accel/vel values to find which layer drops input. */
+    { static int _dp = 0; static unsigned int _dpEvery = 0;
+      _dpEvery++;
+      if (_dp < 30 || (_dpEvery % 60) == 0) {
+        XDBGF("HP_state[%u]: type=%d typeflags=%X thingflags=%X attach=%X cam=%d debug=%X dead=%d\n",
+              _dpEvery, (int)player->type,
+              (unsigned)player->actorParams.typeflags,
+              (unsigned)player->thingflags,
+              (unsigned)player->attach_flags,
+              (int)sithCamera_state,
+              (unsigned)g_debugmodeFlags,
+              (player->thingflags & SITH_TF_DEAD) ? 1 : 0);
+        _dp++;
+      }
+    }
+#endif
+
     // Added: dedicated
     if (sithNet_isServer && jkGuiNetHost_bIsDedicated) {
         sithControl_PlayerLook(player, deltaSecs);
@@ -1062,6 +1083,34 @@ LABEL_39:
                     sithControl_PlayerMovement(player);
                 else
                     sithControl_FreeCam(player);
+
+#ifdef TARGET_XBOX
+                /* Log resulting acceleration / angVel + current vel/pos so
+                 * we can see whether the input made it into physicsParams,
+                 * and whether the physics tick is integrating that to
+                 * position. */
+                { static int _dh = 0; static unsigned int _dhEvery = 0;
+                  _dhEvery++;
+                  if (_dh < 30 || (_dhEvery % 60) == 0) {
+                    XDBGF("HP_apply[%u]: branch=%s accel=(%.3f,%.3f,%.3f) angV=(%.3f,%.3f,%.3f) vel=(%.3f,%.3f,%.3f) pos=(%.3f,%.3f,%.3f)\n",
+                          _dhEvery,
+                          player->attach_flags ? "MOVE" : "FREE",
+                          (float)player->physicsParams.acceleration.x,
+                          (float)player->physicsParams.acceleration.y,
+                          (float)player->physicsParams.acceleration.z,
+                          (float)player->physicsParams.angVel.x,
+                          (float)player->physicsParams.angVel.y,
+                          (float)player->physicsParams.angVel.z,
+                          (float)player->physicsParams.vel.x,
+                          (float)player->physicsParams.vel.y,
+                          (float)player->physicsParams.vel.z,
+                          (float)player->position.x,
+                          (float)player->position.y,
+                          (float)player->position.z);
+                    _dh++;
+                  }
+                }
+#endif
 
                 sithControl_ReadFunctionMap(INPUT_FUNC_ACTIVATE, &input_read);
                 if ( input_read != 0 &&  sithThing_MotsTick(2,0,1.0)) // MOTS added
@@ -1613,6 +1662,22 @@ void sithControl_PlayerMovement(sithThing *player)
         }
         v11 = sithControl_GetAxisTimeCorrected(0);
         y_vel = (player->actorParams.maxThrust + player->actorParams.extraSpeed) * v11;
+#ifdef TARGET_XBOX
+        /* Log thrust state and axis read inside PlayerMovement to confirm
+         * which factor is zero when motion fails. */
+        { static int _pm = 0; static unsigned int _pmEvery = 0;
+          _pmEvery++;
+          if (_pm < 30 || (_pmEvery % 60) == 0) {
+            XDBGF("PM_calc[%u]: fwd=%f maxThrust=%f extraSpeed=%f angV=%f y_vel=%f\n",
+                  _pmEvery, (float)v11,
+                  (float)player->actorParams.maxThrust,
+                  (float)player->actorParams.extraSpeed,
+                  (float)player->physicsParams.angVel.y,
+                  (float)y_vel);
+            _pm++;
+          }
+        }
+#endif
         if ( v11 < 0.0 )
             y_vel = y_vel * 0.5;
         player->physicsParams.acceleration.y = y_vel;

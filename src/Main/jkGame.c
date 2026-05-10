@@ -161,7 +161,7 @@ int jkGame_Update()
 
 #if defined(SDL2_RENDER) || defined(TARGET_TWL)
     // HACK
-    Video_modeStruct.b3DAccel = 1;
+    Video_modeStruct.b3DAccel = (HKEY)1;
 #endif
 
 #if !defined(SDL2_RENDER) && !defined(TARGET_TWL)

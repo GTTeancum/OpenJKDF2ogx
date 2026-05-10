@@ -148,10 +148,7 @@ int  sithMulti_GetSpawnIdx(void) { return 0; }
 void sithMulti_HandleDeath(void* a, void* b) { (void)a; (void)b; }
 void sithMulti_HandleTimeLimit(void) { }
 
-/* jkStrings — string table */
-int   jkStrings_Startup(void) { return 1; }
-int   jkStrings_Shutdown(void) { return 1; }
-void* jkStrings_GetUniStringWithFallback(const char* k) { (void)k; return 0; }
+/* jkStrings — real impls in src/Main/jkStrings.c (now in build) */
 
 /* stdComm — communications, stubbed */
 int  stdComm_Startup(void) { return 1; }

@@ -1,5 +1,7 @@
 #include "sithCommand.h"
 
+#include <stdlib.h>  /* malloc/free/exit — VC71 doesn't get them transitively here */
+
 #include "General/sithStrTable.h"
 #include "General/stdString.h"
 #include "Devices/sithConsole.h"

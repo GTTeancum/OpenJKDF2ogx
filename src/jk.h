@@ -371,6 +371,10 @@ void jk_SetActiveWindow(HWND hWnd);
 void jk_ShowCursor(int a);
 void jk_ValidateRect(HWND hWnd, const RECT *lpRect);
 #endif /* !TARGET_XBOX */
+#ifdef TARGET_XBOX
+/* Stubbed in src/Platform/Xbox/xbox_stubs.c (we don't pull src/jk.c). */
+int _string_modify_idk(int c);
+#endif
 #if !defined(ARCH_WASM)
 int __isspace(int a);
 #endif

@@ -57,8 +57,6 @@ __int64 __cdecl _allmul(__int64 a, __int64 b) { return a * b; }
 /* C++ mangled globals */
 int   jkGuiRend_thing_four    = 0;
 int   jkGuiRend_thing_five    = 0;
-int   jkPlayer_fpslimit       = 60;
-int   jkPlayer_personality    = 0;
 /* g_app_suspended — in globals.c */
 int   Window_xSize            = 640;
 int   Window_ySize            = 480;
@@ -77,19 +75,6 @@ stdVBuffer* Video_pOverlayMapBuffer = 0;
 #define STUBP  { return 0; }
 
 /* jkPlayer — needs full game systems */
-int  jkPlayer_Startup(void) STUB0
-int  jkPlayer_Shutdown(void) STUB0
-int  jkPlayer_Close(void) STUB0
-void jkPlayer_InitForceBins(void) STUBV
-void jkPlayer_InitThings(void) STUBV
-void jkPlayer_InitSaber(void) STUBV
-void jkPlayer_MpcInitBins(void) STUBV
-void jkPlayer_SetAmmoMaximums(void) STUBV
-void jkPlayer_nullsub_1(void) STUBV
-void jkPlayer_idkEndLevel(void) STUBV
-void jkPlayer_ResetVars(void) STUBV
-void jkPlayer_WriteConfSwap(void) STUBV
-int  jkPlayer_GetChoice(void) STUB0
 
 /* jkGui — needs display system */
 int  jkGui_Startup(void) STUB0
@@ -206,17 +191,8 @@ int  jkGuiMods_Shutdown(void) STUB0
 /* jkHud — C++ mangled versions at end of file.
    C callers (jkMain.c) use implicit declaration which resolves
    to the C++ version via the linker's weak symbol resolution. */
-void jkHudScope_Open(void) STUBV
-void jkHudScope_Close(void) STUBV
-void jkHudCameraView_Open(void) STUBV
-void jkHudCameraView_Close(void) STUBV
 
 /* jkHudInv — needs display */
-int  jkHudInv_Startup(void) STUB0
-int  jkHudInv_Shutdown(void) STUB0
-void jkHudInv_Close(void) STUBV
-void jkHudInv_InitItems(void) STUBV
-void jkHudInv_LoadItemRes(void) STUBV
 
 /* jkDev — needs display/debug overlay */
 int  jkDev_Startup(void) STUB0
@@ -270,12 +246,10 @@ void jkGuiNetHost_LoadSettings(void) STUBV
 void jkGuiNetHost_SaveSettings(void) STUBV
 int  sithMulti_CreatePlayer(void* a) STUB0
 void sithTime_idk_record(void) STUBV
-int  jkPlayer_CreateConf(void* a) STUB0
 /* stdString_CharToWchar / stdString_SafeWStrCopy — now in stdString.c */
 
 /* Additional stubs needed by jkMain.c */
 void jkGuiMultiplayer_ShowSynchronizing(void) STUBV
-int  jkPlayer_Open(void) STUB0
 /* sithControl_Close/IsOpen — now in sithControl.c */
 int  sithWorld_GetMemorySize(void) STUB0
 
@@ -291,50 +265,12 @@ void rdAdvanceFrame(void);
 void rdFinishFrame(void);
 void sithMain_UpdateCamera(void);
 
-int  jkGame_Startup(void) STUB0
-int  jkGame_Shutdown(void) STUB0
 
-/* Render-state diagnostics — plain C++ extern (globals.c also C++, mangling matches) */
-extern int sithRender_geoMode;
-extern int rdCache_numProcFaces;
-
-int jkGame_Update(void)
-{
-    /* Minimal render path:
-     *   rdAdvanceFrame   — clears frame counters, advances rdCamera/rdCache state
-     *   sithMain_UpdateCamera → sithCamera_SetRdCameraAndRenderidk → sithRender_Draw
-     *                      — fills rdCache with level geometry (sectors, things)
-     *   rdFinishFrame    — rdCache_Flush: submits DrawIndexedPrimitive calls to D3D
-     */
-    rdAdvanceFrame();
-    sithMain_UpdateCamera();
-
-#ifdef TARGET_XBOX
-    /* One-shot: log geoMode + faces filled by sithRender_Draw (before rdCache_Flush resets) */
-    { static int _jgu = 0; if (_jgu < 3) {
-        XDBGF("jkGame_Update: geoMode=%d faces=%d\n",
-              sithRender_geoMode, rdCache_numProcFaces);
-        _jgu++;
-    }}
-#endif
-
-    rdFinishFrame();
-    return 1;
-}
+/* jkGame_Update body — orphan from removed stub; full impl now in src/Main/jkGame.c */
 
 /* jkCog_Startup, jkCog_Shutdown — real impls in src/Cog/jkCog.c (now in build) */
-int  jkAI_Startup(void) STUB0
-int  jkEpisode_Startup(void) STUB0
-void jkEpisode_Load(void* a) STUBV
-void jkEpisode_EndLevel(void) STUBV
-void jkEpisode_idk4(void) STUBV
-void* jkEpisode_GetCurrentEpisodeEntry(void) STUBP
-void* jkEpisode_GetNextEntryInDecisionPath(void* a) STUBP
 
 /* [STUBBED] jkStrings — real code: src/Main/jkStrings.c (not yet enabled) */
-int   jkStrings_Startup(void) STUB0
-int   jkStrings_Shutdown(void) STUB0
-void* jkStrings_GetUniStringWithFallback(const char* k) STUBP
 /* jkGob — now in src/Main/jkGob.c (Main filter) */
 
 /* [STUBBED] jkQuakeConsole */
@@ -480,19 +416,12 @@ void stdUpdater_StartupCvars(void) { }
    with C++ linkage. xboxkrnl.lib exports C names. Need extern "C". */
 
 /* C++ linkage stubs — match caller expectations */
-int  jkHud_Open(void) { return 0; }
-void jkHud_Close(void) { }
-void jkPlayer_StartupVars(void) { }
 void stdConsole_Puts(char* msg, unsigned short flags) { (void)flags; OutputDebugStringA(msg ? msg : "(null)"); }
 
 /* These were functions, not variables */
 struct sithThing;
-void jkPlayer_renderSaberWeaponMesh(sithThing* a) { (void)a; }
-void jkGame_ddraw_idk_palettes(void) { }
 
-/* sithPuppet_PlayMode with callback */
-int  sithPuppet_PlayMode(sithThing* thing, int mode, void (*callback)(sithThing*, int, unsigned int))
-     { (void)thing; (void)mode; (void)callback; return 0; }
+/* sithPuppet_PlayMode — real impl in src/Engine/sithPuppet.c (now in build) */
 
 /* Window functions — match WindowHandler_t signatures */
 typedef int (*WindowHandler_t_local)(HWND, UINT, WPARAM, LPARAM, LRESULT*);
@@ -514,20 +443,151 @@ int stdControl_MessageHandler(HWND hWnd, UINT Msg, WPARAM wParam, LPARAM lParam,
  * Returning 0 for systems we haven't wired (weapons, inventory) lets
  * sithControl_HandlePlayer (the movement handler) run normally.  Same
  * pattern any platform follows when a subsystem isn't enabled. */
-struct sithThing;
-int sithWeapon_HandleWeaponKeys(struct sithThing *t, float dt)        { (void)t; (void)dt; return 0; }
-int sithInventory_HandleInvSkillKeys(struct sithThing *t, float dt)   { (void)t; (void)dt; return 0; }
+/* sithWeapon_HandleWeaponKeys — real impl in src/Gameplay/sithWeapon.c (now in build) */
+/* sithInventory_HandleInvSkillKeys — real impl in src/Gameplay/sithInventory.c (now in build) */
 
 /* Functions called from jkControl_HandleHudKeys body for various
  * F-key/dev shortcuts.  Stubbed because the corresponding subsystems
  * (HUD popups, screenshot, gamma config, save UI) aren't wired up
  * on Xbox yet.  Pressing those keys does nothing rather than crashing. */
-void jkHud_Tally(void)                                  { }
-int  jkHud_Chat(void)                                   { return 0; }
-void jkGame_Screenshot(void)                            { }
-void jkGame_Gamma(void)                                 { }
-void jkGame_ScreensizeDecrease(void)                    { }
-void jkGame_ScreensizeIncrease(void)                    { }
 int  jkDev_PrintUniString(const unsigned short *s)      { (void)s; return 0; }
 unsigned short *jkGuiTitle_quicksave_related_func1(struct stdStrTable *a, char *b)
 { (void)a; (void)b; return 0; }
+
+/* ================================================================
+   Stubs for source files we don't pull (multiplayer/DSS/JSON/Quake-console)
+   Signatures must match the headers exactly (mangled or C-linkage).
+   ================================================================ */
+
+struct sithThing;
+struct sithSound;
+struct rdVector3;
+struct sithEventInfo;
+struct rdMaterial;
+struct rdParticle;
+struct rdCanvas;
+
+/* C-linkage stubs (headers wrapped in extern "C") */
+extern "C" {
+    int  sithMulti_ServerLeft(int a, struct sithEventInfo* b)               { (void)a; (void)b; return 0; }
+    unsigned int sithMulti_IterPlayersnothingidk(int net_id)                { (void)net_id; return 0; }
+    int  sithMulti_SendPing(int sendtoId)                                   { (void)sendtoId; return 0; }
+    void sithMulti_SendQuit(int idx)                                        { (void)idx; }
+    void DirectPlay_EnumPlayers(int a)                                      { (void)a; }
+    int  stdJSON_IterateKeys(const char* p, void(*cb)(const char*,const char*,void*), void* ctx) { (void)p; (void)cb; (void)ctx; return 0; }
+}
+
+/* C++-mangled stubs (headers without extern "C") */
+void sithDSSThing_SendTakeItem(struct sithThing* pItem, struct sithThing* pActor, int mpFlags)
+    { (void)pItem; (void)pActor; (void)mpFlags; }
+void sithDSSThing_SendFireProjectile(struct sithThing* a, struct sithThing* b, struct rdVector3* c,
+    struct rdVector3* d, struct sithSound* e, short f, float g, short h, float i, int j, int k, int l, int m)
+    { (void)a; (void)b; (void)c; (void)d; (void)e; (void)f; (void)g; (void)h; (void)i; (void)j; (void)k; (void)l; (void)m; }
+int  rdPrimit2_DrawClippedLine(struct rdCanvas* c, int x1, int y1, int x2, int y2, unsigned short col, int mask)
+    { (void)c; (void)x1; (void)y1; (void)x2; (void)y2; (void)col; (void)mask; return 0; }
+void jkQuakeConsole_ExecuteCommand(const char* pCmd)                        { (void)pCmd; }
+
+int  rdParticle_LoadEntry(char* fpath, struct rdParticle* p)                { (void)fpath; (void)p; return 0; }
+struct rdParticle* rdParticle_New(int a, float b, struct rdMaterial* c, int d, int e)
+    { (void)a; (void)b; (void)c; (void)d; (void)e; return 0; }
+struct rdParticle* rdParticle_Clone(struct rdParticle* p)                   { (void)p; return 0; }
+void rdParticle_Free(struct rdParticle* p)                                  { (void)p; }
+void rdParticle_FreeEntry(struct rdParticle* p)                             { (void)p; }
+
+/* MSVC CRT helper: __isspace (single underscore _isspace exists in libc; the
+   double-underscore mangling is what stdStrTable.c references via macros.) */
+extern "C" int __isspace(int c) { return (c == ' ' || c == '\t' || c == '\n' || c == '\r' || c == '\v' || c == '\f'); }
+
+/* Helper from upstream src/jk.c (we don't pull jk.c, only need this one fn). */
+extern "C" int _string_modify_idk(int c) { return (c >= 'a' && c <= 'z') ? c - ('a' - 'A') : c; }
+
+/* ================================================================
+   Stubs for jkPlayer/jkHud/jkEpisode/jkSaber/jkGame dependencies that
+   live in modules we don't pull (jkDev, jkSmack, jkQuakeConsole,
+   stdDisplay/DDraw, stdFont, stdBitmap, rdPolyLine, etc.).
+   ================================================================ */
+
+struct stdVBuffer;
+struct rdRect;
+struct rdColor24;
+struct rdTexFormat;
+struct stdFont;
+struct stdBitmap;
+struct rdPolyLine;
+struct sithThing;
+
+/* Data symbols */
+int stdMci_bIsGOG = 0;
+int Window_isFullscreen = 1;
+extern "C" int Window_isHiDpi = 0;
+struct rdColor24* stdDisplay_masterPalette = 0;
+
+/* Windows error dialog — no msgbox on Xbox, just no-op */
+void Windows_GameErrorMsgbox(const char* fmt, ...) { (void)fmt; }
+
+/* Window controls — Xbox is always fullscreen 640x480 */
+void Window_SetFullscreen(int a) { (void)a; }
+void Window_SetHiDpi(int a)      { (void)a; }
+
+/* stdDisplay — DirectDraw path, not used on Xbox (we use std3D/D3D8 directly) */
+int  stdDisplay_VBufferCopy(struct stdVBuffer* a, struct stdVBuffer* b, unsigned int c, int d, struct rdRect* e, int f)
+    { (void)a; (void)b; (void)c; (void)d; (void)e; (void)f; return 0; }
+int  stdDisplay_DDrawGdiSurfaceFlip(void) { return 0; }
+int  stdDisplay_GammaCorrect3(int v)      { (void)v; return 0; }
+void stdDisplay_ddraw_surface_flip2(void) { }
+
+/* stdColor — color format conversion (used by HUD bitmap loading) */
+int  stdColor_Indexed8ToRGB16(unsigned char idx, struct rdColor24* pal, struct rdTexFormat* fmt)
+    { (void)idx; (void)pal; (void)fmt; return 0; }
+
+/* stdFont — bitmap font system (HUD text). Stubbed: HUD won't draw text but won't crash. */
+struct stdFont* stdFont_Load(char* fpath, int a, int b)         { (void)fpath; (void)a; (void)b; return 0; }
+void stdFont_Free(struct stdFont* f)                            { (void)f; }
+unsigned int stdFont_Draw1GPU(struct stdFont* f, unsigned int u, int x, int y, const unsigned short* s, int n, float sz)
+    { (void)f; (void)u; (void)x; (void)y; (void)s; (void)n; (void)sz; return 0; }
+int stdFont_Draw4GPU(struct stdFont* f, int a, int b, int c, int d, int e, const unsigned short* s, int n, float sz)
+    { (void)f; (void)a; (void)b; (void)c; (void)d; (void)e; (void)s; (void)n; (void)sz; return 0; }
+unsigned int stdFont_Draw1Width(struct stdFont* f, unsigned int u, int x, int y, const unsigned short* s, int n, float sz)
+    { (void)f; (void)u; (void)x; (void)y; (void)s; (void)n; (void)sz; return 0; }
+unsigned int stdFont_DrawAsciiGPU(struct stdFont* f, unsigned int u, int x, int y, const char* s, int n, float sz)
+    { (void)f; (void)u; (void)x; (void)y; (void)s; (void)n; (void)sz; return 0; }
+
+/* stdBitmap — bitmap loading. Stubbed: HUD won't show icons but won't crash. */
+struct stdBitmap* stdBitmap_Load(char* fpath, int a, int b)     { (void)fpath; (void)a; (void)b; return 0; }
+struct stdBitmap* stdBitmap_Load2(char* fpath, int a, int b)    { (void)fpath; (void)a; (void)b; return 0; }
+void stdBitmap_Free(struct stdBitmap* b)                        { (void)b; }
+void stdBitmap_ConvertColorFormat(struct rdTexFormat* fmt, struct stdBitmap* b) { (void)fmt; (void)b; }
+
+/* rdPolyLine — saber trail rendering. Stubbed: no saber trail. */
+int rdPolyLine_NewEntry(struct rdPolyLine* p, char* a, char* b, char* c, float d, float e, float f, int g, int h, int i, float j)
+    { (void)p; (void)a; (void)b; (void)c; (void)d; (void)e; (void)f; (void)g; (void)h; (void)i; (void)j; return 0; }
+void rdPolyLine_FreeEntry(struct rdPolyLine* p) { (void)p; }
+
+/* std3D_Screenshot, std3D_DrawUI* — extra rendering helpers, declared elsewhere */
+extern "C" {
+    int  std3D_Screenshot(void) { return 0; }
+    void std3D_DrawUIClearedRect(int a, int b, int c, int d, int e, int f) { (void)a; (void)b; (void)c; (void)d; (void)e; (void)f; }
+    void std3D_DrawUIBitmap(void* a, int b, int c, int d, int e, int f, int g, int h)
+        { (void)a; (void)b; (void)c; (void)d; (void)e; (void)f; (void)g; (void)h; }
+}
+
+/* stdFileUtil_MkDir — directory creation (config save). C linkage. */
+extern "C" int stdFileUtil_MkDir(const char* p) { (void)p; return 1; }
+
+/* jkDev — dev tools / debug overlay; stubbed (no dev console on Xbox yet) */
+void jkDev_BlitLogToScreen(void)                                { }
+void jkDev_DrawLog(void)                                        { }
+int  jkDev_sub_41FC40(int a, const char* b)                     { (void)a; (void)b; return 0; }
+int  jkDev_sub_41FB80(int a, const unsigned short* b)           { (void)a; (void)b; return 0; }
+void jkDev_sub_41FC90(int a)                                    { (void)a; }
+int  jkDev_TryCommand(const char* s)                            { (void)s; return 0; }
+int  jkDev_DebugLog(const char* s)                              { (void)s; return 0; }
+
+/* jkQuakeConsole_Render — stubbed (no quake console rendering on Xbox) */
+void jkQuakeConsole_Render(void)                                { }
+
+/* jkSmack — Smacker video; stubbed (Xbox lacks DirectShow Smacker codec) */
+int  jkSmack_GetCurrentGuiState(void)                           { return 0; }
+
+/* jkGuiTitle helper used by jkHud */
+char jkGuiTitle_sub_4189A0(char* s)                             { (void)s; return 0; }

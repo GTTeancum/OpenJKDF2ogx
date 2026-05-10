@@ -11,7 +11,7 @@
 
 /* sithTime_physicsRolloverFrames — defined in src/Gameplay/sithTime.c (now in build) */
 /* rdMath_DistancePointToPlane, rdMath_clampf — now in rdMath.c */
-float sithActor_Hit(struct sithThing * a0, struct sithThing * a1, float a2, int a3) { return 0.0f; }
+/* sithActor_Hit — real impl in src/World/sithActor.c (now in build) */
 int jkCredits_Show(void) { return 0; }
 int jkCredits_Skip(void) { return 0; }
 int jkCredits_Tick(void) { return 0; }
@@ -21,19 +21,11 @@ int jkCutscene_sub_421310(char * a0) { return 0; }
 int jkCutscene_sub_421410(void) { return 0; }
 int jkDSS_wrap_SendSaberInfo_alt(void) { return 0; }
 int jkDev_Open(void) { return 0; }
-int jkEpisode_EndLevel(struct jkEpisodeLoad * a0, int a1) { return 0; }
-int jkEpisode_Load(struct jkEpisodeLoad * a0) { return 0; }
-int jkEpisode_idk4(struct jkEpisodeLoad * a0, char * a1) { return 0; }
 int jkGuiDialog_YesNoDialog(unsigned short * a0, unsigned short * a1) { return 0; }
 int jkGuiForce_Show(int a0, int a1, int a2, unsigned short * a3, int * a4, int a5) { return 0; }
 int jkGuiMultiTally_Show(int a0) { return 0; }
 int jkGuiSingleTally_Show(void) { return 0; }
 int jkGui_SetModeMenu(void const * a0) { return 0; }
-int jkHudCameraView_Open(void) { return 0; }
-int jkHudInv_InitItems(void) { return 0; }
-int jkHudScope_Open(void) { return 0; }
-int jkPlayer_SetAmmoMaximums(int a0) { return 0; }
-int jkPlayer_WriteConfSwap(struct jkPlayerInfo * a0, int a1, char * a2) { return 0; }
 int jkSmack_SmackPlay(char const * a0) { return 0; }
 /* rdMath_PointsCollinear — now in rdMath.c */
 /* rdThing_Draw, NewEntry, SetModel3, SetSprite3, SetParticleCloud — now in rdThing.c */
@@ -41,33 +33,13 @@ int jkSmack_SmackPlay(char const * a0) { return 0; }
 int rdSprite_Draw(struct rdThing * a0, struct rdMatrix34 * a1) { return 0; }
 int rdParticle_Draw(struct rdThing * a0, struct rdMatrix34 * a1) { return 0; }
 int rdPolyLine_Draw(struct rdThing * a0, struct rdMatrix34 * a1) { return 0; }
-int sithAIAwareness_AddEntry(struct sithSector * a0, struct rdVector3 * a1, int a2, float a3, struct sithThing * a4) { return 0; }
-int sithAIAwareness_Startup(void) { return 0; }
-int sithAI_LoadThingActorParams(struct stdConffileArg * a0, struct sithThing * a1, int a2) { return 0; }
-int sithAI_Open(void) { return 0; }
-int sithAI_Startup(void) { return 0; }
-int sithActor_ActorActorCollide(struct sithThing * a0, struct sithThing * a1, struct sithCollisionSearchEntry * a2, int a3) { return 0; }
-int sithActor_LoadParams(struct stdConffileArg * a0, struct sithThing * a1, unsigned int a2) { return 0; }
-int sithActor_sub_4ED1D0(struct sithThing * a0, struct sithSurface * a1, struct sithCollisionSearchEntry * a2) { return 0; }
-int sithArchLighting_ParseSection(struct sithWorld * a0, int a1) { return 0; }
+/* sithActor_ActorActorCollide, sithActor_LoadParams, sithActor_sub_4ED1D0 —
+ * real impls in src/World/sithActor.c (now in build) */
 int sithComm_Startup(void) { return 0; }
 int sithComm_Sync(void) { return 0; }
-int sithEvent_Startup(void) { return 0; }
-int sithExplosion_LoadThingParams(struct stdConffileArg * a0, struct sithThing * a1, int a2) { return 0; }
 int sithGamesave_Flush(void) { return 0; }
 int sithGamesave_Load(char * a0, int a1, int a2) { return 0; }
 int sithGamesave_Write(char * a0, int a1, int a2, unsigned short * a3) { return 0; }
-int sithItem_Collide(struct sithThing * a0, struct sithThing * a1, struct sithCollisionSearchEntry * a2, int a3) { return 0; }
-int sithItem_LoadThingParams(struct stdConffileArg * a0, struct sithThing * a1, int a2) { return 0; }
-int sithParticle_LoadThingParams(struct stdConffileArg * a0, struct sithThing * a1, int a2) { return 0; }
-int sithParticle_Startup(void) { return 0; }
-int sithPuppet_Startup(void) { return 0; }
-int sithPuppet_StopKey(struct rdPuppet * a0, int a1, float a2) { return 0; }
-int sithStrTable_Startup(void) { return 0; }
-int sithTrackThing_LoadPathParams(struct stdConffileArg * a0, struct sithThing * a1, int a2) { return 0; }
-int sithWeapon_Collide(struct sithThing * a0, struct sithThing * a1, struct sithCollisionSearchEntry * a2, int a3) { return 0; }
-int sithWeapon_HitDebug(struct sithThing * a0, struct sithSurface * a1, struct sithCollisionSearchEntry * a2) { return 0; }
-int sithWeapon_LoadParams(struct stdConffileArg * a0, struct sithThing * a1, int a2) { return 0; }
 int stdBitmap_EnsureData(struct stdBitmap * a0) { return 0; }
 /* stdConffile — now compiled from src\General\stdConffile.c */
 int stdConsole_Startup(char const * a0, unsigned int a1, int a2) { return 0; }
@@ -81,18 +53,8 @@ int stdDisplay_ddraw_waitforvblank(void) { return 0; }
 int stdMci_CheckStatus(void) { return 0; }
 int stdMci_Play(unsigned char a0, unsigned char a1) { return 0; }
 int stdMci_Startup(void) { return 0; }
-int jkPlayer_bJankyPhysics = {0};
-int jkPlayer_bUseOldPlayerPhysics = {0};
-int jkPlayer_enableOrigAspect = {0};
-int jkPlayer_fov = 90;
-int jkPlayer_fovIsVertical = {0};
 /* sithCog_actionCogIdk — defined in src/Cog/sithCog.c (now in build) */
-struct jkBubbleInfo * jkPlayer_aBubbleInfo = {0};
-struct jkEpisodeEntry * jkEpisode_GetCurrentEpisodeEntry(struct jkEpisodeLoad * a0) { return 0; }
-struct jkEpisodeEntry * jkEpisode_GetNextEntryInDecisionPath(struct jkEpisodeLoad * a0, int a1) { return 0; }
-struct rdParticle * sithParticle_LoadEntry(char const * a0) { return 0; }
 /* sithCog_pActionCog — defined in src/Cog/sithCog.c (now in build) */
-struct sithPuppet * sithPuppet_NewEntry(struct sithThing * a0) { return 0; }
 struct stdVBuffer * stdDisplay_VBufferNew(struct stdVBufferTexFmt * fmt, int a1, int a2, void const * a3) {
     unsigned int bpp_bytes;
     unsigned int pixel_sz;
@@ -119,11 +81,9 @@ struct stdVBuffer * stdDisplay_VBufferNew(struct stdVBufferTexFmt * fmt, int a1,
 unsigned char * stdDisplay_GetPalette(void) { return 0; }
 unsigned int stdSound_ParseWav(int a0, unsigned int * a1, int * a2, int * a3, int * a4) { return 0; }
 unsigned int util_Weirdchecksum(unsigned char * a0, int a1, unsigned int a2) { return 0; }
-unsigned short * sithStrTable_GetUniStringWithFallback(char * a0) { return 0; }
 void Video_Shutdown(void) { }
 void Windows_Shutdown(void) { }
 void Windows_Startup(void) { }
-void jkAI_Startup(void) { }
 /* jkCog_Shutdown — defined in src/Cog/jkCog.c (now in build) */
 void jkCredits_Shutdown(void) { }
 void jkCredits_Startup(char * a0) { }
@@ -132,7 +92,6 @@ void jkCutscene_Startup(char * a0) { }
 void jkDSS_Shutdown(void) { }
 void jkDev_Shutdown(void) { }
 void jkDev_Startup(void) { }
-void jkGame_Shutdown(void) { }
 void jkGuiControlOptions_Shutdown(void) { }
 void jkGuiControlOptions_Startup(void) { }
 void jkGuiControlSaveLoad_Shutdown(void) { }
@@ -185,12 +144,6 @@ void jkGuiTitle_Shutdown(void) { }
 void jkGuiTitle_Startup(void) { }
 void jkGui_Shutdown(void) { }
 void jkGui_copies_string(char * a0) { }
-void jkPlayer_Close(void) { }
-void jkPlayer_MpcInitBins(struct sithPlayerInfo * a0) { }
-void jkPlayer_SetPovModel(struct jkPlayerInfo * a0, struct rdModel3 * a1) { }
-void jkPlayer_Shutdown(void) { }
-void jkPlayer_Startup(void) { }
-void jkPlayer_nullsub_1(struct jkPlayerInfo * a0) { }
 void jkQuakeConsole_Shutdown(void) { }
 void jkQuakeConsole_Startup(void) { }
 void jkSmack_Shutdown(void) { }
@@ -201,24 +154,10 @@ void rdPrimit2_DrawCircle(struct rdCanvas *a0, int a1, int a2, float a3, float a
 void rdRaster_Startup(void) { }
 /* rdThing_AccumulateMatrices — now in rdThing.c */
 /* rdThing_FreeEntry — now in rdThing.c */
-void sithAIAwareness_Shutdown(void) { }
-void sithAI_Close(void) { }
-void sithAI_FreeEntry(struct sithThing * a0) { }
-void sithAI_NewEntry(struct sithThing * a0) { }
-void sithAI_Shutdown(void) { }
-void sithAI_Tick(struct sithThing * a0, float a1) { }
-void sithAI_TickAll(void) { }
-void sithActor_MoveJointsForEyePYR(struct sithThing * a0, struct rdVector3 const * a1) { }
-void sithActor_Remove(struct sithThing * a0) { }
-void sithActor_RemoveCorpse(struct sithThing * a0) { }
-void sithActor_SetMaxHeathForDifficulty(struct sithThing * a0) { }
-void sithActor_Tick(struct sithThing * a0, int a1) { }
-void sithArchLighting_Free(struct sithWorld * a0) { }
+/* sithActor_MoveJointsForEyePYR, _Remove, _RemoveCorpse,
+ * _SetMaxHeathForDifficulty, _Tick — real impls in src/World/sithActor.c
+ * (now in build) */
 void sithComm_Shutdown(void) { }
-void sithConsole_AdvanceLogBuf(void) { }
-void sithConsole_AlertSound(void) { }
-void sithConsole_Print(char const * a0) { }
-void sithConsole_PrintUniStr(unsigned short const * a0) { }
 void sithDSSThing_SendDeath(struct sithThing * a0, struct sithThing * a1, char a2, int a3, int a4) { }
 void sithDSSThing_SendFullDesc(struct sithThing * a0, int a1, int a2) { }
 void sithDSSThing_SendPlaySound(struct sithThing * a0, struct rdVector3 * a1, struct sithSound * a2, float a3, float a4, int a5, int a6, int a7, int a8) { }
@@ -230,47 +169,7 @@ void sithDSS_SendSectorStatus(struct sithSector * a0, int a1, int a2) { }
 void sithDSS_SendSurface(struct rdSurface * a0, int a1, int a2) { }
 void sithDSS_SendSurfaceStatus(struct sithSurface * a0, int a1, int a2) { }
 void sithDSS_SendSyncPuppet(struct sithThing * a0, int a1, int a2) { }
-void sithEvent_Advance(void) { }
-void sithEvent_Close(void) { }
-void sithEvent_Open(void) { }
-void sithEvent_Shutdown(void) { }
-void sithExplosion_CreateThing(struct sithThing * a0) { }
-void sithExplosion_Tick(struct sithThing * a0) { }
-void sithInventory_ClearInventory(struct sithThing * a0) { }
-void sithInventory_Reset(struct sithThing * a0) { }
-void sithInventory_SendFire(struct sithThing * a0) { }
-void sithInventory_SendKilledMessageToAll(struct sithThing * a0, struct sithThing * a1) { }
-void sithInventory_SetCarries(struct sithThing * a0, int a1, int a2) { }
-void sithItem_New(struct sithThing * a0) { }
-void sithItem_Remove(struct sithThing * a0) { }
-void sithOverlayMap_FuncDecrease(void) { }
-void sithOverlayMap_FuncIncrease(void) { }
-void sithOverlayMap_ToggleMapDrawn(void) { }
-void sithParticle_CreateThing(struct sithThing * a0) { }
-void sithParticle_Free(struct sithWorld * a0) { }
-void sithParticle_FreeEntry(struct sithThing * a0) { }
-void sithParticle_Remove(struct sithThing * a0) { }
-void sithParticle_Shutdown(void) { }
-void sithParticle_Tick(struct sithThing * a0, float a1) { }
-void sithPlayerActions_Activate(struct sithThing * a0) { }
-void sithPlayerActions_JumpWithVel(struct sithThing * a0, float a1) { }
-void sithPlayerActions_WarpToCheckpoint(struct sithThing * a0, int a1) { }
-void sithPuppet_FreeEntry(struct sithThing * a0) { }
-void sithPuppet_Shutdown(void) { }
-void sithPuppet_Tick(struct sithThing * a0, float a1) { }
-void sithPuppet_sub_4E4760(struct sithThing * a0, int a1) { }
-void sithStrTable_Shutdown(void) { }
 /* sithTime_Startup, sithTime_Tick — real impls in src/Gameplay/sithTime.c (now in build) */
-void sithTrackThing_Tick(struct sithThing * a0, float a1) { }
-void sithTrackThing_idkpathmove(struct sithThing * a0, struct sithThing * a1, struct rdVector3 * a2) { }
-void sithWeapon_Remove(struct sithThing * a0) { }
-void sithWeapon_SetTimeLeft(struct sithThing * a0, struct sithThing * a1, float a2) { }
-void sithWeapon_ShutdownEntry(void) { }
-void sithWeapon_Startup(void) { }
-void sithWeapon_StartupEntry(void) { }
-void sithWeapon_SyncPuppet(struct sithThing * a0) { }
-void sithWeapon_Tick(struct sithThing * a0, float a1) { }
-void sithWeapon_handle_inv_msgs(struct sithThing * a0) { }
 /* std3D_EndScene provided by std3D.c */
 /* stdConffile_Close — now compiled from src\General\stdConffile.c */
 void stdDisplay_VBufferFree(struct stdVBuffer * vbuf) { if (vbuf) free(vbuf); }
@@ -290,10 +189,8 @@ void stdMci_Stop(void) { }
 int sithDSSCog_SendSendTrigger(sithCog *,int,int,int,int,int,int,float,float,float,float,int) { return 0; }
 
 /* Events */
-int sithEvent_RegisterFunc(int,int (__cdecl*)(int,sithEventInfo *),int,int) { return 0; }
 
 /* AI */
-sithAICommand * sithAI_FindCommand(char const *) { return 0; }
 
 /* Sprites */
 void rdSprite_FreeEntry(rdSprite *) { }
@@ -332,37 +229,19 @@ void    __cdecl _free(void* p)                                       { free(p); 
 }
 
 /* Variables with C++ mangled references (?name@@3type) — keep as C++ linkage. */
-float jkPlayer_canonicalCogTickrate = 50.0f;
-float jkPlayer_aMultiParams[8] = {0,0,0,0,0,0,0,0};
 /* jkStrings_tableExtOver — referenced as C symbol _jkStrings_tableExtOver */
 extern "C" {
-unsigned int jkStrings_tableExtOver = 0;
 }
 /* sithAIAlign defined in types.h:2737 — don't redefine */
-sithAIAlign* sithAI_aAlignments = 0;
 
 /* jkPlayer */
 struct jkPlayerInfo;
-jkPlayerInfo* __cdecl jkPlayer_FUN_00404fe0(sithThing*)               { return 0; }
-int   __cdecl jkPlayer_GetJediRank(void)                              { return 0; }
-int   __cdecl jkPlayer_SyncForcePowers(int, int)                      { return 0; }
-void  __cdecl jkPlayer_SetWaggle(sithThing*, rdVector3*, float)       { }
 
 /* jkEpisode */
-int   __cdecl jkEpisode_GetBubbleInfo(sithThing*, unsigned int*, sithThing**, float*) { return 0; }
-void  __cdecl jkEpisode_CreateBubble(sithThing*, float, unsigned int) { }
-void  __cdecl jkEpisode_DestroyBubble(sithThing*)                     { }
 
 /* jkHud */
-void  __cdecl jkHud_EndTarget(void)                                   { }
-void  __cdecl jkHud_SetTarget(sithThing*)                             { }
-void  __cdecl jkHud_SetTargetColors(int*)                             { }
 
 /* jkSaber */
-void  __cdecl jkSaber_Disable(sithThing*)                             { }
-void  __cdecl jkSaber_Enable(sithThing*, float, float, float)         { }
-void  __cdecl jkSaber_InitializeSaberInfo(sithThing*, char*, char*, float, float, float,
-                                          sithThing*, sithThing*, sithThing*) { }
 
 /* jkDSS — multiplayer state-sync packets, no-op on Xbox single-player */
 void  __cdecl jkDSS_SendJKEnableSaber(sithThing*)                     { }
@@ -372,71 +251,8 @@ void  __cdecl jkDSS_SendSetSaberInfo(sithThing*)                      { }
 void  __cdecl jkDSS_SendSetSaberInfo2(sithThing*)                     { }
 void  __cdecl jkDSS_SendSetSaberInfoMots(sithThing*, int)             { }
 
-/* sithInventory */
-struct sithItemDescriptor;
-sithItemDescriptor* __cdecl sithInventory_GetItemDesc(sithThing*, int){ return 0; }
-sithThing* __cdecl sithInventory_CreateBackpack(sithThing*)           { return 0; }
-float __cdecl sithInventory_ChangeInv(sithThing*, int, float)         { return 0.0f; }
-float __cdecl sithInventory_DeactivateBin(sithThing*, sithCog*, int)  { return 0.0f; }
-float __cdecl sithInventory_GetBinAmount(sithThing*, int)             { return 0.0f; }
-float __cdecl sithInventory_GetMax(sithThing*, int)                   { return 0.0f; }
-float __cdecl sithInventory_GetMin(sithThing*, int)                   { return 0.0f; }
-float __cdecl sithInventory_NthBackpackValue(sithThing*, int)         { return 0.0f; }
-float __cdecl sithInventory_SetBinAmount(sithThing*, int, float)      { return 0.0f; }
-int   __cdecl sithInventory_ActivateBin(sithThing*, sithCog*, float, int)  { return 0; }
-int   __cdecl sithInventory_GetActivate(sithThing*, int)              { return 0; }
-int   __cdecl sithInventory_GetAvailable(sithThing*, int)             { return 0; }
-int   __cdecl sithInventory_GetCurItem(sithThing*)                    { return 0; }
-int   __cdecl sithInventory_GetCurWeapon(sithThing*)                  { return 0; }
-int   __cdecl sithInventory_NthBackpackBin(sithThing*, int)           { return 0; }
-int   __cdecl sithInventory_NumBackpackItems(sithThing*)              { return 0; }
-int   __cdecl sithInventory_SelectWeaponFollowing(int)                { return 0; }
-int   __cdecl sithInventory_SelectWeaponPrior(int)                    { return 0; }
-void  __cdecl sithInventory_PickupBackpack(sithThing*, sithThing*)    { }
-void  __cdecl sithInventory_SetActivate(sithThing*, int, int)         { }
-void  __cdecl sithInventory_SetAvailable(sithThing*, int, int)        { }
-void  __cdecl sithInventory_SetBinWait(sithThing*, int, float)        { }
-void  __cdecl sithInventory_SetCurWeapon(sithThing*, int)             { }
-void  __cdecl sithInventory_SetFlags(sithThing*, int, int)            { }
-
-/* sithWeapon */
-float __cdecl sithWeapon_Deactivate(sithThing*, sithCog*, int)        { return 0.0f; }
-float __cdecl sithWeapon_GetPriority(sithThing*, int, int)            { return 0.0f; }
-int   __cdecl sithWeapon_AutoSelect(sithThing*, int)                  { return 0; }
-int   __cdecl sithWeapon_GetCurWeaponMode(void)                       { return 0; }
-int   __cdecl sithWeapon_SelectWeapon(sithThing*, int, int)           { return 0; }
-sithThing* __cdecl sithWeapon_FireProjectile(sithThing*, sithThing*, sithSound*, int,
-                                              rdVector3*, rdVector3*, float, short,
-                                              float, float, int)      { return 0; }
-void  __cdecl sithWeapon_Activate(sithThing*, sithCog*, float, int)   { }
-void  __cdecl sithWeapon_SetFireRate(sithThing*, float)               { }
-void  __cdecl sithWeapon_SetFireWait(sithThing*, float)               { }
-void  __cdecl sithWeapon_SetMountWait(sithThing*, float)              { }
-
-/* sithTrackThing */
-int   __cdecl sithTrackThing_PathMovePause(sithThing*)                { return 0; }
-int   __cdecl sithTrackThing_PathMoveResume(sithThing*)               { return 0; }
-void  __cdecl sithTrackThing_MoveToFrame(sithThing*, int, float)      { }
-void  __cdecl sithTrackThing_Rotate(sithThing*, rdVector3*)           { }
-void  __cdecl sithTrackThing_RotatePivot(sithThing*, rdVector3*, rdVector3*, float) { }
-void  __cdecl sithTrackThing_SkipToFrame(sithThing*, unsigned int, float)   { }
-void  __cdecl sithTrackThing_Stop(sithThing*)                         { }
-
-/* sithAI extras (sithAIClass.c is in build but these specific are in sithAI.c) */
-int   __cdecl sithAI_FirstThingInCone(sithSector*, rdMatrix34*, float, float, int,
-                                       sithThing**, int, float)       { return 0; }
-int   __cdecl sithAI_FirstThingInView(sithSector*, rdMatrix34*, float, float, int,
-                                       sithThing**, int, float)       { return 0; }
-void  __cdecl sithAI_AddAlignmentPriority(float)                      { }
-struct sithActor;
-void  __cdecl sithAI_Jump(sithActor*, rdVector3*, float)              { }
-void  __cdecl sithAI_SetActorFireTarget(sithActor*, int, int)         { }
-void  __cdecl sithAI_SetDistractor(sithThing*)                        { }
-void  __cdecl sithAI_SetLookFrame(sithActor*, rdVector3*)             { }
-void  __cdecl sithAI_SetMoveThing(sithActor*, rdVector3*, float)      { }
-
-/* sithActor */
-void  __cdecl sithActor_SpawnDeadBodyMaybe(sithThing*, sithThing*, int) { }
+/* sithInventory, sithWeapon, sithTrackThing, sithAI, sithActor, sithPuppet —
+ * real impls now in build (src/Gameplay, src/World, src/AI, src/Engine). */
 
 /* sithDSSThing — multiplayer state-sync */
 void  __cdecl sithDSSThing_SendCreateThing(sithThing*, sithThing*, sithThing*, sithSector*,
@@ -462,22 +278,5 @@ int sithMulti_SendChat(unsigned short*)                               { return 0
 int sithMulti_SyncScores(void)                                        { return 0; }
 }
 
-/* sithEvent */
-int   __cdecl sithEvent_Set(int, sithEventInfo*, unsigned int)        { return 0; }
-struct sithEvent;
-void  __cdecl sithEvent_Kill(sithEvent*)                              { }
-
-/* sithItem */
-void  __cdecl sithItem_Take(sithThing*, sithThing*, int)              { }
-
-/* sithPuppet */
-struct rdPuppet;
-int   __cdecl sithPuppet_StartKey(rdPuppet*, rdKeyframe*, int, int, int,
-                                   void(__cdecl*)(sithThing*, int, unsigned int)) { return 0; }
-void  __cdecl sithPuppet_SetArmedMode(sithThing*, int)                { }
-
-/* stdStrTable */
-struct stdStrTable;
-void  __cdecl stdStrTable_Free(stdStrTable*)                          { }
-int   __cdecl stdStrTable_Load(stdStrTable*, char*)                   { return 0; }
-unsigned short* __cdecl stdStrTable_GetUniString(stdStrTable*, const char*) { return 0; }
+/* sithEvent, sithItem, sithPuppet, stdStrTable — real impls in src/Gameplay,
+ * src/World, src/Engine, src/General (now in build). */

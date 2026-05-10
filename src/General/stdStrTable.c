@@ -4,6 +4,12 @@
 #include "General/stdString.h"
 #include "jk.h"
 
+/* VC71 / XDK: <assert.h> may be transitively included and redefine `assert`
+   as a macro, which breaks `pHS->assert(...)` member-function calls below. */
+#ifdef assert
+#undef assert
+#endif
+
 static wchar_t stdStrTable_tmpBuf[64];
 
 int stdStrTable_Load(stdStrTable *strtable, char *fpath)
