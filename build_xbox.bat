@@ -165,6 +165,7 @@ for %%F in (
     src\Platform\Xbox\std3D.c
     src\Platform\Xbox\std3D_draw.cpp
     src\Platform\Xbox\fakeglx.cpp
+    src\Platform\Xbox\xbox_world_helper.cpp
     src\Platform\Xbox\main_xbox.c
     src\Platform\Xbox\stdControl_xbox.c
     src\Platform\Xbox\stdFile_xbox.c

@@ -130,3 +130,8 @@ void xbox_debug_Printf(const char *fmt, ...)
     buf[sizeof(buf) - 1] = '\0';
     xbox_debug_Print(buf);
 }
+
+/* xbox_get_world_palette() lives in xbox_world_helper.cpp — separated
+ * because the engine global sithWorld_pCurrentWorld is emitted with C++
+ * name mangling by globals.c (compiled with /Tp) and a C-linkage TU
+ * cannot resolve its symbol. */

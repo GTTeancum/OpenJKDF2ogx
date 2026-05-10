@@ -44,6 +44,11 @@ void std3D_DebugLineKV(int idx, const char *key, int value);
 void std3D_DebugFlag(int idx, int on);
 void std3D_DebugCounter(int idx, int val, int max);
 
+/* Returns a pointer to the current world's colormap colors (rdColor24[256])
+ * or NULL if no world/colormap loaded yet.  Used as a fallback palette by
+ * std3D_AddToTextureCache when the engine hasn't yet called SetCurrentPalette. */
+void *xbox_get_world_palette(void);
+
 /* Convenience macros */
 #define XDBG(msg)        xbox_debug_Print(msg)
 /* VC71 C89 mode doesn't support __VA_ARGS__. Use XDBGF as a direct
