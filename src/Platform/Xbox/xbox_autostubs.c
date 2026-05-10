@@ -40,7 +40,7 @@ int sithComm_Sync(void) { return 0; }
 int sithGamesave_Flush(void) { return 0; }
 int sithGamesave_Load(char * a0, int a1, int a2) { return 0; }
 int sithGamesave_Write(char * a0, int a1, int a2, unsigned short * a3) { return 0; }
-int stdBitmap_EnsureData(struct stdBitmap * a0) { return 0; }
+/* stdBitmap_EnsureData — real impl in src/General/stdBitmap.c (now in build) */
 /* stdConffile — now compiled from src\General\stdConffile.c */
 int stdConsole_Startup(char const * a0, unsigned int a1, int a2) { return 0; }
 int stdDisplay_DrawAndFlipGdi(unsigned int a0) { return 0; }

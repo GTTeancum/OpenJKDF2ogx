@@ -124,6 +124,13 @@ for %%F in (
     src\General\stdLinklist.c
     src\General\stdSingleLinklist.c
     src\General\stdConffile.c
+    src\General\stdColor.c
+    src\General\stdBitmap.c
+    src\General\stdBitmapRle.c
+    src\General\stdBmp.c
+    src\General\stdLbm.c
+    src\General\stdPcx.c
+    src\General\stdFont.c
     src\Main\sithCvar.c
     src\Main\sithMain.c
     src\World\sithWorld.c

@@ -2,6 +2,12 @@
 
 #include "jk.h"
 
+/* VC71 / XDK: <assert.h> may be transitively included and redefine `assert`
+   as a macro, which breaks `pHS->assert(...)` member-function calls. */
+#ifdef assert
+#undef assert
+#endif
+
 #ifdef RDMATERIAL_MINIMIZE_STRUCTS
 
 // Forced to RGB555

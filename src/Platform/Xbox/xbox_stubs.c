@@ -536,27 +536,30 @@ int  stdDisplay_DDrawGdiSurfaceFlip(void) { return 0; }
 int  stdDisplay_GammaCorrect3(int v)      { (void)v; return 0; }
 void stdDisplay_ddraw_surface_flip2(void) { }
 
-/* stdColor — color format conversion (used by HUD bitmap loading) */
-int  stdColor_Indexed8ToRGB16(unsigned char idx, struct rdColor24* pal, struct rdTexFormat* fmt)
-    { (void)idx; (void)pal; (void)fmt; return 0; }
+/* stdColor, stdFont, stdBitmap — real impls in src/General/std{Color,Font,Bitmap}.c (now in build) */
 
-/* stdFont — bitmap font system (HUD text). Stubbed: HUD won't draw text but won't crash. */
-struct stdFont* stdFont_Load(char* fpath, int a, int b)         { (void)fpath; (void)a; (void)b; return 0; }
-void stdFont_Free(struct stdFont* f)                            { (void)f; }
-unsigned int stdFont_Draw1GPU(struct stdFont* f, unsigned int u, int x, int y, const unsigned short* s, int n, float sz)
-    { (void)f; (void)u; (void)x; (void)y; (void)s; (void)n; (void)sz; return 0; }
-int stdFont_Draw4GPU(struct stdFont* f, int a, int b, int c, int d, int e, const unsigned short* s, int n, float sz)
-    { (void)f; (void)a; (void)b; (void)c; (void)d; (void)e; (void)s; (void)n; (void)sz; return 0; }
-unsigned int stdFont_Draw1Width(struct stdFont* f, unsigned int u, int x, int y, const unsigned short* s, int n, float sz)
-    { (void)f; (void)u; (void)x; (void)y; (void)s; (void)n; (void)sz; return 0; }
-unsigned int stdFont_DrawAsciiGPU(struct stdFont* f, unsigned int u, int x, int y, const char* s, int n, float sz)
-    { (void)f; (void)u; (void)x; (void)y; (void)s; (void)n; (void)sz; return 0; }
+/* std3D bitmap-cache hooks — Xbox std3D.c doesn't implement texture-cache
+   bookkeeping yet (texture upload happens lazily in std3D_DrawIndexed*).
+   Stub: stdBitmap will treat caching as a no-op and re-upload as needed. */
+extern "C" {
+    int  std3D_AddBitmapToTextureCache(struct stdBitmap* b, int a, int c, int d) { (void)b; (void)a; (void)c; (void)d; return 1; }
+    void std3D_PurgeBitmapRefs(struct stdBitmap* b) { (void)b; }
+}
 
-/* stdBitmap — bitmap loading. Stubbed: HUD won't show icons but won't crash. */
-struct stdBitmap* stdBitmap_Load(char* fpath, int a, int b)     { (void)fpath; (void)a; (void)b; return 0; }
-struct stdBitmap* stdBitmap_Load2(char* fpath, int a, int b)    { (void)fpath; (void)a; (void)b; return 0; }
-void stdBitmap_Free(struct stdBitmap* b)                        { (void)b; }
-void stdBitmap_ConvertColorFormat(struct rdTexFormat* fmt, struct stdBitmap* b) { (void)fmt; (void)b; }
+/* stdDisplay_VBufferConvertColorFormat — DDraw colour conversion path,
+   not used on Xbox (we render to D3D8 surfaces, not DDraw VBuffers). */
+struct stdVBuffer* stdDisplay_VBufferConvertColorFormat(void* fmt, struct stdVBuffer* vb)
+    { (void)fmt; return vb; }
+
+/* __wcsrchr — wide-char strrchr.  XDK CRT does NOT export this symbol,
+   so we provide a minimal impl. */
+extern "C" wchar_t* __wcsrchr(const wchar_t* s, wchar_t c) {
+    const wchar_t* last = 0;
+    if (!s) return 0;
+    for (; *s; s++) if (*s == c) last = s;
+    if (c == 0) return (wchar_t*)s;  /* match terminator like libc wcsrchr */
+    return (wchar_t*)last;
+}
 
 /* rdPolyLine — saber trail rendering. Stubbed: no saber trail. */
 int rdPolyLine_NewEntry(struct rdPolyLine* p, char* a, char* b, char* c, float d, float e, float f, int g, int h, int i, float j)

@@ -409,4 +409,13 @@ void jk_fatal();
 }
 #endif
 
+/* VC71/XDK transitively pulls in <assert.h> via the CRT.  That defines
+   `assert` as a macro, which then mangles every `pHS->assert(...)` call
+   site into a `((void)((expr) || pHS->_wassert(...)))` mess.  Undef at
+   the very end of jk.h so any TU that includes jk.h sees the struct
+   member name cleanly. */
+#ifdef assert
+#undef assert
+#endif
+
 #endif // _OPENJKDF2_JK_H

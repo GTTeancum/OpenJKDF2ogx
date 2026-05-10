@@ -11,6 +11,13 @@
 //#include <wchar.h>
 #endif
 
+#ifdef TARGET_XBOX
+/* jk.h #undef's `assert` (so pHS->assert works in other TUs).  jk.c uses
+   the standard assert() macro for unimplemented-stub blocks — re-include
+   <assert.h> here AFTER jk.h to restore it just for this TU. */
+#include <assert.h>
+#endif
+
 #ifdef MACOS
 #include <wchar.h>
 #endif
