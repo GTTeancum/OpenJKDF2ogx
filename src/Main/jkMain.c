@@ -1745,13 +1745,17 @@ int jkMain_SetVideoMode()
     JKTRACE("SetVideoMode: sithRender_SetPalette\n");
     sithRender_SetPalette(stdDisplay_GetPalette());
 
+    JKTRACE("SetVideoMode: jkHudInv_LoadItemRes\n");
     jkHudInv_LoadItemRes();
+    JKTRACE("SetVideoMode: jkHud_Close\n");
     jkHud_Close();
     if (Main_bMotsCompat) {
         jkHudScope_Close();
         jkHudCameraView_Close();
     }
+    JKTRACE("SetVideoMode: jkHud_Open\n");
     jkHud_Open();
+    JKTRACE("SetVideoMode: jkHud_Open done\n");
     if (Main_bMotsCompat) {
         jkHudScope_Open();
         jkHudCameraView_Open();

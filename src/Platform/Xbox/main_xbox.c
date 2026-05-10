@@ -120,9 +120,6 @@ void __cdecl main(void)
 
     XDBG("main: calling Main_Startup\n");
 
-    /* Main_bNoHUD = 1 is set inside Main_Startup itself under
-     * defined(TARGET_TWL) || defined(TARGET_XBOX) — see src/Main/Main.c. */
-
     /* ----------------------------------------------------------------
      * 3. Game engine init
      *    Main_Startup takes a command-line string, same as the PC build.
