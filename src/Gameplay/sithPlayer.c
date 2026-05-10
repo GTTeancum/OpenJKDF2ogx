@@ -265,10 +265,6 @@ void sithPlayer_SetScreenTint(flex_t tintR, flex_t tintG, flex_t tintB)
     stdPalEffect *pPalEffects; // ecx
     flex_d_t v8; // st7
 
-#ifdef TARGET_XBOX
-    return; /* stdPalEffects_GetEffectPointer stubbed NULL; skip tinting */
-#endif
-
     focusThing = sithWorld_pCurrentWorld->cameraFocus;
     if ( (focusThing->type & 0xA) != 0 ) // ???
     {

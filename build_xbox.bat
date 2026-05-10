@@ -108,6 +108,7 @@ for %%F in (
     src\General\Darray.c
     src\General\crc32.c
     src\General\stdFnames.c
+    src\General\stdPalEffects.c
     src\Raster\rdCache.c
     src\Raster\rdFace.c
     src\Platform\Xbox\wuRegistry_xbox.c
@@ -139,6 +140,7 @@ for %%F in (
     src\Engine\sithRender.c
     src\Engine\sithRenderSky.c
     src\Engine\sithCamera.c
+    src\Gameplay\sithTime.c
     src\Engine\sithKeyFrame.c
     src\Engine\sithAnimClass.c
     src\Engine\rdCamera.c

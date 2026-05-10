@@ -162,13 +162,10 @@ int  stdHttp_Startup(void) { return 1; }
 int  stdHttp_Shutdown(void) { return 1; }
 
 /* stdPalEffects — palette, stubbed */
-void stdPalEffects_RefreshPalette(void) { }
-void stdPalEffects_FlushAllEffects(void) { }
-void stdPalEffects_FlushAllAdds(void) { }
-void* stdPalEffects_NewRequest(void) { return 0; }
-void stdPalEffects_FreeRequest(void* a) { (void)a; }
-void stdPalEffects_ResetEffect(void* a) { (void)a; }
-void* stdPalEffects_GetEffectPointer(void) { return 0; }
+/* stdPalEffects — real impls in src/General/stdPalEffects.c (now in build).
+ * Previous stubs here had the wrong signatures (e.g. GetEffectPointer was
+ * declared void(void) returning void*, real signature is int(int) returning
+ * stdPalEffect*).  Calling code dereferenced the NULL return and hung. */
 
 /* stdJSON — config, stubbed */
 void stdJSON_SetString(void* a, const char* b, const char* c) { (void)a; (void)b; (void)c; }

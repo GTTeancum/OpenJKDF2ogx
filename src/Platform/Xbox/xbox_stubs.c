@@ -375,9 +375,7 @@ void sithPlayer_SetBinAmt(void* a, int b, int c) STUBV
 /* sithGamesave — needs save system */
 int  sithGamesave_Load(void* a) STUB0
 
-/* sithTime — needs game loop */
-void sithTime_Pause(void) STUBV
-void sithTime_Resume(void) STUBV
+/* sithTime_Pause, sithTime_Resume — real impls in src/Gameplay/sithTime.c (now in build) */
 
 /* sithMulti — needs networking */
 int  sithMulti_Shutdown(void) STUB0
@@ -402,8 +400,7 @@ int   stdConsole_Shutdown(void) STUB0
 /* stdBitmap — needs renderer */
 int   stdBitmap_EnsureData(void* a) STUB0
 
-/* stdPalEffects — needs display */
-void  stdPalEffects_RefreshPalette(void* a) STUBV
+/* stdPalEffects_RefreshPalette — real impl in src/General/stdPalEffects.c (now in build) */
 
 /* stdHttp — needs networking (PLATFORM_NOSOCKETS) */
 int   stdHttp_Startup(void) STUB0

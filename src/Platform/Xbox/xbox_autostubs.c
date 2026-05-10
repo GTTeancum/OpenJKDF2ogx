@@ -7,7 +7,7 @@
 #include <stdlib.h>
 #include <string.h>
 
-double sithTime_physicsRolloverFrames = {0};
+/* sithTime_physicsRolloverFrames — defined in src/Gameplay/sithTime.c (now in build) */
 /* rdMath_DistancePointToPlane, rdMath_clampf — now in rdMath.c */
 float sithActor_Hit(struct sithThing * a0, struct sithThing * a1, float a2, int a3) { return 0.0f; }
 int jkCredits_Show(void) { return 0; }
@@ -258,8 +258,7 @@ void sithPuppet_Shutdown(void) { }
 void sithPuppet_Tick(struct sithThing * a0, float a1) { }
 void sithPuppet_sub_4E4760(struct sithThing * a0, int a1) { }
 void sithStrTable_Shutdown(void) { }
-void sithTime_Startup(void) { }
-void sithTime_Tick(void) { }
+/* sithTime_Startup, sithTime_Tick — real impls in src/Gameplay/sithTime.c (now in build) */
 void sithTrackThing_Tick(struct sithThing * a0, float a1) { }
 void sithTrackThing_idkpathmove(struct sithThing * a0, struct sithThing * a1, struct rdVector3 * a2) { }
 void sithWeapon_Remove(struct sithThing * a0) { }
