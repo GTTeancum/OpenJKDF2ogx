@@ -27,6 +27,23 @@ void xbox_debug_Shutdown(void);
 void xbox_debug_Print(const char *msg);
 void xbox_debug_Printf(const char *fmt, ...);
 
+/* On-screen debug HUD — text overlay drawn after StartScene's clear.
+ * Each glyph is rendered as solid quads (3x5 bitmap font), no textures
+ * needed — uses only the proven-working glBegin/glColor/glVertex path.
+ *
+ *   std3D_DebugLine(idx, "text")        — write fixed text to slot idx
+ *   std3D_DebugLineKV(idx, "KEY", val)  — formatted "KEY value"
+ *
+ * idx ∈ [0, 23].  Lines persist until overwritten.  Pass NULL to blank.
+ * Lowercase folds to upper; punctuation: space : - = / .
+ *
+ * Old flag/counter API kept for compatibility — flags write to slots 0..7,
+ * counters to slots 8..11, as "F<idx> ON/.." / "C<idx> <val>". */
+void std3D_DebugLine(int idx, const char *text);
+void std3D_DebugLineKV(int idx, const char *key, int value);
+void std3D_DebugFlag(int idx, int on);
+void std3D_DebugCounter(int idx, int val, int max);
+
 /* Convenience macros */
 #define XDBG(msg)        xbox_debug_Print(msg)
 /* VC71 C89 mode doesn't support __VA_ARGS__. Use XDBGF as a direct

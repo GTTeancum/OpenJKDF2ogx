@@ -13,6 +13,8 @@
 
 #include "platform_xbox.h"   /* Must come first — sets up Xbox defines. */
 #include "xbox_debug.h"
+#include <stdio.h>           /* sprintf for HUD text formatting */
+#include <string.h>           /* memcpy */
 
 #ifdef __cplusplus
 extern "C" {
@@ -59,6 +61,7 @@ void __stdcall glDisable      (GLenum cap);
 } /* extern "C" */
 #endif
 
+#define GL_LINES               0x0001
 #define GL_TRIANGLES           0x0004
 #define GL_COLOR_BUFFER_BIT    0x00004000
 #define GL_DEPTH_BUFFER_BIT    0x00000100
@@ -229,23 +232,263 @@ void std3D_Shutdown(void)
 }
 
 /* ====================================================================== */
+/* Debug HUD — text overlay rendered as solid quads (one per lit pixel of */
+/* a 3x5 bitmap font).  No textures, no texcoords; uses only the proven   */
+/* glBegin/glColor/glVertex path.                                         */
+/*                                                                        */
+/* API:                                                                   */
+/*   std3D_DebugLine(idx, "text")        — write text to slot idx         */
+/*   std3D_DebugLineKV(idx, "KEY", val)  — formatted "KEY value"          */
+/*                                                                        */
+/* Lines persist across frames until overwritten.  Pass NULL or empty     */
+/* string to blank a slot.  Lines are drawn down the left side of the     */
+/* screen at y = 4 + idx * 8 px.                                          */
+/* ====================================================================== */
+#define DBG_NUM_LINES   24
+#define DBG_LINE_LEN    31
+
+static char dbg_lines[DBG_NUM_LINES][DBG_LINE_LEN + 1];
+static unsigned int g_dbgFrameTick = 0;
+
+void std3D_DebugLine(int idx, const char *text)
+{
+    int i = 0;
+    if (idx < 0 || idx >= DBG_NUM_LINES) return;
+    if (text)
+        for (; i < DBG_LINE_LEN && text[i]; ++i)
+            dbg_lines[idx][i] = text[i];
+    dbg_lines[idx][i] = 0;
+}
+
+void std3D_DebugLineKV(int idx, const char *key, int value)
+{
+    char buf[DBG_LINE_LEN + 1];
+    /* sprintf is fine on Xbox — full CRT linked. */
+    sprintf(buf, "%s %d", key ? key : "", value);
+    std3D_DebugLine(idx, buf);
+}
+
+/* Compatibility shims — old flag/counter calls now write text lines. */
+void std3D_DebugFlag(int idx, int on)
+{
+    char buf[DBG_LINE_LEN + 1];
+    sprintf(buf, "F%d %s", idx, on ? "ON" : "..");
+    /* Reserve lines 0..7 for flags. */
+    if (idx >= 0 && idx < 8) std3D_DebugLine(idx, buf);
+}
+
+void std3D_DebugCounter(int idx, int val, int max)
+{
+    char buf[DBG_LINE_LEN + 1];
+    (void)max;
+    sprintf(buf, "C%d %d", idx, val);
+    /* Reserve lines 8..11 for counters. */
+    if (idx >= 0 && idx < 4) std3D_DebugLine(8 + idx, buf);
+}
+
+static void dbg_quad(float x, float y, float w, float h,
+                     float r, float g, float b)
+{
+    /* Two-triangle quad in ortho space.  z=0 is mid-cube under our wide
+     * ortho, well inside [0,1] NDC after the projection. */
+    glBegin(GL_TRIANGLES);
+    glColor4f(r, g, b, 1.0f);
+    glVertex3f(x,     y,     0.0f);
+    glVertex3f(x + w, y,     0.0f);
+    glVertex3f(x + w, y + h, 0.0f);
+
+    glColor4f(r, g, b, 1.0f);
+    glVertex3f(x,     y,     0.0f);
+    glVertex3f(x + w, y + h, 0.0f);
+    glVertex3f(x,     y + h, 0.0f);
+    glEnd();
+}
+
+/* ----------------------------------------------------------------------
+ * 3x5 bitmap font.  Each glyph is 5 rows; each row's low 3 bits encode
+ * which columns are lit.  Data convention (matches the visual patterns
+ * in the table — "100" = leftmost lit, value 4): bit 2 = LEFT column,
+ * bit 0 = RIGHT column.  The draw loop tests `bits & (4 >> col)` so
+ * col=0 (leftmost) tests bit 2, col=2 (rightmost) tests bit 0.
+ *
+ * Drawn at scale=2 → glyph is 6x10 px on screen, with 1 px col gap.
+ * ---------------------------------------------------------------------- */
+static const unsigned char DBG_FONT_UNK[5] = {7,5,5,5,7}; /* fallback box */
+
+static const unsigned char *dbg_font_glyph(char c)
+{
+    /* Digits */
+    static const unsigned char F0[5] = {7,5,5,5,7};
+    static const unsigned char F1[5] = {2,6,2,2,7};
+    static const unsigned char F2[5] = {7,1,2,4,7};
+    static const unsigned char F3[5] = {7,1,3,1,7};
+    static const unsigned char F4[5] = {5,5,7,1,1};
+    static const unsigned char F5[5] = {7,4,7,1,7};
+    static const unsigned char F6[5] = {7,4,7,5,7};
+    static const unsigned char F7[5] = {7,1,2,2,2};
+    static const unsigned char F8[5] = {7,5,7,5,7};
+    static const unsigned char F9[5] = {7,5,7,1,7};
+    /* Letters */
+    static const unsigned char FA[5] = {2,5,7,5,5};
+    static const unsigned char FB[5] = {6,5,6,5,6};
+    static const unsigned char FC[5] = {3,4,4,4,3};
+    static const unsigned char FD[5] = {6,5,5,5,6};
+    static const unsigned char FE[5] = {7,4,6,4,7};
+    static const unsigned char FF[5] = {7,4,6,4,4};
+    static const unsigned char FG[5] = {3,4,5,5,3};
+    static const unsigned char FH[5] = {5,5,7,5,5};
+    static const unsigned char FI[5] = {7,2,2,2,7};
+    static const unsigned char FJ[5] = {1,1,1,5,2};
+    static const unsigned char FK[5] = {5,6,4,6,5};
+    static const unsigned char FL[5] = {4,4,4,4,7};
+    static const unsigned char FM[5] = {5,7,7,5,5};
+    static const unsigned char FN[5] = {6,5,5,5,5};
+    static const unsigned char FO[5] = {2,5,5,5,2};
+    static const unsigned char FP[5] = {6,5,6,4,4};
+    static const unsigned char FQ[5] = {2,5,5,6,3};
+    static const unsigned char FR[5] = {6,5,6,6,5};
+    static const unsigned char FS[5] = {3,4,2,1,6};
+    static const unsigned char FT[5] = {7,2,2,2,2};
+    static const unsigned char FU[5] = {5,5,5,5,2};
+    static const unsigned char FV[5] = {5,5,5,2,2};
+    static const unsigned char FW[5] = {5,5,7,7,5};
+    static const unsigned char FX[5] = {5,5,2,5,5};
+    static const unsigned char FY[5] = {5,5,2,2,2};
+    static const unsigned char FZ[5] = {7,1,2,4,7};
+    /* Punctuation */
+    static const unsigned char SPC[5]  = {0,0,0,0,0};
+    static const unsigned char COL[5]  = {0,2,0,2,0};   /* :  */
+    static const unsigned char DSH[5]  = {0,0,7,0,0};   /* -  */
+    static const unsigned char EQ[5]   = {0,7,0,7,0};   /* =  */
+    static const unsigned char SLS[5]  = {1,1,2,4,4};   /* /  */
+    static const unsigned char DOT[5]  = {0,0,0,0,2};   /* .  */
+
+    /* Lowercase folds to upper. */
+    if (c >= 'a' && c <= 'z') c -= 32;
+
+    switch (c)
+    {
+    case '0': return F0; case '1': return F1; case '2': return F2;
+    case '3': return F3; case '4': return F4; case '5': return F5;
+    case '6': return F6; case '7': return F7; case '8': return F8;
+    case '9': return F9;
+    case 'A': return FA; case 'B': return FB; case 'C': return FC;
+    case 'D': return FD; case 'E': return FE; case 'F': return FF;
+    case 'G': return FG; case 'H': return FH; case 'I': return FI;
+    case 'J': return FJ; case 'K': return FK; case 'L': return FL;
+    case 'M': return FM; case 'N': return FN; case 'O': return FO;
+    case 'P': return FP; case 'Q': return FQ; case 'R': return FR;
+    case 'S': return FS; case 'T': return FT; case 'U': return FU;
+    case 'V': return FV; case 'W': return FW; case 'X': return FX;
+    case 'Y': return FY; case 'Z': return FZ;
+    case ' ': return SPC;
+    case ':': return COL;
+    case '-': return DSH;
+    case '=': return EQ;
+    case '/': return SLS;
+    case '.': return DOT;
+    default:  return DBG_FONT_UNK;
+    }
+}
+
+static void dbg_text(float x, float y, float scale,
+                     float r, float g, float b, const char *s)
+{
+    if (!s) return;
+    while (*s)
+    {
+        const unsigned char *g_ = dbg_font_glyph(*s);
+        int row, col;
+        for (row = 0; row < 5; ++row)
+        {
+            unsigned char bits = g_[row];
+            for (col = 0; col < 3; ++col)
+            {
+                /* col=0 = leftmost = bit 2 (4 >> 0).
+                 * col=2 = rightmost = bit 0 (4 >> 2). */
+                if (bits & (4 >> col))
+                    dbg_quad(x + col * scale,
+                             y + row * scale,
+                             scale, scale, r, g, b);
+            }
+        }
+        x += 4.0f * scale;  /* 3px glyph + 1px gap */
+        ++s;
+    }
+}
+
+static void std3D_DrawDebugHUD(void)
+{
+    int i;
+    float sweep;
+
+    /* Background tint behind text area for legibility. */
+    dbg_quad(0.0f, 0.0f, 220.0f, 4.0f + DBG_NUM_LINES * 12.0f,
+             0.0f, 0.0f, 0.0f);
+
+    for (i = 0; i < DBG_NUM_LINES; ++i)
+    {
+        if (dbg_lines[i][0])
+            dbg_text(4.0f, 4.0f + i * 12.0f, 2.0f,
+                     1.0f, 1.0f, 1.0f, dbg_lines[i]);
+    }
+
+    /* Sweeper bar at the bottom of the panel — proves StartScene is
+     * being called every frame.  Increment per call. */
+    g_dbgFrameTick++;
+    sweep = (float)(g_dbgFrameTick % 120) / 120.0f;
+    dbg_quad(0.0f,  4.0f + DBG_NUM_LINES * 12.0f, 220.0f, 4.0f,
+             0.1f, 0.1f, 0.1f);
+    dbg_quad(sweep * 208.0f, 4.0f + DBG_NUM_LINES * 12.0f,
+             12.0f, 4.0f, 1.0f, 1.0f, 0.0f);
+}
+
+/* ====================================================================== */
 /* std3D_StartScene                                                       */
 /* ====================================================================== */
+/* The engine has nested StartScene/EndScene calls — main_xbox.c wraps an
+ * outer pair around jkMain_GuiAdvance, which itself contains inner pairs
+ * (rdCache, Window).  Only the OUTER (closed→open) transition should
+ * glClear; inner re-entries are no-ops for state but still need the HUD
+ * to advance, otherwise it freezes on the first frame. */
+static unsigned int g_startCalls     = 0;
+static unsigned int g_clearCalls     = 0;
+static unsigned int g_endCalls       = 0;
+static unsigned int g_endTransitions = 0;
+
+/* Per-frame vertex bbox accumulator — populated by AddRenderListVertices,
+ * reset by outer StartScene, published to HUD by Present. */
+static float g_bboxXmin =  1e30f, g_bboxXmax = -1e30f;
+static float g_bboxYmin =  1e30f, g_bboxYmax = -1e30f;
+static float g_bboxZmin =  1e30f, g_bboxZmax = -1e30f;
+static unsigned int g_firstColor = 0;
+static int g_bboxValid = 0;
+
 int std3D_StartScene(void)
 {
-    if (!g_initialized || g_sceneOpen) return 1;
+    if (!g_initialized) return 1;
+    g_startCalls++;
 
-    /* glClear flushes pending vertex stream + applies dirty state +
-     * issues D3D Clear (gl_fakegl.cpp:1823-1849).  This is the canonical
-     * frame-start in xquake; FakeGL's lazy BeginScene fires on the
-     * subsequent glBegin. */
-    glClear(GL_COLOR_BUFFER_BIT | GL_DEPTH_BUFFER_BIT | GL_STENCIL_BUFFER_BIT);
+    /* Engine has nested StartScene/EndScene cycles.  Only the outer
+     * (closed→open) transition issues glClear; nested calls are no-ops
+     * for state.  HUD does NOT draw here — see std3D_Present. */
+    if (!g_sceneOpen)
+    {
+        glClear(GL_COLOR_BUFFER_BIT | GL_DEPTH_BUFFER_BIT | GL_STENCIL_BUFFER_BIT);
+        g_clearCalls++;
+        g_sceneOpen     = 1;
+        GL_numVertices  = 0;
+        GL_verticesDone = 0;
+        GL_numTris      = 0;
+        GL_numLines     = 0;
 
-    g_sceneOpen     = 1;
-    GL_numVertices  = 0;
-    GL_verticesDone = 0;
-    GL_numTris      = 0;
-    GL_numLines     = 0;
+        /* Reset per-frame vertex-bbox accumulators on outer transition. */
+        g_bboxXmin =  1e30f; g_bboxXmax = -1e30f;
+        g_bboxYmin =  1e30f; g_bboxYmax = -1e30f;
+        g_bboxZmin =  1e30f; g_bboxZmax = -1e30f;
+        g_firstColor = 0;
+        g_bboxValid  = 0;
+    }
     return 1;
 }
 
@@ -254,10 +497,13 @@ int std3D_StartScene(void)
 /* ====================================================================== */
 int std3D_EndScene(void)
 {
-    if (!g_initialized || !g_sceneOpen) return 1;
+    if (!g_initialized) return 1;
+    g_endCalls++;
+    if (!g_sceneOpen) return 1;
 
     /* No EndScene call here — FakeSwapBuffers does internalEnd +
      * EndScene + Present in one step (gl_fakegl.cpp:2557-2570). */
+    g_endTransitions++;
     g_sceneOpen     = 0;
     GL_numVertices  = 0;
     GL_verticesDone = 0;
@@ -268,10 +514,82 @@ int std3D_EndScene(void)
 
 /* ====================================================================== */
 /* std3D_Present                                                          */
+/*                                                                        */
+/* Drawing the debug HUD here, just before swap, decouples it entirely    */
+/* from the engine's nested StartScene/EndScene flow.  The engine has     */
+/* already finished submitting per-frame geometry by the time we get      */
+/* here (outer EndScene closed the scene block).  We then:                */
+/*                                                                        */
+/*   1. Restore xquake's GL_Set2D state (gl_draw.c:920) — ortho proj,     */
+/*      modelview identity, depth/cull/blend off.  The engine has likely  */
+/*      changed projection to perspective for its 3D draws.               */
+/*   2. Update the live STARTS/CLEARS/ENDS/ENDTR text lines.              */
+/*   3. Draw the HUD as solid quads via glBegin/glEnd.                    */
+/*   4. FakeSwapBuffers — does internalEnd + EndScene + Present.          */
+/*                                                                        */
+/* The lazy BeginScene in FakeGL fires automatically on our first glBegin */
+/* if the scene block was already closed, and FakeSwapBuffers' EndScene   */
+/* closes it cleanly afterwards.                                          */
 /* ====================================================================== */
+static unsigned int g_presentCalls = 0;
+
 void std3D_Present(void)
 {
+    char buf[32];
     if (!g_initialized) { XDBG("std3D_Present: not initialized\n"); return; }
+    g_presentCalls++;
+    if ((g_presentCalls % 60) == 1) {
+        XDBGF("Scene: STARTS=%u CLEARS=%u ENDS=%u ENDTR=%u PRES=%u\n",
+              g_startCalls, g_clearCalls, g_endCalls,
+              g_endTransitions, g_presentCalls);
+        if (g_bboxValid) {
+            XDBGF("Vert bbox: x[%d..%d] y[%d..%d] z[%d..%d] color=%08X\n",
+                  (int)g_bboxXmin, (int)g_bboxXmax,
+                  (int)g_bboxYmin, (int)g_bboxYmax,
+                  (int)g_bboxZmin, (int)g_bboxZmax,
+                  g_firstColor);
+        }
+    }
+
+    /* Publish vertex bbox to HUD slots 5/6/7.  Format: "VX  min max". */
+    if (g_bboxValid) {
+        sprintf(buf, "VX %d %d", (int)g_bboxXmin, (int)g_bboxXmax);
+        std3D_DebugLine(5, buf);
+        sprintf(buf, "VY %d %d", (int)g_bboxYmin, (int)g_bboxYmax);
+        std3D_DebugLine(6, buf);
+        sprintf(buf, "VZ %d %d", (int)g_bboxZmin, (int)g_bboxZmax);
+        std3D_DebugLine(7, buf);
+        sprintf(buf, "COL %X", g_firstColor);
+        std3D_DebugLine(15, buf);  /* repurpose SPHEROUT slot — always 0 */
+    } else {
+        std3D_DebugLine(5, "VX NONE");
+        std3D_DebugLine(6, "");
+        std3D_DebugLine(7, "");
+    }
+
+    /* Restore 2D state for HUD draw — engine left projection in
+     * perspective + modelview = view matrix. */
+    glViewport(0, 0, 640, 480);
+    glMatrixMode(GL_PROJECTION);
+    glLoadIdentity();
+    glOrtho(0.0, 640.0, 480.0, 0.0, -99999.0, 99999.0);
+    glMatrixMode(GL_MODELVIEW);
+    glLoadIdentity();
+    glDisable(GL_DEPTH_TEST);
+    glDisable(GL_CULL_FACE);
+    glDisable(GL_BLEND);
+    glDisable(GL_TEXTURE_2D);
+    glDisable(GL_ALPHA_TEST);
+
+    /* Live counters into the HUD text. */
+    std3D_DebugLineKV(19, "STARTS",  g_startCalls);
+    std3D_DebugLineKV(20, "CLEARS",  g_clearCalls);
+    std3D_DebugLineKV(21, "ENDS",    g_endCalls);
+    std3D_DebugLineKV(22, "ENDTR",   g_endTransitions);
+    std3D_DebugLineKV(23, "PRESENT", g_presentCalls);
+
+    std3D_DrawDebugHUD();
+
     { static int _sw=0; if(_sw<3){ XDBG("std3D_Present: FakeSwapBuffers\n"); } _sw++; }
     FakeSwapBuffers();
     { static int _sr=0; if(_sr<3){ XDBG("std3D_Present: returned\n"); } _sr++;
@@ -283,11 +601,29 @@ void std3D_Present(void)
 /* ====================================================================== */
 int std3D_AddRenderListVertices(D3DVERTEX *verts, int count)
 {
+    int i;
     { static int _av=0; if(_av<5){ XDBGF("ARV: count=%d GL_nverts=%d\n", count, GL_numVertices); _av++; } }
     if (!verts || count <= 0) return 1;
     if (GL_numVertices + count >= STD3D_MAX_VERTICES) return 0;
     memcpy(&GL_tmpVertices[GL_numVertices], verts, count * sizeof(D3DVERTEX));
+
+    /* Walk the new batch and accumulate bbox + sample first color. */
+    for (i = 0; i < count; ++i)
+    {
+        if (!g_bboxValid) {
+            g_firstColor = verts[i].color;
+            g_bboxValid  = 1;
+        }
+        if (verts[i].x < g_bboxXmin) g_bboxXmin = verts[i].x;
+        if (verts[i].x > g_bboxXmax) g_bboxXmax = verts[i].x;
+        if (verts[i].y < g_bboxYmin) g_bboxYmin = verts[i].y;
+        if (verts[i].y > g_bboxYmax) g_bboxYmax = verts[i].y;
+        if (verts[i].z < g_bboxZmin) g_bboxZmin = verts[i].z;
+        if (verts[i].z > g_bboxZmax) g_bboxZmax = verts[i].z;
+    }
+
     GL_numVertices += count;
+    std3D_DebugLineKV(8, "VERTS", GL_numVertices);
     return 1;
 }
 
@@ -305,6 +641,7 @@ void std3D_AddRenderListTris(rdTri *tris, unsigned int num_tris)
     if ((int)num_tris <= 0) return;
     memcpy(&GL_tmpTris[GL_numTris], tris, num_tris * sizeof(rdTri));
     GL_numTris += num_tris;
+    std3D_DebugLineKV(9, "TRIS", GL_numTris);
 }
 
 void std3D_AddRenderListLines(rdLine *lines, unsigned int num_lines)
@@ -349,6 +686,7 @@ void std3D_DrawRenderList(void)
     int i;
     if (!g_initialized || !g_sceneOpen) return;
     if (GL_numTris == 0 || !GL_verticesDone) return;
+    std3D_DebugLineKV(10, "DRAWN", GL_numTris);
 
     {
         static int _f = 0;
@@ -367,7 +705,12 @@ void std3D_DrawRenderList(void)
      * textures registered with FakeGL) and the working diagnostic in
      * StartScene also omitted texcoords.  Adding them when no texture is
      * bound caused the per-tri triangle to disappear; reinstate when the
-     * texture-cache path actually uploads textures via glTexImage2D. */
+     * texture-cache path actually uploads textures via glTexImage2D.
+     *
+     * STD3D_WIREFRAME (set to 1): draw each tri as 3 white line segments
+     * (GL_LINES with 6 vertices: a-b, b-c, c-a).  Diagnostic only — turn
+     * off once textures are wired up and we want filled rendering. */
+#define STD3D_WIREFRAME 1
     for (i = 0; i < GL_numTris; ++i)
     {
         rdTri      *t  = &GL_tmpTris[i];
@@ -375,6 +718,16 @@ void std3D_DrawRenderList(void)
         D3DVERTEX  *b  = &GL_tmpVertices[t->v2];
         D3DVERTEX  *c  = &GL_tmpVertices[t->v3];
 
+#if STD3D_WIREFRAME
+        glBegin(GL_LINES);
+        glColor4f(1.0f, 1.0f, 1.0f, 1.0f);
+        glVertex3f(a->x, a->y, a->z);
+        glVertex3f(b->x, b->y, b->z);
+        glVertex3f(b->x, b->y, b->z);
+        glVertex3f(c->x, c->y, c->z);
+        glVertex3f(c->x, c->y, c->z);
+        glVertex3f(a->x, a->y, a->z);
+#else
         glBegin(GL_TRIANGLES);
 
         glColor4f(((a->color >> 16) & 0xFF) / 255.0f,
@@ -394,6 +747,7 @@ void std3D_DrawRenderList(void)
                   ((c->color      ) & 0xFF) / 255.0f,
                   ((c->color >> 24) & 0xFF) / 255.0f);
         glVertex3f(c->x, c->y, c->z);
+#endif
 
         glEnd();
     }

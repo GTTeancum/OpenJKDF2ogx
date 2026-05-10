@@ -310,6 +310,24 @@ void sithRender_Draw()
     flex_t a3; // [esp+1Ch] [ebp-Ch] BYREF
     flex_t a4; // [esp+24h] [ebp-4h] BYREF
 
+#ifdef TARGET_XBOX
+    /* Per-Draw call accounting.  Every call to sithRender_Draw bumps
+     * xb_drawCalls; the exit-path counters tell us how it returned.
+     * Summary line emits every 60 calls so the log shows trend without
+     * flooding. */
+    static int xb_drawCalls = 0;
+    static int xb_exitGeo0 = 0, xb_exitNoCam = 0, xb_exitFull = 0;
+    xb_drawCalls++;
+    std3D_DebugLineKV(0, "DRAW",   xb_drawCalls);
+    std3D_DebugLineKV(1, "GEO0",   xb_exitGeo0);
+    std3D_DebugLineKV(2, "NOCAM",  xb_exitNoCam);
+    std3D_DebugLineKV(3, "FULL",   xb_exitFull);
+    if ((xb_drawCalls % 60) == 1) {
+        XDBGF("DrawSummary: calls=%d exitGeo0=%d exitNoCam=%d exitFull=%d\n",
+              xb_drawCalls, xb_exitGeo0, xb_exitNoCam, xb_exitFull);
+    }
+#endif
+
     //printf("%x %x %x\n", sithRender_texMode, rdroid_curTextureMode, sithRender_lightMode);
 
     //lightDebugNum = 0; // Added
@@ -351,6 +369,7 @@ void sithRender_Draw()
     {
 #ifdef TARGET_XBOX
         { static int _srg=0; if(_srg<1){ XDBGF("sithRender_Draw: geoMode=0, returning\n"); _srg++; } }
+        xb_exitGeo0++;
 #endif
         return;
     }
@@ -372,6 +391,7 @@ void sithRender_Draw()
     {
 #ifdef TARGET_XBOX
         { static int _src=0; if(_src<1){ XDBGF("sithRender_Draw: cam=%p sector=NULL, returning\n", (void*)sithCamera_currentCamera); _src++; } }
+        xb_exitNoCam++;
 #endif
         return;
     }
@@ -613,6 +633,7 @@ void sithRender_Draw()
     sithRender_RenderLevelGeometry();
 #ifdef TARGET_XBOX
     { static int _srl=0; if(_srl<1){ XDBGF("sithRender_Draw: RenderLevelGeo done faces=%d\n", rdCache_numProcFaces); _srl++; } }
+    std3D_DebugLineKV(4, "PFACES", rdCache_numProcFaces);
 #endif
 
 #ifdef TARGET_TWL
@@ -648,6 +669,10 @@ void sithRender_Draw()
     snprintf(resetConsole, sizeof(resetConsole)-1, "\x1b[%d;%dH", consoleY, consoleX);
     printf("\x1b[8;0H                               \rclp=%d lts=%d geo=%d thg=%d al=%d %d \n                        \n", testClipEnd - testClip, testLightsEnd - testLights, testLevelGeoEnd - testLevelGeo, testThingsEnd - testThings, testAlphaEnd - testAlpha, sithRender_numSectors);
     stdPlatform_Printf(resetConsole);
+#endif
+
+#ifdef TARGET_XBOX
+    xb_exitFull++;
 #endif
 }
 
@@ -1788,6 +1813,14 @@ void sithRender_RenderLevelGeometry()
     sithRender_idxInfo.vertexUVs = vertices_uvs;
     pFullCameraFrustum = rdCamera_pCurCamera->pClipFrustum;
 
+#ifdef TARGET_XBOX
+    /* Per-frame reject counters — written at each `continue` in the
+     * surface loop.  Logged once per frame at the end of this function. */
+    int xb_walked = 0, xb_geomode0 = 0, xb_distNeg = 0, xb_alphaAdj = 0;
+    int xb_sphereOut = 0, xb_noProcEntry = 0, xb_reachedClip = 0;
+    int xb_clipPass = 0;  /* surfaces whose ClipFace returned numVerts >= 3 */
+#endif
+
     for (v72 = 0; v72 < sithRender_numSectors; v72++)
     {
         // Surfaces are 13ms on landing terminal spawn
@@ -1829,8 +1862,15 @@ void sithRender_RenderLevelGeometry()
         for (v75 = 0; v75 < level_idk->numSurfaces; /*v65->field_4 = sithRender_lastRenderTick,*/ ++v65, v75++)
         {
             rdClipFrustum* pSurfaceFrustum = pSectorFrustum;
-            if (UNLIKELY(!v65->surfaceInfo.face.geometryMode))
+#ifdef TARGET_XBOX
+            xb_walked++;
+#endif
+            if (UNLIKELY(!v65->surfaceInfo.face.geometryMode)) {
+#ifdef TARGET_XBOX
+                xb_geomode0++;
+#endif
                 continue;
+            }
             vertices_alloc = sithWorld_pCurrentWorld->vertices;
 
             BOOL bIsSkySurface = (v65->surfaceFlags & (SITH_SURFACE_CEILING_SKY|SITH_SURFACE_HORIZON_SKY));
@@ -1838,8 +1878,12 @@ void sithRender_RenderLevelGeometry()
 #ifdef TARGET_XBOX
             { static int _rlg2=0; if(_rlg2<1000){ XDBGF("RLG: surf[%d] geoMode=%d adjoin=%p dist=%f\n", v75, (int)v65->surfaceInfo.face.geometryMode, (void*)v65->adjoin, dist); _rlg2++; } }
 #endif
-            if (UNLIKELY(dist <= 0.0))
+            if (UNLIKELY(dist <= 0.0)) {
+#ifdef TARGET_XBOX
+                xb_distNeg++;
+#endif
                 continue;
+            }
 #ifdef TARGET_TWL
             if (noDistCulling && dist > SITHCAMERA_ZFAR && !bIsSkySurface) {
                 continue;
@@ -1871,6 +1915,9 @@ void sithRender_RenderLevelGeometry()
                 {
                     sithRender_aSurfaces[sithRender_numSurfaces++] = v65;
                 }
+#ifdef TARGET_XBOX
+                xb_alphaAdj++;
+#endif
                 continue;
             }
 #endif
@@ -1901,6 +1948,9 @@ void sithRender_RenderLevelGeometry()
                 }
 
                 if (LIKELY(clipResult == SPHERE_FULLY_OUTSIDE)) {
+#ifdef TARGET_XBOX
+                    xb_sphereOut++;
+#endif
                     continue;
                 }
 
@@ -1929,11 +1979,26 @@ void sithRender_RenderLevelGeometry()
                 }
                 v65->field_4 = sithRender_lastRenderTick;
             }
-            { static int _vd=0; if(_vd<1){
-                int _idx0 = v65->surfaceInfo.face.vertexPosIdx[0];
-                XDBGF("VTx done: world[0]=(%f,%f,%f) cam[0]=(%f,%f,%f)\n",
-                    sithWorld_pCurrentWorld->vertices[_idx0].x, sithWorld_pCurrentWorld->vertices[_idx0].y, sithWorld_pCurrentWorld->vertices[_idx0].z,
-                    sithWorld_pCurrentWorld->verticesTransformed[_idx0].x, sithWorld_pCurrentWorld->verticesTransformed[_idx0].y, sithWorld_pCurrentWorld->verticesTransformed[_idx0].z);
+            { static int _vd=0; if(_vd<5){
+                int _nv = v65->surfaceInfo.face.numVertices;
+                int _vi;
+                XDBGF("--- Surface %d: numVertices=%d ---\n", _vd, _nv);
+                XDBGF("view_matrix rvec=(%f,%f,%f) lvec=(%f,%f,%f) uvec=(%f,%f,%f) tx=(%f,%f,%f)\n",
+                    rdCamera_pCurCamera->view_matrix.rvec.x, rdCamera_pCurCamera->view_matrix.rvec.y, rdCamera_pCurCamera->view_matrix.rvec.z,
+                    rdCamera_pCurCamera->view_matrix.lvec.x, rdCamera_pCurCamera->view_matrix.lvec.y, rdCamera_pCurCamera->view_matrix.lvec.z,
+                    rdCamera_pCurCamera->view_matrix.uvec.x, rdCamera_pCurCamera->view_matrix.uvec.y, rdCamera_pCurCamera->view_matrix.uvec.z,
+                    rdCamera_pCurCamera->view_matrix.scale.x, rdCamera_pCurCamera->view_matrix.scale.y, rdCamera_pCurCamera->view_matrix.scale.z);
+                for (_vi = 0; _vi < _nv; ++_vi) {
+                    int _idx = v65->surfaceInfo.face.vertexPosIdx[_vi];
+                    XDBGF("  v[%d]: world=(%f,%f,%f) cam=(%f,%f,%f)\n",
+                        _vi,
+                        sithWorld_pCurrentWorld->vertices[_idx].x,
+                        sithWorld_pCurrentWorld->vertices[_idx].y,
+                        sithWorld_pCurrentWorld->vertices[_idx].z,
+                        sithWorld_pCurrentWorld->verticesTransformed[_idx].x,
+                        sithWorld_pCurrentWorld->verticesTransformed[_idx].y,
+                        sithWorld_pCurrentWorld->verticesTransformed[_idx].z);
+                }
                 _vd++; } }
 
             // Render with N-Gons instead of triangle strips if flag 0x8 is unset, or if it's sky vertices
@@ -1941,8 +2006,15 @@ void sithRender_RenderLevelGeometry()
             {
                 procEntry = rdCache_GetProcEntry();
                 { static int _gp=0; if(_gp<1){ XDBGF("GetProcEntry: %p\n", (void*)procEntry); _gp++; } }
-                if ( !procEntry )
+                if ( !procEntry ) {
+#ifdef TARGET_XBOX
+                    xb_noProcEntry++;
+#endif
                     continue;
+                }
+#ifdef TARGET_XBOX
+                xb_reachedClip++;
+#endif
                 procEntry->light_level_static = 1.0; // Added?
                 if (UNLIKELY(bIsSkySurface))
                 {
@@ -2002,7 +2074,7 @@ void sithRender_RenderLevelGeometry()
                                        &sithRender_idxInfo,
                                        &meshinfo_out,
                                        &v65->surfaceInfo.face.clipIdk);
-                    { static int _ca=0; if(_ca<1){ XDBGF("ClipFace done: numVerts=%d\n", meshinfo_out.numVertices); _ca++; } }
+                    { static int _ca=0; if(_ca<10){ XDBGF("ClipFace done #%d: numVerts=%d (in=%d)\n", _ca, meshinfo_out.numVertices, sithRender_idxInfo.numVertices); _ca++; } }
 #ifdef SITHRENDER_SPHERE_TEST_SURFACES
                     } else {
                         rdPrimit3_NoClipFace(/*pSurfaceFrustum,*/ 
@@ -2084,6 +2156,11 @@ void sithRender_RenderLevelGeometry()
                 }
                 
                 num_vertices = meshinfo_out.numVertices;
+#ifdef TARGET_XBOX
+                if (meshinfo_out.numVertices >= 3u) {
+                    xb_clipPass++;
+                }
+#endif
                 if (UNLIKELY(meshinfo_out.numVertices < 3u))
                 {
                     continue;
@@ -2562,6 +2639,24 @@ LABEL_150:
         { static int _sd=0; if(_sd<20){ XDBGF("RLG: sector done sectorsDrawn=%d\n", sithRender_sectorsDrawn); _sd++; } }
     }
 
+#ifdef TARGET_XBOX
+    /* Per-frame reject summary — one line, throttled to 30 frames. */
+    { static int _rs = 0; if (_rs < 30) {
+        XDBGF("RLG_summary: walked=%d gm0=%d distNeg=%d alphaAdj=%d sphereOut=%d noPE=%d reachClip=%d clipPass=%d\n",
+              xb_walked, xb_geomode0, xb_distNeg, xb_alphaAdj,
+              xb_sphereOut, xb_noProcEntry, xb_reachedClip, xb_clipPass);
+        _rs++;
+    } }
+    /* Wire RLG breakdown to the on-screen HUD as labeled lines. */
+    std3D_DebugLineKV(11, "WALK",    xb_walked);
+    std3D_DebugLineKV(12, "GM0",     xb_geomode0);
+    std3D_DebugLineKV(13, "DISTNEG", xb_distNeg);
+    std3D_DebugLineKV(14, "ALPHADJ", xb_alphaAdj);
+    std3D_DebugLineKV(15, "SPHEROUT", xb_sphereOut);
+    std3D_DebugLineKV(16, "NOPE",    xb_noProcEntry);
+    std3D_DebugLineKV(17, "REACH",   xb_reachedClip);
+    std3D_DebugLineKV(18, "CLIPOK",  xb_clipPass);
+#endif
     { static int _rf=0; if(_rf<1){ XDBGF("RLG: all sectors done, calling rdCache_Flush\n"); _rf++; } }
 //#ifndef TARGET_TWL
     // TWL: 5-27ms
