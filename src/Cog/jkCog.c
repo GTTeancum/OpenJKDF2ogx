@@ -572,11 +572,14 @@ void jkCog_SetSaberInfo(sithCog *ctx)
 void jkCog_GetSaberSideMat(sithCog *ctx)
 {
     sithThing* pPlayerThing = sithCogExec_PopThing(ctx);
-    if (pPlayerThing->playerInfo) {
+    if (pPlayerThing && pPlayerThing->playerInfo) {
         sithCogExec_PushInt(ctx,((pPlayerThing->playerInfo->polyline).edgeFace.material)->id);
+    } else {
+        /* Stack must remain balanced — every Pop needs a matching Push.
+         * Without this, the cog VM stack drifts on every call where
+         * playerInfo is null, corrupting subsequent script execution. */
+        sithCogExec_PushInt(ctx, -1);
     }
-    // TODO bugfix: push a -1??
-    return;
 }
 
 void jkCog_GetSaberCam(sithCog *ctx)
@@ -662,6 +665,11 @@ void jkCog_StringConcatUnistring(sithCog *pCog)
     str = stdStrTable_GetUniString(&jkCog_strings, key);
     if ( !str )
         str = jkStrings_GetUniStringWithFallback(key);
+    /* Guard: on Xbox both lookups can return NULL because the strtable
+     * subsystem is stubbed.  Fall through to an empty string so the
+     * subsequent _wcslen / __wcscat operate on a safe pointer. */
+    if ( !str )
+        str = L"";
 
     finalLen = _wcslen(str) + _wcslen(jkCog_jkstring);
     if (finalLen < 0x81)
@@ -1215,7 +1223,11 @@ void jkCogExt_GetThingAttachThing(sithCog* ctx)
         if (pThing->attach_flags == SITH_ATTACH_THINGSURFACE) {
             sithThing* pAttached = pThing->attachedThing;
             if (pAttached) {
-                retval = pAttached->thing_id;
+                /* Cog message-passing uses thingIdx (array index in
+                 * sithWorld_pCurrentWorld->things[]) as the canonical
+                 * thing handle.  thing_id is a save-game GUID at a
+                 * different offset and would route to invalid slots. */
+                retval = pAttached->thingIdx;
             }
         }
     }
@@ -1225,18 +1237,21 @@ void jkCogExt_GetThingAttachThing(sithCog* ctx)
 void jkCogExt_GetCameraFov(sithCog* ctx)
 {
     int camIdx = sithCogExec_PopInt(ctx);
-
-    // TODO verify
-    sithCogExec_PushFlex(ctx, sithCamera_cameras[camIdx].rdCam.fov);
+    /* Cog scripts can push any int — bounds-check against the camera
+     * array size (sithCamera_cameras[SITHCAMERA_NUMCAMERAS]) before
+     * reading.  On out-of-range, push 0.0 to keep the VM stack balanced. */
+    if (camIdx >= 0 && camIdx < SITHCAMERA_NUMCAMERAS)
+        sithCogExec_PushFlex(ctx, sithCamera_cameras[camIdx].rdCam.fov);
+    else
+        sithCogExec_PushFlex(ctx, 0.0);
     Windows_ErrorMsgboxWide("Unimplemented %s\n", __func__);
 }
 
 void jkCogExt_GetCameraOffset(sithCog* ctx)
 {
     int camIdx = sithCogExec_PopInt(ctx);
-
-    //TODO
     rdVector3 vec = {0};
+    (void)camIdx;  /* TODO: read actual offset from camera */
     sithCogExec_PushVector3(ctx, &vec);
     Windows_ErrorMsgboxWide("Unimplemented %s\n", __func__);
 }
@@ -1245,19 +1260,19 @@ void jkCogExt_SetCameraFov(sithCog* ctx)
 {
     cog_flex_t fov = sithCogExec_PopFlex(ctx);
     int camIdx = sithCogExec_PopInt(ctx);
-
-    // TODO
-    sithCamera_cameras[camIdx].rdCam.fov = fov;
+    /* Bounds-check before writing — out-of-range silently no-op. */
+    if (camIdx >= 0 && camIdx < SITHCAMERA_NUMCAMERAS)
+        sithCamera_cameras[camIdx].rdCam.fov = fov;
     Windows_ErrorMsgboxWide("Unimplemented %s\n", __func__);
 }
 
 void jkCogExt_SetCameraOffset(sithCog* ctx)
 {
     rdVector3 vec;
+    int camIdx;
     sithCogExec_PopVector3(ctx, &vec);
-    int camIdx = sithCogExec_PopInt(ctx);
-
-    // TODO
+    camIdx = sithCogExec_PopInt(ctx);
+    (void)camIdx;  /* TODO: write actual offset into camera */
     Windows_ErrorMsgboxWide("Unimplemented %s\n", __func__);
 }
 
