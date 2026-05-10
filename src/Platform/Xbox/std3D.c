@@ -231,6 +231,11 @@ static int  g_sceneOpen   = 0;
  * a flat `glBindTexture` symbol at file scope. */
 static PFN_glBindTextureEXT g_pfnBindTexture = 0;
 
+/* UV out-of-range sentinel — accumulates across all engine vertex
+ * submissions; published to HUD slot 14 from DrawRenderList (last
+ * writer per frame, beats sithRender's RLG_summary ALPHADJ slot). */
+static unsigned int g_uvOOR = 0;
+
 /* Engine-side staging buffers.  rdCache writes into these, then calls
  * std3D_DrawRenderList which translates to glBegin/glEnd loops.  For the
  * current diagnostic build, std3D_DrawRenderList draws a single hardcoded
@@ -797,9 +802,13 @@ int std3D_AddRenderListVertices(D3DVERTEX *verts, int count)
     if (GL_numVertices + count >= STD3D_MAX_VERTICES) return 0;
     memcpy(&GL_tmpVertices[GL_numVertices], verts, count * sizeof(D3DVERTEX));
 
-    /* Walk the new batch and accumulate bbox + sample first color. */
+    /* Walk the new batch and accumulate bbox + sample first color +
+     * UV out-of-range sentinel.  UVs in JK are normalized [0,1]; values
+     * |tu|>2 || |tv|>2 are evidence of clip-space leakage or unit-mismatch
+     * (e.g. the TWL pixel-space-UV path firing on Xbox by mistake). */
     for (i = 0; i < count; ++i)
     {
+        float tu = verts[i].tu, tv = verts[i].tv;
         if (!g_bboxValid) {
             g_firstColor = verts[i].color;
             g_bboxValid  = 1;
@@ -810,6 +819,8 @@ int std3D_AddRenderListVertices(D3DVERTEX *verts, int count)
         if (verts[i].y > g_bboxYmax) g_bboxYmax = verts[i].y;
         if (verts[i].z < g_bboxZmin) g_bboxZmin = verts[i].z;
         if (verts[i].z > g_bboxZmax) g_bboxZmax = verts[i].z;
+        if (tu > 2.0f || tu < -1.0f || tv > 2.0f || tv < -1.0f)
+            g_uvOOR++;
     }
 
     GL_numVertices += count;
@@ -990,6 +1001,7 @@ void std3D_DrawRenderList(void)
         std3D_DebugLineKV(2, "TXTRI", textured_tris);
         std3D_DebugLineKV(3, "UNTRI", untextured_tris);
         std3D_DebugLineKV(4, "BIND",  bind_switches);
+        std3D_DebugLineKV(14, "UVOOR", (int)g_uvOOR);
     }
 #endif
 
@@ -1185,10 +1197,10 @@ int std3D_AddToTextureCache(stdVBuffer *vbuf, rdDDrawSurface *texture,
     g_texUploaded++;
     std3D_DebugLineKV(1, "TUP", g_texUploaded);
 
-    /* Log first few uploads so we can verify on hardware that pixel +
+    /* Log first N uploads so we can verify on hardware that pixel +
      * palette pointers look sane. */
     { static int _first = 0;
-      if (_first < 6) {
+      if (_first < 24) {
           XDBGF("ATC[%u]: id=%u w=%u h=%u src=%p pal=%p alpha=%d first=(%02X,%02X,%02X)\n",
                 _first, id, w, h, vbuf->surface_lock_alloc, pal,
                 is_alpha_tex, pal[0].r, pal[0].g, pal[0].b);
