@@ -130,6 +130,21 @@ void __cdecl main(void)
     /* Initialize XInput — must be after Main_Startup (XDK subsystems up) */
     stdControl_Startup();
 
+    /* Establish default input bindings.  On PC, sithControl_InputInit is
+     * called from inside jkPlayer_ReadConf / jkPlayer_CreateConf — i.e.
+     * profile-load triggers it.  Xbox skips the GUI/profile flow and
+     * goes straight to gameplay, so we'd otherwise have zero bindings
+     * (joystick axes populate but no INPUT_FUNC_* routes to them).
+     *
+     * Calling InputInit here decouples "establish default bindings"
+     * from "load a profile" — defaults exist as part of input-subsystem
+     * init regardless of whether a profile loads later. */
+    {
+        extern void sithControl_InputInit(void);
+        sithControl_InputInit();
+        XDBG("main: sithControl_InputInit done\n");
+    }
+
     /* Skip video intros — go straight to main menu state */
     jkSmack_nextGuiState = 3; /* JK_GAMEMODE_MAIN */
     jkSmack_stopTick = 1;

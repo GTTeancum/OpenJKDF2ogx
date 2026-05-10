@@ -6,7 +6,7 @@ char yysccsid[] = "@(#)yaccpar	1.4 (Berkeley) 02/25/90";
 #include "sithCogParse.h"
 #include "stdPlatform.h"
 
-#define printf(...) _printf(__VA_ARGS__)
+#define printf _printf  /* VC71 lacks C99 variadic macros; identifier rename suffices */
 #define fwrite(x,y,z,w) _fwrite(x,y,z,w)
 #define atoi(x) _atoi(x)
 #define exit(x) jk_exit(x)

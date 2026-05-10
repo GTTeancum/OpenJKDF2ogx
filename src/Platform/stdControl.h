@@ -40,7 +40,7 @@ MATH_FUNC flex_t stdControl_ReadKeyAsAxis(int keyNum);
 MATH_FUNC int stdControl_ReadAxisAsKey(int axisNum);
 MATH_FUNC int stdControl_ReadKey(int keyNum, int *pOut);
 void stdControl_FinishRead();
-int stdControl_MessageHandler(HWND hWnd, UINT Msg, WPARAM wParam, HWND lParam, LRESULT* unused);
+int stdControl_MessageHandler(HWND hWnd, UINT Msg, WPARAM wParam, LPARAM lParam, LRESULT* unused);
 void stdControl_SetMouseSensitivity(flex_t xSensitivity, flex_t ySensitivity);
 void stdControl_SetKeydown(int keyNum, int bDown, uint32_t readTime);
 void stdControl_SetSDLKeydown(int keyNum, int bDown, uint32_t readTime);

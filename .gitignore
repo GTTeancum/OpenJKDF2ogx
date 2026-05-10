@@ -141,6 +141,7 @@ src/out.txt
 
 # Reference / scratch dumps (not part of port)
 original_src/
+_ORIGINAL_READ_ONLY/
 jk1_gob/
 test_tut01/
 

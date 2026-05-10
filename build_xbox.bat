@@ -105,6 +105,7 @@ for %%F in (
     src\Main\jkRes.c
     src\Main\Main.c
     src\Main\jkGob.c
+    src\Main\jkControl.c
     src\General\Darray.c
     src\General\crc32.c
     src\General\stdFnames.c
@@ -160,6 +161,18 @@ for %%F in (
     src\Primitives\rdMatrix.c
     src\Engine\rdThing.c
     src\Cog\sithCog.c
+    src\Cog\sithCogParse.c
+    src\Cog\sithCogExec.c
+    src\Cog\sithCogFunction.c
+    src\Cog\sithCogFunctionAI.c
+    src\Cog\sithCogFunctionPlayer.c
+    src\Cog\sithCogFunctionSector.c
+    src\Cog\sithCogFunctionSound.c
+    src\Cog\sithCogFunctionSurface.c
+    src\Cog\sithCogFunctionThing.c
+    src\Cog\jkCog.c
+    src\Cog\lex.yy.c
+    src\Cog\y.tab.c
     src\AI\sithAIClass.c
     src\Devices\sithControl.c
     src\Devices\sithSound.c

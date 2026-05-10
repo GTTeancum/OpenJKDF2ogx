@@ -40,10 +40,18 @@
 #define ANALOG_THRESHOLD  30
 #define STICK_DEADZONE    3933
 
-#define XBOX_AXIS_MOVE_FB   0
-#define XBOX_AXIS_STRAFE    1
-#define XBOX_AXIS_LOOK_LR   2
-#define XBOX_AXIS_LOOK_UD   3
+/* Axis index layout MUST match the engine's AXIS_JOY1_* constants
+ * (types_enums.h:340-345):
+ *   index 0 = AXIS_JOY1_X  (horizontal of left stick — TURN)
+ *   index 1 = AXIS_JOY1_Y  (vertical of left stick — FORWARD)
+ *   index 2 = AXIS_JOY1_Z  (we use for right-stick X — look LR)
+ *   index 3 = AXIS_JOY1_R  (we use for right-stick Y — look UD)
+ * The engine binds INPUT_FUNC_FORWARD → AXIS_JOY1_Y(=1) etc., so our
+ * g_axisValues[1] must contain the left-stick Y value, not LX. */
+#define XBOX_AXIS_TURN      0   /* AXIS_JOY1_X — left stick horizontal */
+#define XBOX_AXIS_FORWARD   1   /* AXIS_JOY1_Y — left stick vertical   */
+#define XBOX_AXIS_LOOK_LR   2   /* AXIS_JOY1_Z — right stick horizontal*/
+#define XBOX_AXIS_LOOK_UD   3   /* AXIS_JOY1_R — right stick vertical  */
 #define XBOX_NUM_AXES       8
 
 static float g_axisValues[XBOX_NUM_AXES];
@@ -81,6 +89,18 @@ static float xbox_NormalizeStick(SHORT raw)
     return 0.0f;
 }
 
+/* Bridge to xbox_world_helper.cpp — populates engine's
+ * stdControl_aJoysticks[idx] table so MapAxisFunc accepts our axes.
+ * stdControl_xbox.c is compiled with /Tp (as C++) per build_xbox.bat,
+ * so the extern decl must be wrapped to match the C-linked impl. */
+#ifdef __cplusplus
+extern "C" {
+#endif
+extern void xbox_init_joystick_axis(int index, int stickMin, int stickMax);
+#ifdef __cplusplus
+}
+#endif
+
 int stdControl_Startup(void)
 {
     /* XInitDevices is called in main() before D3D init — not here.
@@ -92,7 +112,17 @@ int stdControl_Startup(void)
     memset(g_prevAnalog, 0, sizeof(g_prevAnalog));
     g_prevButtons = 0; g_crouchToggle = 0; g_sprintToggle = 0;
     g_hController = NULL; g_connected = 0; g_openAttempted = 0;
-    XDBG("stdControl_Startup: deferred XInputOpen to first ReadControls\n");
+
+    /* Mark our 4 joystick axes as enabled in stdControl_aJoysticks[].
+     * Without this, sithControl_MapAxisFunc silently rejects every
+     * binding (returns 0 at line 428 because flags & 1 is unset).
+     * XInput stick raw range is int16 [-32768..32767]. */
+    xbox_init_joystick_axis(XBOX_AXIS_TURN,    -32767, 32767);
+    xbox_init_joystick_axis(XBOX_AXIS_FORWARD, -32767, 32767);
+    xbox_init_joystick_axis(XBOX_AXIS_LOOK_LR, -32767, 32767);
+    xbox_init_joystick_axis(XBOX_AXIS_LOOK_UD, -32767, 32767);
+
+    XDBG("stdControl_Startup: joystick axes 0..3 marked enabled, deferred XInputOpen\n");
     return 1;
 }
 
@@ -187,11 +217,26 @@ void stdControl_ReadControls(void)
 
     for (i = 0; i < 8; i++) g_prevAnalog[i] = pad->bAnalogButtons[i];
 
-    /* Sticks */
-    g_axisValues[XBOX_AXIS_MOVE_FB] =  xbox_NormalizeStick(pad->sThumbLY);
-    g_axisValues[XBOX_AXIS_STRAFE]  =  xbox_NormalizeStick(pad->sThumbLX);
+    /* Sticks — match engine's AXIS_JOY1_* index layout. */
+    g_axisValues[XBOX_AXIS_TURN]    =  xbox_NormalizeStick(pad->sThumbLX);
+    g_axisValues[XBOX_AXIS_FORWARD] =  xbox_NormalizeStick(pad->sThumbLY);
     g_axisValues[XBOX_AXIS_LOOK_LR] =  xbox_NormalizeStick(pad->sThumbRX) * g_lookSensX;
     g_axisValues[XBOX_AXIS_LOOK_UD] = -xbox_NormalizeStick(pad->sThumbRY) * g_lookSensY;
+
+    /* Per-call axis-value log to confirm input is reaching us.  Throttled
+     * so the log doesn't drown — first 5 calls plus once per ~60 frames
+     * after.  Look for nonzero values when sticks are pushed. */
+    { static int _r = 0; static unsigned int _re = 0; _re++;
+      if (_r < 5 || (_re % 60) == 0) {
+        XDBGF("ReadCtl: btns=%04X LX=%d LY=%d RX=%d RY=%d -> ax[%f %f %f %f]\n",
+              (unsigned)pad->wButtons,
+              (int)pad->sThumbLX, (int)pad->sThumbLY,
+              (int)pad->sThumbRX, (int)pad->sThumbRY,
+              (float)g_axisValues[0], (float)g_axisValues[1],
+              (float)g_axisValues[2], (float)g_axisValues[3]);
+        _r++;
+      }
+    }
 }
 
 float stdControl_ReadAxis(int n)        { if(n<0||n>=XBOX_NUM_AXES) return 0.0f; return g_axisValues[n]; }

@@ -250,9 +250,7 @@ int  jkDSS_Shutdown(void) STUB0
 void jkDSS_SendEndLevel(void) STUBV
 void jkDSS_wrap_SendSaberInfo_alt(void) STUBV
 
-/* jkControl — needs input integration */
-int  jkControl_Startup(void) STUB0
-int  jkControl_Shutdown(void) STUB0
+/* jkControl_Startup, jkControl_Shutdown — real impls in src/Main/jkControl.c (now in build) */
 
 /* jkGui* — multiplayer/network GUI stubs */
 void jkGuiBuildMulti_StartupEditCharacter(void) STUBV
@@ -324,9 +322,7 @@ int jkGame_Update(void)
     return 1;
 }
 
-/* [STUBBED] jkCog / jkAI / jkEpisode — real code: src/Cog/jkCog.c, src/Main/jkAI.c, src/Main/jkEpisode.c */
-int  jkCog_Startup(void) STUB0
-int  jkCog_Shutdown(void) STUB0
+/* jkCog_Startup, jkCog_Shutdown — real impls in src/Cog/jkCog.c (now in build) */
 int  jkAI_Startup(void) STUB0
 int  jkEpisode_Startup(void) STUB0
 void jkEpisode_Load(void* a) STUBV
@@ -423,13 +419,8 @@ void  Windows_ErrorMsgboxWide(void* a, void* b) STUBV
 void  DirectPlay_SetSessionFlagidk(int a) STUBV
 void  DirectPlay_SetSessionDesc(void* a) STUBV
 
-/* ================================================================
-   PHASE 1 ADDITIONS — Window message handler stubs
-   ================================================================ */
-
-int Window_AddMsgHandler(void* handler)     { (void)handler; return 1; }
-int Window_RemoveMsgHandler(void* handler)  { (void)handler; return 1; }
-void Window_SetDrawHandlers(void *pfnDraw, void *pfnDrawEnd) { (void)pfnDraw; (void)pfnDrawEnd; }
+/* Window_AddMsgHandler / Window_RemoveMsgHandler / Window_SetDrawHandlers —
+ * defined further down with proper WindowHandler_t-shaped signature. */
 
 /* ================================================================
    ADDITIONAL STUBS for link resolution (C++ mangled names needed)
@@ -510,3 +501,33 @@ int Window_RemoveMsgHandler(WindowHandler_t_local h) { (void)h; return 1; }
 void Window_SetDrawHandlers(int (*a)(unsigned int), int (*b)(unsigned int)) { (void)a; (void)b; }
 int  Windows_GdiHandler(HWND a, UINT b, WPARAM c, HWND d, LRESULT* e) { (void)a;(void)b;(void)c;(void)d;(void)e; return 0; }
 int  Windows_ErrorMsgboxWide(const char* fmt, ...) { (void)fmt; return 0; }
+
+/* stdControl_MessageHandler — Xbox has no Win32 message system, so this
+ * always returns 0 (don't filter messages).  The real impl in
+ * src/Platform/Common/stdControl.c is a Win32 screensaver-suppression
+ * filter; not relevant on this platform. */
+int stdControl_MessageHandler(HWND hWnd, UINT Msg, WPARAM wParam, LPARAM lParam, LRESULT* unused)
+{ (void)hWnd; (void)Msg; (void)wParam; (void)lParam; (void)unused; return 0; }
+
+/* Input handler chain stubs — registered by jkControl_Startup, called per
+ * frame.  Handlers return 0 = "didn't consume input, try next handler".
+ * Returning 0 for systems we haven't wired (weapons, inventory) lets
+ * sithControl_HandlePlayer (the movement handler) run normally.  Same
+ * pattern any platform follows when a subsystem isn't enabled. */
+struct sithThing;
+int sithWeapon_HandleWeaponKeys(struct sithThing *t, float dt)        { (void)t; (void)dt; return 0; }
+int sithInventory_HandleInvSkillKeys(struct sithThing *t, float dt)   { (void)t; (void)dt; return 0; }
+
+/* Functions called from jkControl_HandleHudKeys body for various
+ * F-key/dev shortcuts.  Stubbed because the corresponding subsystems
+ * (HUD popups, screenshot, gamma config, save UI) aren't wired up
+ * on Xbox yet.  Pressing those keys does nothing rather than crashing. */
+void jkHud_Tally(void)                                  { }
+int  jkHud_Chat(void)                                   { return 0; }
+void jkGame_Screenshot(void)                            { }
+void jkGame_Gamma(void)                                 { }
+void jkGame_ScreensizeDecrease(void)                    { }
+void jkGame_ScreensizeIncrease(void)                    { }
+int  jkDev_PrintUniString(const unsigned short *s)      { (void)s; return 0; }
+unsigned short *jkGuiTitle_quicksave_related_func1(struct stdStrTable *a, char *b)
+{ (void)a; (void)b; return 0; }

@@ -177,7 +177,7 @@ typedef struct yy_buffer_state *YY_BUFFER_STATE;
 #include "jk.h"
 #include "y.tab.h"
 
-#define printf(...) _printf(__VA_ARGS__)
+#define printf _printf  /* VC71 lacks C99 variadic macros; identifier rename suffices */
 #define fwrite(x,y,z,w) _fwrite(x,y,z,w)
 #define atoi(x) _atoi(x)
 #define exit(x) jk_exit(x)

@@ -23,6 +23,10 @@
 #include "General/stdMath.h"
 #include "jk.h"
 
+#ifdef TARGET_XBOX
+#include "Platform/Xbox/xbox_debug.h"
+#endif
+
 // Added
 static int sithControl_followingPlayer = 0;
 static int sithControl_curDebugCam = 0;
@@ -251,6 +255,19 @@ void sithControl_InitFuncToControlType()
 // MOTS altered
 void sithControl_Tick(flex_t deltaSecs, int deltaMs)
 {
+#ifdef TARGET_XBOX
+    { static int _l = 0; if (_l < 3) {
+        XDBGF("CtlTick: bOpened=%d localPlayerThing=%p numHandlers=%d camState=%d\n",
+              sithControl_bOpened, (void*)sithPlayer_pLocalPlayerThing,
+              sithControl_numHandlers, sithCamera_state);
+        if (sithPlayer_pLocalPlayerThing) {
+            XDBGF("  localPlayerThing typeflags=%X thingflags=%X type=%d\n",
+                  (unsigned)sithPlayer_pLocalPlayerThing->actorParams.typeflags,
+                  (unsigned)sithPlayer_pLocalPlayerThing->thingflags,
+                  (int)sithPlayer_pLocalPlayerThing->type);
+        }
+        _l++; } }
+#endif
     if ( !sithControl_bOpened )
         return;
 
@@ -260,6 +277,9 @@ void sithControl_Tick(flex_t deltaSecs, int deltaMs)
       || (sithPlayer_pLocalPlayerThing->thingflags & (SITH_TF_DEAD|SITH_TF_WILLBEREMOVED)) != 0
       || (sithCamera_state & 1) != 0 )
     {
+#ifdef TARGET_XBOX
+        { static int _g = 0; if (_g < 3) { XDBG("CtlTick: gated out (no player or camera locked)\n"); _g++; } }
+#endif
         if ( sithCamera_currentCamera == &sithCamera_cameras[4] )
         {
             sithCamera_DoIdleAnimation();
@@ -291,8 +311,19 @@ void sithControl_Tick(flex_t deltaSecs, int deltaMs)
 #ifndef FIXED_TIMESTEP_PHYS
         sithControl_ReadControls();
 #endif
+#ifdef TARGET_XBOX
+        { static int _h = 0; if (_h < 3) {
+            XDBGF("CtlTick: running %d handlers, playerThing=%p\n",
+                  sithControl_numHandlers, (void*)sithWorld_pCurrentWorld->playerThing);
+            _h++; } }
+#endif
         for (int i = 0; i < sithControl_numHandlers; i++)
         {
+#ifdef TARGET_XBOX
+            { static int _hi = 0; if (_hi < 12) {
+                XDBGF("  handler[%d]=%p\n", i, (void*)sithControl_aHandlers[i]);
+                _hi++; } }
+#endif
             if (sithControl_aHandlers[i] && sithControl_aHandlers[i](sithWorld_pCurrentWorld->playerThing, deltaSecs) )
                 break;
         }
@@ -884,6 +915,10 @@ void sithControl_AddInputHandler(sithControl_handler_t a1)
     if (sithControl_numHandlers < SITHCONTROL_NUM_HANDLERS)
     {
         sithControl_aHandlers[sithControl_numHandlers++] = a1;
+#ifdef TARGET_XBOX
+        XDBGF("AddInputHandler: registered %p (now %d total)\n",
+              (void*)a1, sithControl_numHandlers);
+#endif
     }
 }
 
@@ -912,6 +947,23 @@ int sithControl_HandlePlayer(sithThing *player, flex_t deltaSecs)
     rdMatrix34 a; // [esp+18h] [ebp-30h] BYREF
     int input_read;
     int tmp;
+
+#ifdef TARGET_XBOX
+    /* Phase 4: trace inputs being read by the player handler.  Throttled
+     * to first ~30 invocations + one per second after to keep log small. */
+    { static int _hp = 0; static unsigned int _hpEvery = 0;
+      _hpEvery++;
+      if (_hp < 30 || (_hpEvery % 60) == 0) {
+        flex_t fwd = sithControl_GetAxisTimeCorrected(INPUT_FUNC_FORWARD);
+        flex_t turn= sithControl_GetAxisTimeCorrected(INPUT_FUNC_TURN);
+        flex_t pitch=sithControl_GetAxisTimeCorrected(INPUT_FUNC_PITCH);
+        XDBGF("HandlePlayer[%u]: thing=%p mt=%d fwd=%f turn=%f pitch=%f\n",
+              _hpEvery, (void*)player, (int)player->moveType,
+              (float)fwd, (float)turn, (float)pitch);
+        _hp++;
+      }
+    }
+#endif
 
     //g_debugmodeFlags |= 0x100;
 
@@ -1865,8 +1917,16 @@ void sithControl_InputInit()
 #endif
 
     sithControl_MapDefaults();
+#ifdef TARGET_XBOX
+    XDBG("InputInit: pre MapAxisFunc(FORWARD->JOY1_Y), (TURN->JOY1_X)\n");
+#endif
     sithControl_MapAxisFunc(INPUT_FUNC_FORWARD, AXIS_JOY1_Y, 4u);
     sithControl_MapAxisFunc(INPUT_FUNC_TURN, AXIS_JOY1_X, 4u);
+#ifdef TARGET_XBOX
+    XDBGF("InputInit: post bind. FORWARD numEntries=%d TURN numEntries=%d\n",
+          sithControl_aInputFuncToKeyinfo[INPUT_FUNC_FORWARD].numEntries,
+          sithControl_aInputFuncToKeyinfo[INPUT_FUNC_TURN].numEntries);
+#endif
 
     sithControl_MapDefaultsMouse();
 

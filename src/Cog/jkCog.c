@@ -1,6 +1,7 @@
 #include "jkCog.h"
 
 #include <math.h>
+#include <stdlib.h>  /* rand() */
 
 #include "General/stdStrTable.h"
 #include "Main/jkHud.h"
