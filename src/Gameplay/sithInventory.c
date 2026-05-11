@@ -885,6 +885,29 @@ LABEL_16:
     sithInventory_8339EC = 0;
     sithInventory_bRendIsHidden = 0;
     sithInventory_8339F4 = 0;
+
+#ifdef TARGET_XBOX
+    /* Force-equip the bryar pistol as a stopgap until the level startup
+     * cog system reliably calls SetCurInvWeapon.  Hardware log from
+     * commit fa55e1b0 showed `SetCurWeapon: bin=0` was the only equip
+     * that ever fired — the player.cog never ran SetCurInvWeapon for
+     * the bryar.  Give the player ammo + select the weapon directly
+     * so triggers actually have something to fire.  Sabers + force
+     * powers come later when cogs are wired. */
+    if (!sithNet_isMulti) {
+        sithInventory_SetBinAmount(player, SITHBIN_FISTS, 1.0);
+        sithInventory_SetBinAmount(player, SITHBIN_BRYARPISTOL, 1.0);
+        sithInventory_SetBinAmount(player, SITHBIN_ENERGY, 100.0);  /* shared blaster ammo */
+        sithInventory_SetAvailable(player, SITHBIN_FISTS, 1);
+        sithInventory_SetAvailable(player, SITHBIN_BRYARPISTOL, 1);
+        /* Select the bryar — sithWeapon_SelectWeapon does the heavier
+         * lifting (anim/mesh/cog activation), so call that path rather
+         * than just writing curWeapon directly. */
+        extern int sithWeapon_SelectWeapon(sithThing*, int, int);
+        sithWeapon_SelectWeapon(player, SITHBIN_BRYARPISTOL, 0);
+        xbox_debug_Printf("FORCE-EQUIP: bryar pistol on player=%p\n", (void*)player);
+    }
+#endif
 }
 
 void sithInventory_ClearUncarried(sithThing *player)
