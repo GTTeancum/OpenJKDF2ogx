@@ -276,8 +276,20 @@ int   stdControl_ReadAxisRaw(int n)     { if(n<0||n>=XBOX_NUM_AXES) return 0; re
 float stdControl_ReadKeyAsAxis(int k)   { (void)k; return 0.0f; }
 int   stdControl_ReadAxisAsKey(int n)   { if(n<0||n>=XBOX_NUM_AXES) return 0; return (g_axisValues[n]>0.5f||g_axisValues[n]<-0.5f)?1:0; }
 int   stdControl_ReadKey(int keyNum, int *pOut) {
+    /* `*pOut` is the engine's accumulator across all keys bound to one
+     * input function (sithControl_ReadFunctionMap:740 does it in a
+     * loop).  PC's stdControl_ReadKey accumulates via
+     * `*pOut += stdControl_aInput2[keyNum]` (Common/stdControl.c:455).
+     * If we OVERWRITE pOut here, the last iteration for a multi-key-
+     * bound input wins — and since JUMP is bound to four keys ending
+     * in KEY_MOUSE_B2 (always 0), pressing A (DIK_X) gets clobbered to
+     * 0 before the engine reads pOut.  This was latent until commit
+     * fa55e1b0 bumped XBOX_NUM_KEYS 256→512, which moved
+     * KEY_JOY1_B4 / KEY_MOUSE_B2 from "out of range, early return,
+     * pOut untouched" into "in range, overwrite pOut to 0".
+     * Accumulate to match the PC semantic. */
     if (keyNum < 0 || keyNum >= XBOX_NUM_KEYS) return 0;
-    if (pOut) *pOut = g_keyDown[keyNum];
+    if (pOut && g_keyDown[keyNum]) (*pOut)++;
     return g_keyDown[keyNum];
 }
 void  stdControl_FinishRead(void)       { }
