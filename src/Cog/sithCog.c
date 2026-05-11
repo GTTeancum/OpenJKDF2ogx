@@ -1131,6 +1131,19 @@ void sithCog_SendMessageToAll(int32_t cmdid, int32_t senderType, int32_t senderI
     sithCog *v11; // esi
     uint32_t j; // edi
 
+#ifdef TARGET_XBOX
+    /* Log when the level fires its STARTUP fan-out (cmdid==3) so we can
+       see how many cogs are about to receive it.  The "no SetCurWeapon
+       from any cog" symptom narrows down to: either the broadcast
+       reaches zero cogs, or it reaches them but none has a startup
+       handler that equips weapons. */
+    if (cmdid == 3 /* SITH_MESSAGE_STARTUP */) {
+        XDBGF("MsgToAll STARTUP: staticCogs=%u worldCogs=%u\n",
+              sithWorld_pStatic ? (unsigned)sithWorld_pStatic->numCogsLoaded : 0,
+              sithWorld_pCurrentWorld ? (unsigned)sithWorld_pCurrentWorld->numCogsLoaded : 0);
+    }
+#endif
+
     if ( sithWorld_pStatic )
     {
         v9 = sithWorld_pStatic->cogs;
@@ -1327,6 +1340,20 @@ cog_flex_t sithCog_SendMessageEx(sithCog *cog, int32_t message, int32_t senderTy
         }
         while ( trigIdx < trigIdxMax );
     }
+#ifdef TARGET_XBOX
+    /* Log STARTUP and CREATED hits — these are the messages that should
+       fire weapon-equip cog code on level start.  Only log when we have
+       a handler match so the noise is bounded by the number of cogs in
+       the level (<200 typically) instead of N-per-frame. */
+    if ((message == 3 /* STARTUP */ || message == 1 /* CREATED */) && trigIdx < trigIdxMax) {
+        static int _stc = 0;
+        if (_stc < 32) {
+            XDBGF("CogMsg[match]: msg=%d cog=%p numTrig=%u\n",
+                  message, (void*)cog, (unsigned)trigIdxMax);
+            _stc++;
+        }
+    }
+#endif
     if ( trigIdx == trigIdxMax )
     {
         if ( (v13 & 1) != 0 )

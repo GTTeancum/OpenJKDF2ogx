@@ -216,7 +216,11 @@ void stdControl_ReadControls(void)
     g_prevButtons = buttons;
 
     /* Analog buttons — face */
-    cur = (pad->bAnalogButtons[XB_BTN_A] > ANALOG_THRESHOLD); prev = (g_prevAnalog[XB_BTN_A] > ANALOG_THRESHOLD); if (cur != prev) stdControl_SetKeydown(DIK_X,        cur, tick);  /* A = Jump */
+    cur = (pad->bAnalogButtons[XB_BTN_A] > ANALOG_THRESHOLD); prev = (g_prevAnalog[XB_BTN_A] > ANALOG_THRESHOLD);
+    if (cur != prev) {
+        stdControl_SetKeydown(DIK_X, cur, tick);  /* A = Jump (DIK_X = 0x2D bound to INPUT_FUNC_JUMP at sithControl.c:1916) */
+        { static int _ab=0; if(_ab<8){ XDBGF("ABtn A: cur=%d prev=%d -> DIK_X(0x2D)=%d\n", cur, prev, cur); _ab++; } }
+    }
     cur = (pad->bAnalogButtons[XB_BTN_X] > ANALOG_THRESHOLD); prev = (g_prevAnalog[XB_BTN_X] > ANALOG_THRESHOLD); if (cur != prev) stdControl_SetKeydown(DIK_SPACE,    cur, tick);  /* X = Activate */
     cur = (pad->bAnalogButtons[XB_BTN_Y] > ANALOG_THRESHOLD); prev = (g_prevAnalog[XB_BTN_Y] > ANALOG_THRESHOLD); if (cur != prev) stdControl_SetKeydown(DIK_RETURN,   cur, tick);  /* Y = Use Inventory */
     /* Analog buttons — shoulders */

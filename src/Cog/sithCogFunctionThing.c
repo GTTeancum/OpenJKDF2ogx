@@ -1,5 +1,9 @@
 #include "sithCogFunctionThing.h"
 
+#ifdef TARGET_XBOX
+extern "C" void xbox_debug_Printf(const char*, ...);
+#endif
+
 #include <stdint.h>
 #include "World/sithSector.h"
 #include "World/sithThing.h"
@@ -776,9 +780,22 @@ void sithCogFunctionThing_SetInv(sithCog *ctx)
         binIdx = sithInventory_SelectWeaponFollowing(binIdx);
     }
 
-    if ( playerThing 
-         && playerThing->type == SITH_THING_PLAYER 
-         && playerThing->actorParams.playerinfo 
+#ifdef TARGET_XBOX
+    /* Diagnostic — log every SetInv cog call so we can see what cog
+       grants the bryar / fists / ammo at level start. */
+    { static int _si = 0;
+      if (_si < 24) {
+          xbox_debug_Printf("CogVerb SetInv: cog=%p thing=%p bin=%u amt=%g\n",
+                            (void*)ctx, (void*)playerThing,
+                            (unsigned)binIdx, (double)amt);
+          _si++;
+      }
+    }
+#endif
+
+    if ( playerThing
+         && playerThing->type == SITH_THING_PLAYER
+         && playerThing->actorParams.playerinfo
          && binIdx < SITHBIN_NUMBINS )
         sithInventory_SetBinAmount(playerThing, binIdx, amt);
 }
@@ -1467,6 +1484,15 @@ void sithCogFunctionThing_SetCurInvWeapon(sithCog *ctx)
     if (Main_bMotsCompat && binIdx < SITHBIN_ENERGY) {
         binIdx = sithInventory_SelectWeaponFollowing(binIdx);
     }
+#ifdef TARGET_XBOX
+    { static int _sciw = 0;
+      if (_sciw < 16) {
+          xbox_debug_Printf("CogVerb SetCurInvWeapon: cog=%p thing=%p bin=%u\n",
+                            (void*)ctx, (void*)pThing, (unsigned)binIdx);
+          _sciw++;
+      }
+    }
+#endif
     if (pThing)
         sithInventory_SetCurWeapon(pThing, binIdx);
 }
