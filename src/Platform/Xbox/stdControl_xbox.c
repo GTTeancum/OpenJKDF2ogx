@@ -61,8 +61,12 @@ static int   g_crouchToggle;
 static int   g_sprintToggle;
 static int   g_connected;
 static HANDLE g_hController;
-static float g_lookSensX = 2.5f;
-static float g_lookSensY = 2.0f;
+/* Right-stick sensitivity multipliers.  These compound with the engine's
+ * own binaryAxisVal (1.5 for TURN, 1.25 for PITCH set in
+ * sithControl_MapDefaultsJoystick).  Halved from the previous 2.5/2.0
+ * which felt too twitchy on hardware. */
+static float g_lookSensX = 1.25f;
+static float g_lookSensY = 1.0f;
 static int   g_openAttempted;  /* deferred XInputOpen: tried once from ReadControls */
 
 /* Key state array — indexed by DIK_ value */
@@ -217,10 +221,22 @@ void stdControl_ReadControls(void)
 
     for (i = 0; i < 8; i++) g_prevAnalog[i] = pad->bAnalogButtons[i];
 
-    /* Sticks — match engine's AXIS_JOY1_* index layout. */
+    /* Sticks — match engine's AXIS_JOY1_* index layout.
+     *
+     * Polarity notes (verified empirically from on-hardware log,
+     * commit fffe5ecd — XDK XINPUT_GAMEPAD shorts on retail hardware
+     * read opposite-sign to the documented convention for our setup):
+     *  - sThumbLY: pushing UP yields a NEGATIVE short, so we negate
+     *    to get the engine's "forward is positive" convention.
+     *  - sThumbRX: pushing RIGHT yields a NEGATIVE short, so we
+     *    negate to get "turn-right is positive" (engine TURN convention).
+     *  - sThumbLX: left/right strafe matches engine SLIDE polarity
+     *    out-of-the-box, no negation.
+     *  - sThumbRY: was already negated for the engine's "look-up
+     *    is positive PITCH" convention; keep as-is. */
     g_axisValues[XBOX_AXIS_TURN]    =  xbox_NormalizeStick(pad->sThumbLX);
-    g_axisValues[XBOX_AXIS_FORWARD] =  xbox_NormalizeStick(pad->sThumbLY);
-    g_axisValues[XBOX_AXIS_LOOK_LR] =  xbox_NormalizeStick(pad->sThumbRX) * g_lookSensX;
+    g_axisValues[XBOX_AXIS_FORWARD] = -xbox_NormalizeStick(pad->sThumbLY);
+    g_axisValues[XBOX_AXIS_LOOK_LR] = -xbox_NormalizeStick(pad->sThumbRX) * g_lookSensX;
     g_axisValues[XBOX_AXIS_LOOK_UD] = -xbox_NormalizeStick(pad->sThumbRY) * g_lookSensY;
 
     /* Per-call axis-value log to confirm input is reaching us.  Throttled
