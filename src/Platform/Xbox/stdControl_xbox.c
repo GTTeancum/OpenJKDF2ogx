@@ -24,6 +24,7 @@
 #define DIK_F           0x21    /* Use Force */
 #define DIK_X           0x2D    /* Jump */
 #define DIK_Z           0x2C
+#define DIK_C           0x2E    /* Duck/Crouch */
 #define DIK_LBRACKET    0x1A    /* Prev Weapon */
 #define DIK_RBRACKET    0x1B    /* Next Weapon */
 #define DIK_RETURN      0x1C    /* Use Inventory */
@@ -255,10 +256,15 @@ void stdControl_ReadControls(void)
     cur = (pad->bAnalogButtons[XB_BTN_RT]    > ANALOG_THRESHOLD); prev = (g_prevAnalog[XB_BTN_RT]    > ANALOG_THRESHOLD); if (cur != prev) stdControl_SetKeydown(KEY_JOY1_B17, cur, tick);
     cur = (pad->bAnalogButtons[XB_BTN_LT]    > ANALOG_THRESHOLD); prev = (g_prevAnalog[XB_BTN_LT]    > ANALOG_THRESHOLD); if (cur != prev) stdControl_SetKeydown(KEY_JOY1_B16, cur, tick);
 
-    /* B - crouch toggle */
+    /* B - crouch toggle.
+     * DIK_C is the engine's DUCK key (sithControl.c:1939).  DIK_LCONTROL
+     * was the previous mapping and is actually bound to FIRE1
+     * (sithControl.c:1941) — so the toggle was firing the weapon once
+     * per tap instead of crouching.  Pre-edge-counter, that bug was
+     * dormant because the OR-overwrite zeroed pOut before FIRE1 saw it. */
     cur  = (pad->bAnalogButtons[XB_BTN_B] > ANALOG_THRESHOLD);
     prev = (g_prevAnalog[XB_BTN_B]         > ANALOG_THRESHOLD);
-    if (cur && !prev) { g_crouchToggle = !g_crouchToggle; stdControl_SetKeydown(DIK_LCONTROL, g_crouchToggle, tick); }
+    if (cur && !prev) { g_crouchToggle = !g_crouchToggle; stdControl_SetKeydown(DIK_C, g_crouchToggle, tick); }
 
     for (i = 0; i < 8; i++) g_prevAnalog[i] = pad->bAnalogButtons[i];
 
