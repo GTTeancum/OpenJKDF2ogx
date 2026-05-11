@@ -1038,40 +1038,45 @@ void std3D_DrawRenderList(void)
             }
 
             glBegin(GL_TRIANGLES);
+            /* Per-vertex lighting modulation.
+             *
+             * The engine writes a [0..1] monochrome light value into
+             * D3DVERTEX.lightLevel for each vertex (rdCache.c:823 on
+             * SDL2_RENDER, mixing sector ambient / surface
+             * light_level_static / per-vertex vertexIntensities[]).
+             * The .color field on the same vertex SHOULD contain a
+             * full RGB lit color (rdCache.c:935) but in practice it's
+             * very often 0xFF000000 on JK1 surfaces — palette colormap
+             * tint is identity on the basic NarShaddaa walls so the
+             * R/G/B channels never get bumped above 0.  Using .color
+             * directly therefore zeroes the texture out.
+             *
+             * Switch to multiplying TEXTURE * lightLevel (monochrome).
+             * For untextured polys (no material at all) emit pure
+             * lightLevel so they show up as gray-scale.  D3DTOP_MODULATE
+             * is the default texture-stage op so the GPU does the
+             * COLOR * TEXTURE blend per pixel for free.
+             *
+             * TODO when JKM_LIGHTING is on we'll want to use .color so
+             * coloured lights work; for now JK1 is monochrome and the
+             * .color field can't be trusted. */
             if (textured) {
-                /* Force white so texture color shows undimmed.  Engine
-                 * vertex DIFFUSE is often 0xFF000000 — modulating with
-                 * texture would darken everything to black. */
-                glColor4f(1.0f, 1.0f, 1.0f, 1.0f);
+                glColor4f(a->lightLevel, a->lightLevel, a->lightLevel, 1.0f);
                 glTexCoord2f(a->tu, a->tv);
                 V3F_ENGINE_TO_GL(a);
+                glColor4f(b->lightLevel, b->lightLevel, b->lightLevel, 1.0f);
                 glTexCoord2f(b->tu, b->tv);
                 V3F_ENGINE_TO_GL(b);
+                glColor4f(c->lightLevel, c->lightLevel, c->lightLevel, 1.0f);
                 glTexCoord2f(c->tu, c->tv);
                 V3F_ENGINE_TO_GL(c);
             } else {
-#if STD3D_FORCE_WHITE_UNTEX
-                glColor4f(1.0f, 1.0f, 1.0f, 1.0f);
+                glColor4f(a->lightLevel, a->lightLevel, a->lightLevel, 1.0f);
                 V3F_ENGINE_TO_GL(a);
+                glColor4f(b->lightLevel, b->lightLevel, b->lightLevel, 1.0f);
                 V3F_ENGINE_TO_GL(b);
+                glColor4f(c->lightLevel, c->lightLevel, c->lightLevel, 1.0f);
                 V3F_ENGINE_TO_GL(c);
-#else
-                glColor4f(((a->color >> 16) & 0xFF) / 255.0f,
-                          ((a->color >>  8) & 0xFF) / 255.0f,
-                          ((a->color      ) & 0xFF) / 255.0f,
-                          ((a->color >> 24) & 0xFF) / 255.0f);
-                V3F_ENGINE_TO_GL(a);
-                glColor4f(((b->color >> 16) & 0xFF) / 255.0f,
-                          ((b->color >>  8) & 0xFF) / 255.0f,
-                          ((b->color      ) & 0xFF) / 255.0f,
-                          ((b->color >> 24) & 0xFF) / 255.0f);
-                V3F_ENGINE_TO_GL(b);
-                glColor4f(((c->color >> 16) & 0xFF) / 255.0f,
-                          ((c->color >>  8) & 0xFF) / 255.0f,
-                          ((c->color      ) & 0xFF) / 255.0f,
-                          ((c->color >> 24) & 0xFF) / 255.0f);
-                V3F_ENGINE_TO_GL(c);
-#endif
             }
         }
 #endif
