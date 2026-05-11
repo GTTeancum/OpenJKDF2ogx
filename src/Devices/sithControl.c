@@ -1986,7 +1986,15 @@ void sithControl_InputInit()
     XDBG("InputInit: pre MapAxisFunc(FORWARD->JOY1_Y), (TURN->JOY1_X)\n");
 #endif
     sithControl_MapAxisFunc(INPUT_FUNC_FORWARD, AXIS_JOY1_Y, 4u);
+#ifndef TARGET_XBOX
+    /* Xbox uses dual-stick layout (see sithControl_MapDefaultsJoystick below):
+     *   left stick  → FORWARD + SLIDE  (Y + X)
+     *   right stick → TURN + PITCH     (Z + R)
+     * Mapping TURN to JOY1_X here too causes left-stick L/R to both strafe
+     * AND turn — and turn dominates, so the stick "feels like" pure turn.
+     * Skip the JOY1_X→TURN binding on Xbox so left stick is pure SLIDE. */
     sithControl_MapAxisFunc(INPUT_FUNC_TURN, AXIS_JOY1_X, 4u);
+#endif
 #ifdef TARGET_XBOX
     XDBGF("InputInit: post bind. FORWARD numEntries=%d TURN numEntries=%d\n",
           sithControl_aInputFuncToKeyinfo[INPUT_FUNC_FORWARD].numEntries,

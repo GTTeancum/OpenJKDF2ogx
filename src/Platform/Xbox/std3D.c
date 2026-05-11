@@ -56,6 +56,7 @@ void __stdcall glOrtho        (GLdouble l, GLdouble r, GLdouble b,
                                GLdouble t, GLdouble n, GLdouble f);
 void __stdcall glEnable       (GLenum cap);
 void __stdcall glDisable      (GLenum cap);
+void __stdcall glDepthFunc    (GLenum func);
 
 /* Texture entry points exposed by FakeGL (fakeglx.cpp:3302+).
  * NOTE: glBindTexture and glTexParameteri are declared in gl/gl.h but are
@@ -85,6 +86,8 @@ void * __stdcall wglGetProcAddress(const char *s);
 #define GL_MODELVIEW           0x1700
 #define GL_TEXTURE_2D          0x0DE1
 #define GL_DEPTH_TEST          0x0B71
+#define GL_LESS                0x0201
+#define GL_LEQUAL              0x0203
 #define GL_CULL_FACE           0x0B44
 #define GL_BLEND               0x0BE2
 #define GL_ALPHA_TEST          0x0BC0
@@ -889,6 +892,13 @@ void std3D_DrawRenderList(void)
     if (GL_numTris == 0 || !GL_verticesDone) return;
     std3D_DebugLineKV(10, "DRAWN", GL_numTris);
 
+    /* Depth test ON for world geometry — engine's z values come out of
+     * rdCache.c:759 as `1 - (1/depth_y)/ZFAR` ∈ [0.5..0.9999] with near
+     * < far, so GL_LESS draws near-over-far correctly.  Without this,
+     * NPCs visible through walls etc. */
+    glEnable(GL_DEPTH_TEST);
+    glDepthFunc(GL_LESS);
+
     {
         static int _f = 0;
         if (_f < 3)
@@ -913,6 +923,11 @@ void std3D_DrawRenderList(void)
      * surfaces missing textures stay diagnosable. */
 #define STD3D_WIREFRAME       0
 #define STD3D_FORCE_WHITE_UNTEX 1
+/* When STD3D_WIREFRAME_OVERLAY is set, after the textured pass we draw
+ * the same triangles as colored line outlines on top.  Lets you see if
+ * the "warp" is a triangle/geometry problem (visible in lines) or a UV
+ * problem (lines look right, textures swim). */
+#define STD3D_WIREFRAME_OVERLAY 1
     {
         int textured_tris = 0, untextured_tris = 0, bind_switches = 0;
         unsigned int last_id = 0;
@@ -1003,6 +1018,32 @@ void std3D_DrawRenderList(void)
         std3D_DebugLineKV(4, "BIND",  bind_switches);
         std3D_DebugLineKV(14, "UVOOR", (int)g_uvOOR);
     }
+#endif
+
+#if STD3D_WIREFRAME_OVERLAY && !STD3D_WIREFRAME
+    /* Diagnostic wireframe overlay — same tris re-emitted as colored
+     * line segments with depth-test off so we see edges through walls.
+     * If the world geometry tessellation looks fine in lines but the
+     * filled pass looks "warped", the problem is UV interpolation
+     * (affine texturing), not the underlying triangles. */
+    glDisable(GL_TEXTURE_2D);
+    glDisable(GL_DEPTH_TEST);
+    for (i = 0; i < GL_numTris; ++i) {
+        rdTri      *t  = &GL_tmpTris[i];
+        D3DVERTEX  *a  = &GL_tmpVertices[t->v1];
+        D3DVERTEX  *b  = &GL_tmpVertices[t->v2];
+        D3DVERTEX  *c  = &GL_tmpVertices[t->v3];
+        glBegin(GL_LINES);
+        glColor4f(0.0f, 1.0f, 0.0f, 1.0f);  /* bright green */
+        glVertex3f(a->x, a->y, a->z);
+        glVertex3f(b->x, b->y, b->z);
+        glVertex3f(b->x, b->y, b->z);
+        glVertex3f(c->x, c->y, c->z);
+        glVertex3f(c->x, c->y, c->z);
+        glVertex3f(a->x, a->y, a->z);
+        glEnd();
+    }
+    glEnable(GL_DEPTH_TEST);
 #endif
 
     GL_numVertices  = 0;

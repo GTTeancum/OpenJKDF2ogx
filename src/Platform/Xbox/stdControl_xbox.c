@@ -223,20 +223,17 @@ void stdControl_ReadControls(void)
 
     /* Sticks — match engine's AXIS_JOY1_* index layout.
      *
-     * Polarity notes (verified empirically from on-hardware log,
-     * commit fffe5ecd — XDK XINPUT_GAMEPAD shorts on retail hardware
-     * read opposite-sign to the documented convention for our setup):
+     * Polarity (verified on hardware):
      *  - sThumbLY: pushing UP yields a NEGATIVE short, so we negate
      *    to get the engine's "forward is positive" convention.
-     *  - sThumbRX: pushing RIGHT yields a NEGATIVE short, so we
-     *    negate to get "turn-right is positive" (engine TURN convention).
-     *  - sThumbLX: left/right strafe matches engine SLIDE polarity
-     *    out-of-the-box, no negation.
-     *  - sThumbRY: was already negated for the engine's "look-up
-     *    is positive PITCH" convention; keep as-is. */
+     *  - sThumbLX: strafe out-of-the-box, no negation.
+     *  - sThumbRX: turn-right matches engine TURN polarity directly,
+     *    no negation. (Earlier negation flipped it the wrong way.)
+     *  - sThumbRY: was already negated for "look-up = positive PITCH"
+     *    convention; keep as-is. */
     g_axisValues[XBOX_AXIS_TURN]    =  xbox_NormalizeStick(pad->sThumbLX);
     g_axisValues[XBOX_AXIS_FORWARD] = -xbox_NormalizeStick(pad->sThumbLY);
-    g_axisValues[XBOX_AXIS_LOOK_LR] = -xbox_NormalizeStick(pad->sThumbRX) * g_lookSensX;
+    g_axisValues[XBOX_AXIS_LOOK_LR] =  xbox_NormalizeStick(pad->sThumbRX) * g_lookSensX;
     g_axisValues[XBOX_AXIS_LOOK_UD] = -xbox_NormalizeStick(pad->sThumbRY) * g_lookSensY;
 
     /* Per-call axis-value log to confirm input is reaching us.  Throttled
