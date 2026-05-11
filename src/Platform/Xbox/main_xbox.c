@@ -69,7 +69,19 @@ void __cdecl main(void)
 
     /* ----------------------------------------------------------------
      * 1. D3D8 device + swapchain
+     *
+     * Override FakeGL's default 640x480 backbuffer (fakeglx.cpp:91-92)
+     * BEFORE Window_xbox_Startup → std3D_Startup → wglCreateContext
+     * builds the device.  gWidth/gHeight aren't `static` so they're
+     * reachable as `extern "C"` here.  D3D's BackBufferWidth/Height
+     * (fakeglx.cpp:1580-1581) read those at CreateDevice time.
      * -------------------------------------------------------------- */
+    {
+        extern unsigned long gWidth, gHeight;
+        gWidth  = XBOX_RES_W;
+        gHeight = XBOX_RES_H;
+        XDBGF("main: FakeGL backbuffer set to %lux%lu\n", gWidth, gHeight);
+    }
     if (!Window_xbox_Startup())
     {
         XDBG("main: Window_xbox_Startup failed — halting\n");
@@ -88,13 +100,13 @@ void __cdecl main(void)
         /* stdVideoMode: { int32 field_0; float widthMaybe; stdVBufferTexFmt format {...} } */
         static char xboxVideoModeBuf[128];
         memset(xboxVideoModeBuf, 0, sizeof(xboxVideoModeBuf));
-        *(float*)(xboxVideoModeBuf + 4) = 640.0f;   /* widthMaybe */
-        *(int*)(xboxVideoModeBuf + 8)  = 640;        /* format.width */
-        *(int*)(xboxVideoModeBuf + 12) = 480;        /* format.height */
-        *(int*)(xboxVideoModeBuf + 16) = 640*480;    /* format.texture_size_in_bytes */
-        *(int*)(xboxVideoModeBuf + 20) = 640;        /* format.width_in_bytes */
-        *(int*)(xboxVideoModeBuf + 24) = 640;        /* format.width_in_pixels */
-        *(int*)(xboxVideoModeBuf + 32) = 8;          /* format.format.bpp */
+        *(float*)(xboxVideoModeBuf + 4) = (float)XBOX_RES_W;   /* widthMaybe */
+        *(int*)(xboxVideoModeBuf + 8)  = XBOX_RES_W;            /* format.width */
+        *(int*)(xboxVideoModeBuf + 12) = XBOX_RES_H;            /* format.height */
+        *(int*)(xboxVideoModeBuf + 16) = XBOX_RES_W*XBOX_RES_H; /* format.texture_size_in_bytes */
+        *(int*)(xboxVideoModeBuf + 20) = XBOX_RES_W;            /* format.width_in_bytes */
+        *(int*)(xboxVideoModeBuf + 24) = XBOX_RES_W;            /* format.width_in_pixels */
+        *(int*)(xboxVideoModeBuf + 32) = 8;                     /* format.format.bpp */
         stdDisplay_pCurVideoMode = (struct stdVideoMode*)xboxVideoModeBuf;
 
         /* stdVBuffer: { uint32 bSurfaceLocked; uint32 lock_cnt; uint32 gap8;
@@ -107,12 +119,12 @@ void __cdecl main(void)
         memset(xboxVbufIdk, 0, sizeof(xboxVbufIdk));
         memset(xboxOverlayBuf, 0, sizeof(xboxOverlayBuf));
         /* format starts at offset 12 (after bSurfaceLocked + lock_cnt + gap8) */
-        *(int*)(xboxMenuBuf + 12) = 640;  /* format.width */
-        *(int*)(xboxMenuBuf + 16) = 480;  /* format.height */
-        *(int*)(xboxVbufIdk + 12) = 640;
-        *(int*)(xboxVbufIdk + 16) = 480;
-        *(int*)(xboxOverlayBuf + 12) = 640;
-        *(int*)(xboxOverlayBuf + 16) = 480;
+        *(int*)(xboxMenuBuf + 12) = XBOX_RES_W;  /* format.width */
+        *(int*)(xboxMenuBuf + 16) = XBOX_RES_H;  /* format.height */
+        *(int*)(xboxVbufIdk + 12) = XBOX_RES_W;
+        *(int*)(xboxVbufIdk + 16) = XBOX_RES_H;
+        *(int*)(xboxOverlayBuf + 12) = XBOX_RES_W;
+        *(int*)(xboxOverlayBuf + 16) = XBOX_RES_H;
         Video_pMenuBuffer = (struct stdVBuffer*)xboxMenuBuf;
         Video_pVbufIdk = (struct stdVBuffer*)xboxVbufIdk;
         Video_pOverlayMapBuffer = (struct stdVBuffer*)xboxOverlayBuf;
