@@ -82,12 +82,26 @@ static int   g_openAttempted;  /* deferred XInputOpen: tried once from ReadContr
  * the symptom is "right trigger does nothing because KEY_JOY1_B17 is
  * out of range". */
 #define XBOX_NUM_KEYS  512
-static unsigned char g_keyDown[XBOX_NUM_KEYS];
+static unsigned char g_keyDown[XBOX_NUM_KEYS];      /* current held state */
 static unsigned int  g_keyTime[XBOX_NUM_KEYS];
+/* Per-frame press-edge counter.  Mirrors stdControl_aInput2 in PC's
+ * Common/stdControl.c — increments on each off→on transition,
+ * accumulated into the caller's pOut by ReadKey, then reset at the
+ * top of each ReadControls poll (same point SDL2/stdControl.c:597
+ * zeroes aInput2).  This is what the engine's per-frame
+ * "while(readInput--)" style consumers (NEXTWEAPON cycle, etc.) read
+ * — without it, a held key would be read as N presses where N =
+ * frames-held. */
+static unsigned int  g_keyPress[XBOX_NUM_KEYS];
 
 void stdControl_SetKeydown(int keyNum, int bDown, unsigned int readTime)
 {
     if (keyNum < 0 || keyNum >= XBOX_NUM_KEYS) return;
+    /* Detect off→on transition for press-counter latch (matches the
+     * PC SetKeydown's ++aInput2[keyNum] in Common/stdControl.c:539,
+     * which fires only when bDown && !aKeyInfo[keyNum]). */
+    if (bDown && !g_keyDown[keyNum])
+        g_keyPress[keyNum]++;
     g_keyDown[keyNum] = (unsigned char)(bDown ? 1 : 0);
     g_keyTime[keyNum] = readTime;
 }
@@ -154,6 +168,7 @@ void stdControl_Flush(void)
     memset(g_axisValues, 0, sizeof(g_axisValues));
     memset(g_prevAnalog, 0, sizeof(g_prevAnalog));
     memset(g_keyDown,    0, sizeof(g_keyDown));
+    memset(g_keyPress,   0, sizeof(g_keyPress));
     g_prevButtons = 0;
 }
 
@@ -164,6 +179,13 @@ void stdControl_ReadControls(void)
     WORD buttons, changed;
     unsigned int tick;
     int i, cur, prev;
+
+    /* Reset the press-edge accumulator at the top of every poll, matching
+     * SDL2/stdControl.c:597 which `_memset(stdControl_aInput2, 0, ...)`
+     * just before ReadControls.  Held keys keep g_keyDown set; the per-
+     * frame press count is rebuilt from SetKeydown's off→on edge
+     * detection during the analog/digital button pass below. */
+    memset(g_keyPress, 0, sizeof(g_keyPress));
 
     /* Lazy-open controller on first call.  XInputOpen may block if USB
      * enumeration is not yet complete; deferring to the game loop (after
@@ -276,20 +298,22 @@ int   stdControl_ReadAxisRaw(int n)     { if(n<0||n>=XBOX_NUM_AXES) return 0; re
 float stdControl_ReadKeyAsAxis(int k)   { (void)k; return 0.0f; }
 int   stdControl_ReadAxisAsKey(int n)   { if(n<0||n>=XBOX_NUM_AXES) return 0; return (g_axisValues[n]>0.5f||g_axisValues[n]<-0.5f)?1:0; }
 int   stdControl_ReadKey(int keyNum, int *pOut) {
-    /* `*pOut` is the engine's accumulator across all keys bound to one
-     * input function (sithControl_ReadFunctionMap:740 does it in a
-     * loop).  PC's stdControl_ReadKey accumulates via
-     * `*pOut += stdControl_aInput2[keyNum]` (Common/stdControl.c:455).
-     * If we OVERWRITE pOut here, the last iteration for a multi-key-
-     * bound input wins — and since JUMP is bound to four keys ending
-     * in KEY_MOUSE_B2 (always 0), pressing A (DIK_X) gets clobbered to
-     * 0 before the engine reads pOut.  This was latent until commit
-     * fa55e1b0 bumped XBOX_NUM_KEYS 256→512, which moved
-     * KEY_JOY1_B4 / KEY_MOUSE_B2 from "out of range, early return,
-     * pOut untouched" into "in range, overwrite pOut to 0".
-     * Accumulate to match the PC semantic. */
+    /* Mirror PC's Common/stdControl.c:455:
+     *   *pOut += stdControl_aInput2[keyNum];   (press-edge count)
+     *   result = stdControl_aKeyInfo[keyNum];   (held state)
+     *
+     * sithControl_ReadFunctionMap:740 iterates every bound key and
+     * accumulates *pOut across the whole loop.  Earlier impl
+     * OVERWROTE pOut, which the XBOX_NUM_KEYS bump (256→512) made
+     * actually destructive — JUMP / ACTIVATE / FIRE final iteration
+     * lands on an unbound mouse-button slot and zeroes pOut.
+     *
+     * Accumulate the PRESS counter (g_keyPress), not the held state
+     * (g_keyDown), so per-frame consumers like
+     * `while (readInput--) cycle_weapon();` see one press per
+     * physical button-down event, not one per held frame. */
     if (keyNum < 0 || keyNum >= XBOX_NUM_KEYS) return 0;
-    if (pOut && g_keyDown[keyNum]) (*pOut)++;
+    if (pOut) *pOut += g_keyPress[keyNum];
     return g_keyDown[keyNum];
 }
 void  stdControl_FinishRead(void)       { }
