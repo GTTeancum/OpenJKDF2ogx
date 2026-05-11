@@ -25,6 +25,24 @@ extern "C" void *xbox_get_world_palette(void)
     return (void *)sithWorld_pCurrentWorld->colormaps->colors;
 }
 
+/* Camera-projection parameters bridge for std3D's perspective-matrix
+   setup.  Returns 0 if the camera isn't ready (e.g. before
+   sithCamera_Open completes).  Used by std3D_DrawRenderList to call
+   glFrustum() each frame so the GPU does the perspective projection
+   (instead of CPU pre-projecting vertices into screen space, which
+   strips W and forces affine UV interpolation). */
+extern "C" int xbox_get_camera_params(float* fov_out, float* aspect_out,
+                                       float* znear_out, float* zfar_out)
+{
+    if (!rdCamera_pCurCamera || !rdCamera_pCurCamera->pClipFrustum)
+        return 0;
+    *fov_out   = (float)rdCamera_pCurCamera->fov;
+    *aspect_out= (float)rdCamera_pCurCamera->screenAspectRatio;
+    *znear_out = (float)rdCamera_pCurCamera->pClipFrustum->zNear;
+    *zfar_out  = (float)rdCamera_pCurCamera->pClipFrustum->zFar;
+    return 1;
+}
+
 /* Populate stdControl_aJoysticks[idx] so the engine treats the axis as
  * connected.  Mirrors the canonical PC stdControl_InitAxis impl in
  * src/Platform/Common/stdControl.c:545 — sets flags|=1 (axis exists),

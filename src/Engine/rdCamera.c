@@ -402,8 +402,13 @@ void rdCamera_OrthoProjectSquareLst(rdVector3 *vertices_out, const rdVector3 *ve
 // DSi needs an aspect divide, OpenGL wants nothing??
 void rdCamera_PerspProject(rdVector3 *out, const rdVector3 *v)
 {
-#ifdef TARGET_TWL
-    // DSi does HW projection
+#if defined(TARGET_TWL) || defined(TARGET_XBOX)
+    /* TWL (DSi) and Xbox both do HW projection: copy view-space coords
+       through unchanged.  GPU's projection matrix + perspective divide
+       handles the screen-space mapping AND keeps W (=depth) per-vertex
+       so texture interpolation is perspective-correct.  See
+       src/Platform/Xbox/std3D.c for the matching projection-matrix
+       setup. */
     out->x = v->x;
     out->y = v->y;
     out->z = v->z;
@@ -419,8 +424,8 @@ void rdCamera_PerspProject(rdVector3 *out, const rdVector3 *v)
 
 void rdCamera_PerspProjectLst(rdVector3 *pVerticesOut, const rdVector3 *pVerticesIn, unsigned int numVertices)
 {
-#ifdef TARGET_TWL
-    // DSi does HW projection
+#if defined(TARGET_TWL) || defined(TARGET_XBOX)
+    /* HW projection: pass-through view-space coords. */
     memcpy(pVerticesOut, pVerticesIn, numVertices * sizeof(rdVector3));
     return;
 #endif

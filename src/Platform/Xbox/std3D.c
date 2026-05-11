@@ -15,6 +15,7 @@
 #include "xbox_debug.h"
 #include <stdio.h>           /* sprintf for HUD text formatting */
 #include <string.h>           /* memcpy */
+#include <math.h>            /* tan() for projection-matrix setup */
 
 #ifdef __cplusplus
 extern "C" {
@@ -53,6 +54,8 @@ void __stdcall glMatrixMode   (GLenum mode);
 void __stdcall glLoadIdentity (void);
 void __stdcall glLoadMatrixf  (const GLfloat *m);
 void __stdcall glOrtho        (GLdouble l, GLdouble r, GLdouble b,
+                               GLdouble t, GLdouble n, GLdouble f);
+void __stdcall glFrustum      (GLdouble l, GLdouble r, GLdouble b,
                                GLdouble t, GLdouble n, GLdouble f);
 void __stdcall glEnable       (GLenum cap);
 void __stdcall glDisable      (GLenum cap);
@@ -885,6 +888,11 @@ void std3D_ResetRenderList(void)
 /* up to glTexImage2D + glBindTexture this becomes the path that handles  */
 /* texture state changes per tri.                                         */
 /* ====================================================================== */
+/* Bridge to engine globals — see xbox_world_helper.cpp.  Filled by
+ * the helper from rdCamera_pCurCamera each frame. */
+extern int xbox_get_camera_params(float *fov, float *aspect,
+                                  float *znear, float *zfar);
+
 void std3D_DrawRenderList(void)
 {
     int i;
@@ -892,12 +900,54 @@ void std3D_DrawRenderList(void)
     if (GL_numTris == 0 || !GL_verticesDone) return;
     std3D_DebugLineKV(10, "DRAWN", GL_numTris);
 
-    /* Depth test ON for world geometry — engine's z values come out of
-     * rdCache.c:759 as `1 - (1/depth_y)/ZFAR` ∈ [0.5..0.9999] with near
-     * < far, so GL_LESS draws near-over-far correctly.  Without this,
-     * NPCs visible through walls etc. */
+    /* ---------------------------------------------------------------- */
+    /* HW projection setup.                                              */
+    /*                                                                   */
+    /* The engine's rdCamera_PerspProject is now a pass-through on Xbox  */
+    /* (rdCamera.c:405), so the vertices arriving here are CAMERA-space  */
+    /* (not screen-space): engine convention x=right, y=depth/forward,   */
+    /* z=up.  We feed them to glVertex3f with a YZ swap & Z-flip below   */
+    /* to match GL convention (x=right, y=up, -z=forward), and set up    */
+    /* glFrustum for the projection so D3D performs perspective-correct  */
+    /* UV interpolation via the GPU's per-pixel divide.                  */
+    /*                                                                   */
+    /* Math derivation (matches engine's CPU projection in PerspProject  */
+    /* for a 640x480 / 90deg horizontal / 4:3 camera):                   */
+    /*   tan_h = tan(fov/2)                                              */
+    /*   tan_v = tan_h * screenAspectRatio   (engine uses height/width)  */
+    /*   right = znear * tan_h ; top = znear * tan_v                     */
+    /*   glFrustum(-right, right, -top, top, znear, zfar)                */
+    /* ---------------------------------------------------------------- */
+    {
+        float cam_fov = 90.0f, cam_aspect = 0.75f;
+        float cam_znear = 1.0f/64.0f, cam_zfar = 128.0f;
+        float tan_h, tan_v, half_w, half_h;
+        xbox_get_camera_params(&cam_fov, &cam_aspect, &cam_znear, &cam_zfar);
+
+        tan_h  = (float)tan((double)cam_fov * (3.14159265358979 / 360.0));
+        tan_v  = tan_h * cam_aspect;
+        half_w = cam_znear * tan_h;
+        half_h = cam_znear * tan_v;
+
+        glViewport(0, 0, 640, 480);
+        glMatrixMode(GL_PROJECTION);
+        glLoadIdentity();
+        glFrustum(-half_w, half_w, -half_h, half_h, cam_znear, cam_zfar);
+        glMatrixMode(GL_MODELVIEW);
+        glLoadIdentity();
+
+        { static int _pl=0; if(_pl<3){
+            XDBGF("DRL projection: fov=%.2f aspect=%.4f znear=%.6f zfar=%.2f -> tan_h=%.4f tan_v=%.4f\n",
+                  cam_fov, cam_aspect, cam_znear, cam_zfar, tan_h, tan_v);
+            _pl++;
+        }}
+    }
+
+    /* Depth test: GL_LEQUAL is more forgiving than GL_LESS for coplanar
+     * surfaces (decals, sky polys).  The GPU now writes proper post-
+     * projection NDC z so this just works. */
     glEnable(GL_DEPTH_TEST);
-    glDepthFunc(GL_LESS);
+    glDepthFunc(GL_LEQUAL);
 
     {
         static int _f = 0;
@@ -923,11 +973,16 @@ void std3D_DrawRenderList(void)
      * surfaces missing textures stay diagnosable. */
 #define STD3D_WIREFRAME       0
 #define STD3D_FORCE_WHITE_UNTEX 1
-/* When STD3D_WIREFRAME_OVERLAY is set, after the textured pass we draw
- * the same triangles as colored line outlines on top.  Lets you see if
- * the "warp" is a triangle/geometry problem (visible in lines) or a UV
- * problem (lines look right, textures swim). */
-#define STD3D_WIREFRAME_OVERLAY 1
+/* Diagnostic: re-emit each tri as a green line overlay after the textured
+ * pass.  Confirmed (via hardware test): warp is UV/affine, not tri-level. */
+#define STD3D_WIREFRAME_OVERLAY 0
+
+/* View-space → GL-space convention swap.
+ *   engine: x=right, y=depth (forward into screen), z=up
+ *   GL:     x=right, y=up,                          z=back (so -z=forward)
+ * Reorder coords at the glVertex3f call site so the GPU's projection
+ * matrix (set up via glFrustum above) does the right thing. */
+#define V3F_ENGINE_TO_GL(v) glVertex3f((v)->x, (v)->z, -(v)->y)
     {
         int textured_tris = 0, untextured_tris = 0, bind_switches = 0;
         unsigned int last_id = 0;
@@ -942,12 +997,12 @@ void std3D_DrawRenderList(void)
 #if STD3D_WIREFRAME
         glBegin(GL_LINES);
         glColor4f(1.0f, 1.0f, 1.0f, 1.0f);
-        glVertex3f(a->x, a->y, a->z);
-        glVertex3f(b->x, b->y, b->z);
-        glVertex3f(b->x, b->y, b->z);
-        glVertex3f(c->x, c->y, c->z);
-        glVertex3f(c->x, c->y, c->z);
-        glVertex3f(a->x, a->y, a->z);
+        V3F_ENGINE_TO_GL(a);
+        V3F_ENGINE_TO_GL(b);
+        V3F_ENGINE_TO_GL(b);
+        V3F_ENGINE_TO_GL(c);
+        V3F_ENGINE_TO_GL(c);
+        V3F_ENGINE_TO_GL(a);
 #else
         {
             int textured = (t->texture
@@ -977,33 +1032,33 @@ void std3D_DrawRenderList(void)
                  * texture would darken everything to black. */
                 glColor4f(1.0f, 1.0f, 1.0f, 1.0f);
                 glTexCoord2f(a->tu, a->tv);
-                glVertex3f(a->x, a->y, a->z);
+                V3F_ENGINE_TO_GL(a);
                 glTexCoord2f(b->tu, b->tv);
-                glVertex3f(b->x, b->y, b->z);
+                V3F_ENGINE_TO_GL(b);
                 glTexCoord2f(c->tu, c->tv);
-                glVertex3f(c->x, c->y, c->z);
+                V3F_ENGINE_TO_GL(c);
             } else {
 #if STD3D_FORCE_WHITE_UNTEX
                 glColor4f(1.0f, 1.0f, 1.0f, 1.0f);
-                glVertex3f(a->x, a->y, a->z);
-                glVertex3f(b->x, b->y, b->z);
-                glVertex3f(c->x, c->y, c->z);
+                V3F_ENGINE_TO_GL(a);
+                V3F_ENGINE_TO_GL(b);
+                V3F_ENGINE_TO_GL(c);
 #else
                 glColor4f(((a->color >> 16) & 0xFF) / 255.0f,
                           ((a->color >>  8) & 0xFF) / 255.0f,
                           ((a->color      ) & 0xFF) / 255.0f,
                           ((a->color >> 24) & 0xFF) / 255.0f);
-                glVertex3f(a->x, a->y, a->z);
+                V3F_ENGINE_TO_GL(a);
                 glColor4f(((b->color >> 16) & 0xFF) / 255.0f,
                           ((b->color >>  8) & 0xFF) / 255.0f,
                           ((b->color      ) & 0xFF) / 255.0f,
                           ((b->color >> 24) & 0xFF) / 255.0f);
-                glVertex3f(b->x, b->y, b->z);
+                V3F_ENGINE_TO_GL(b);
                 glColor4f(((c->color >> 16) & 0xFF) / 255.0f,
                           ((c->color >>  8) & 0xFF) / 255.0f,
                           ((c->color      ) & 0xFF) / 255.0f,
                           ((c->color >> 24) & 0xFF) / 255.0f);
-                glVertex3f(c->x, c->y, c->z);
+                V3F_ENGINE_TO_GL(c);
 #endif
             }
         }
@@ -1021,11 +1076,6 @@ void std3D_DrawRenderList(void)
 #endif
 
 #if STD3D_WIREFRAME_OVERLAY && !STD3D_WIREFRAME
-    /* Diagnostic wireframe overlay — same tris re-emitted as colored
-     * line segments with depth-test off so we see edges through walls.
-     * If the world geometry tessellation looks fine in lines but the
-     * filled pass looks "warped", the problem is UV interpolation
-     * (affine texturing), not the underlying triangles. */
     glDisable(GL_TEXTURE_2D);
     glDisable(GL_DEPTH_TEST);
     for (i = 0; i < GL_numTris; ++i) {
@@ -1034,13 +1084,10 @@ void std3D_DrawRenderList(void)
         D3DVERTEX  *b  = &GL_tmpVertices[t->v2];
         D3DVERTEX  *c  = &GL_tmpVertices[t->v3];
         glBegin(GL_LINES);
-        glColor4f(0.0f, 1.0f, 0.0f, 1.0f);  /* bright green */
-        glVertex3f(a->x, a->y, a->z);
-        glVertex3f(b->x, b->y, b->z);
-        glVertex3f(b->x, b->y, b->z);
-        glVertex3f(c->x, c->y, c->z);
-        glVertex3f(c->x, c->y, c->z);
-        glVertex3f(a->x, a->y, a->z);
+        glColor4f(0.0f, 1.0f, 0.0f, 1.0f);
+        V3F_ENGINE_TO_GL(a); V3F_ENGINE_TO_GL(b);
+        V3F_ENGINE_TO_GL(b); V3F_ENGINE_TO_GL(c);
+        V3F_ENGINE_TO_GL(c); V3F_ENGINE_TO_GL(a);
         glEnd();
     }
     glEnable(GL_DEPTH_TEST);

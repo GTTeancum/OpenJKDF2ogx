@@ -719,6 +719,26 @@ int rdCache_SendFaceListToHardware()
 
             for (vtx_idx = 0; vtx_idx < active_6c->numVertices; vtx_idx++)
             {
+#ifdef TARGET_XBOX
+                /* HW projection on Xbox: pass view-space (x, y=depth, z=up)
+                   straight through.  std3D's projection matrix + the
+                   convention swap in glVertex3f handle the rest, and the
+                   GPU does perspective-correct UV interpolation because
+                   each vertex now carries real depth in W after projection.
+                   The .nx field is repurposed by std3D as a sentinel for
+                   "we have view-space here, not screen-space".  Leave it
+                   zero — std3D doesn't read it any more. */
+                iterating_6c_vtxs_ = active_6c->vertices;
+                rdCache_aHWVertices[rdCache_totalVerts].x  = active_6c->vertices[vtx_idx].x;
+                rdCache_aHWVertices[rdCache_totalVerts].y  = active_6c->vertices[vtx_idx].y;
+                rdCache_aHWVertices[rdCache_totalVerts].z  = active_6c->vertices[vtx_idx].z;
+                rdCache_aHWVertices[rdCache_totalVerts].nx = 0.0;
+                rdCache_aHWVertices[rdCache_totalVerts].nz = 0.0;
+                /* d3dvtx_zval / v36 used later for mipmap selection.  Use
+                   the engine's depth axis (y) to keep mipmaps correct. */
+                v36 = active_6c->vertices[vtx_idx].y;
+                d3dvtx_zval = (v36 == 0.0) ? 0.0 : 1.0 / v36;
+#else
 #ifndef TARGET_TWL
 #ifdef RENDER_ROUND_VERTICES
                 rdCache_aHWVertices[rdCache_totalVerts].x = (iterating_6c_vtxs[vtx_idx].x);
@@ -772,6 +792,7 @@ int rdCache_SendFaceListToHardware()
 #ifndef TARGET_TWL
                 rdCache_aHWVertices[rdCache_totalVerts].nz = 0.0;
 #endif
+#endif /* TARGET_XBOX */
                 if ( lighting_capability == 0 )
                 {
                     vertex_b = 255;
@@ -1529,10 +1550,27 @@ int rdCache_AddProcFace(int a1, unsigned int num_vertices, char flags)
                 y_max = v10->y;
                 y_max_related = (flex_t)v9; // FLEXTODO
             }
+#ifdef TARGET_XBOX
+            /* Xbox uses HW projection (rdCamera_PerspProject is pass-through),
+               so vertices[i] is view-space (engine convention: x=right,
+               y=forward/depth, z=up).  Mipmap selection at rdCache.c:483 and
+               the painter-sort comparator at rdCache.c:1459 read procFace->
+               z_min / z_max as "distance from camera", so feed view-space
+               DEPTH (v10->y) into them, not the vertical axis (v10->z).
+               The xy bbox uses view-space x/y too which means it's no
+               longer screen-space — but x_min/x_max/y_min/y_max are unused
+               on SDL2_RENDER (the !SDL2_RENDER bbox-reject below is gated),
+               so it's harmless. */
+            if ( v10->y < z_min )
+                z_min = v10->y;
+            if ( v10->y > z_max )
+                z_max = v10->y;
+#else
             if ( v10->z < z_min )
                 z_min = v10->z;
             if ( v10->z > z_max )
                 z_max = v10->z;
+#endif
             v9++; // There used to be some weird undefined behavior here with y_min_related
             ++v10;
         }
