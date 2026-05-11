@@ -1,5 +1,9 @@
 #include "sithWeapon.h"
 
+#ifdef TARGET_XBOX
+extern "C" void xbox_debug_Printf(const char*, ...);
+#endif
+
 #include "World/sithThing.h"
 #include "World/jkPlayer.h"
 #include "World/sithSector.h"
@@ -1211,6 +1215,13 @@ int sithWeapon_HandleWeaponKeys(sithThing *player, flex_t a2)
 
             v18 = sithInventory_GetCurWeapon(player);
             v19 = sithInventory_GetBinByIdx(v18);
+#ifdef TARGET_XBOX
+            { static int _hwk=0; if(_hwk<24){
+                xbox_debug_Printf("HandleWeapon: curBin=%d bin=%p cog=%p\n",
+                                  v18, (void*)v19, v19 ? (void*)v19->cog : 0);
+                _hwk++;
+            }}
+#endif
             v20 = INPUT_FUNC_FIRE2;
             v26 = INPUT_FUNC_FIRE2;
             v25 = 1;
@@ -1220,6 +1231,13 @@ int sithWeapon_HandleWeaponKeys(sithThing *player, flex_t a2)
                 v22 = v20 - 10;
                 if ( sithControl_ReadFunctionMap(v20, &readInput) )
                 {
+#ifdef TARGET_XBOX
+                    { static int _fp=0; if(_fp<8){
+                                xbox_debug_Printf("FirePressed: inputFunc=%d v22=%d readInput=%d cog=%p\n",
+                                          v20, v22, readInput, v19 ? (void*)v19->cog : 0);
+                        _fp++;
+                    }}
+#endif
                     if (sithThing_MotsTick(3, 0, (flex_t)v22) && !sithWeapon_a8BD030[v25]) // MOTS added // FLEXTODO
                     {
                         sithWeapon_a8BD030[v25] = 1;

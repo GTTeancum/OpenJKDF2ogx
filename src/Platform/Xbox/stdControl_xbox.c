@@ -12,6 +12,11 @@
 #include <xtl.h>
 #include <string.h>
 
+/* Engine extended-key constants (KEY_JOY1_B1..B17, etc.).  These are
+ * the DirectInput-equivalent slot numbers the engine binds INPUT_FUNC_*
+ * against — must match what sithControl_MapDefaultsJoystick uses. */
+#include "../../types_enums.h"
+
 #define DIK_ESCAPE      0x01
 #define DIK_TAB         0x0F
 #define DIK_Q           0x10
@@ -69,8 +74,14 @@ static float g_lookSensX = 1.25f;
 static float g_lookSensY = 1.0f;
 static int   g_openAttempted;  /* deferred XInputOpen: tried once from ReadControls */
 
-/* Key state array — indexed by DIK_ value */
-#define XBOX_NUM_KEYS  256
+/* Key state array — indexed by DIK_ value OR engine-extended joy/mouse
+ * key index.  Must be >= JK_NUM_KEYS = 0x100 + JK_NUM_EXTENDED_KEYS
+ * (types_enums.h:236).  Engine extended keys (JOY1_B1..B17, etc.) live
+ * above 0x100, so a 512-slot array safely covers all DIK + joystick +
+ * mouse buttons.  Smaller arrays silently drop joy-button writes —
+ * the symptom is "right trigger does nothing because KEY_JOY1_B17 is
+ * out of range". */
+#define XBOX_NUM_KEYS  512
 static unsigned char g_keyDown[XBOX_NUM_KEYS];
 static unsigned int  g_keyTime[XBOX_NUM_KEYS];
 
@@ -211,8 +222,12 @@ void stdControl_ReadControls(void)
     /* Analog buttons — shoulders */
     cur = (pad->bAnalogButtons[XB_BTN_WHITE] > ANALOG_THRESHOLD); prev = (g_prevAnalog[XB_BTN_WHITE] > ANALOG_THRESHOLD); if (cur != prev) stdControl_SetKeydown(DIK_F,       cur, tick);  /* White/RB = Use Force */
     cur = (pad->bAnalogButtons[XB_BTN_BLACK] > ANALOG_THRESHOLD); prev = (g_prevAnalog[XB_BTN_BLACK] > ANALOG_THRESHOLD); if (cur != prev) stdControl_SetKeydown(DIK_E,       cur, tick);  /* Black/LB = Next Force Power */
-    cur = (pad->bAnalogButtons[XB_BTN_RT]    > ANALOG_THRESHOLD); prev = (g_prevAnalog[XB_BTN_RT]    > ANALOG_THRESHOLD); if (cur != prev) stdControl_SetKeydown(DIK_RCONTROL, cur, tick);
-    cur = (pad->bAnalogButtons[XB_BTN_LT]    > ANALOG_THRESHOLD); prev = (g_prevAnalog[XB_BTN_LT]    > ANALOG_THRESHOLD); if (cur != prev) stdControl_SetKeydown(DIK_Z,        cur, tick);
+    /* Triggers → joystick fire buttons.  Engine's MapDefaultsJoystick
+     * (sithControl.c:2399-2400) binds INPUT_FUNC_FIRE1 to KEY_JOY1_B17
+     * and INPUT_FUNC_FIRE2 to KEY_JOY1_B16, so we write directly into
+     * those slots — no DIK round-trip.  RT=fire1 (rtrig), LT=fire2 (ltrig). */
+    cur = (pad->bAnalogButtons[XB_BTN_RT]    > ANALOG_THRESHOLD); prev = (g_prevAnalog[XB_BTN_RT]    > ANALOG_THRESHOLD); if (cur != prev) stdControl_SetKeydown(KEY_JOY1_B17, cur, tick);
+    cur = (pad->bAnalogButtons[XB_BTN_LT]    > ANALOG_THRESHOLD); prev = (g_prevAnalog[XB_BTN_LT]    > ANALOG_THRESHOLD); if (cur != prev) stdControl_SetKeydown(KEY_JOY1_B16, cur, tick);
 
     /* B - crouch toggle */
     cur  = (pad->bAnalogButtons[XB_BTN_B] > ANALOG_THRESHOLD);

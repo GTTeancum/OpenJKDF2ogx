@@ -1,5 +1,9 @@
 #include "sithInventory.h"
 
+#ifdef TARGET_XBOX
+extern "C" void xbox_debug_Printf(const char*, ...);
+#endif
+
 #include "jk.h"
 #include "Cog/sithCog.h"
 #include "Gameplay/sithTime.h"
@@ -333,6 +337,15 @@ void sithInventory_SetCurWeapon(sithThing *player, int idx)
     if (!player || !player->actorParams.playerinfo) return; // Added: Prevent nullptr deref
 
     player->actorParams.playerinfo->curWeapon = idx;
+#ifdef TARGET_XBOX
+    {
+        static int _scw = 0;
+        if (_scw < 16) {
+            xbox_debug_Printf("SetCurWeapon: player=%p bin=%d\n", (void*)player, idx);
+            _scw++;
+        }
+    }
+#endif
 }
 
 int sithInventory_GetCurItem(sithThing *player)
