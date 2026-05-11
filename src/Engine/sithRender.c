@@ -929,10 +929,30 @@ void sithRender_Clip(sithSector *sector, rdClipFrustum *frustumArg, flex_t prevA
             {
 #ifdef TARGET_TWL
                 rdCamera_pCurCamera->fnProjectLstClip(sithRender_aVerticesTmp_projected, sithRender_aVerticesTmp, meshinfo_out.numVertices);
+#elif defined(TARGET_XBOX)
+                /* Xbox: fnProjectLst is a pass-through (HW projection on
+                 * the GPU — see commit b31c660d).  But the bbox below
+                 * needs real screen-space pixel bounds to feed into
+                 * rdCamera_BuildClipFrustum for the back-sector sub-
+                 * frustum.  Inline the same projection formula PerspProject
+                 * uses on non-Xbox so the sector graph traversal still
+                 * sees screen coords. */
+                {
+                    flex_t cx = rdCamera_pCurCamera->canvas->half_screen_width;
+                    flex_t cy = rdCamera_pCurCamera->canvas->half_screen_height;
+                    flex_t fovDx = rdCamera_pCurCamera->fovDx;
+                    for (int _i = 0; _i < (int)meshinfo_out.numVertices; _i++) {
+                        flex_t d = sithRender_aVerticesTmp[_i].y;
+                        flex_t s = (d == 0.0) ? 0.0 : (fovDx / d);
+                        sithRender_aVerticesTmp_projected[_i].x = cx + sithRender_aVerticesTmp[_i].x * s;
+                        sithRender_aVerticesTmp_projected[_i].y = cy - sithRender_aVerticesTmp[_i].z * s;
+                        sithRender_aVerticesTmp_projected[_i].z = d;
+                    }
+                }
 #else
                 rdCamera_pCurCamera->fnProjectLst(sithRender_aVerticesTmp_projected, sithRender_aVerticesTmp, meshinfo_out.numVertices);
 #endif
-                
+
                 v31 = frustumArg;
 
                 // no frustum culling if forced
