@@ -60,6 +60,7 @@ void __stdcall glFrustum      (GLdouble l, GLdouble r, GLdouble b,
 void __stdcall glEnable       (GLenum cap);
 void __stdcall glDisable      (GLenum cap);
 void __stdcall glDepthFunc    (GLenum func);
+void __stdcall glAlphaFunc    (GLenum func, GLfloat ref);
 
 /* Texture entry points exposed by FakeGL (fakeglx.cpp:3302+).
  * NOTE: glBindTexture and glTexParameteri are declared in gl/gl.h but are
@@ -91,6 +92,7 @@ void * __stdcall wglGetProcAddress(const char *s);
 #define GL_DEPTH_TEST          0x0B71
 #define GL_LESS                0x0201
 #define GL_LEQUAL              0x0203
+#define GL_GREATER             0x0204
 #define GL_CULL_FACE           0x0B44
 #define GL_BLEND               0x0BE2
 #define GL_ALPHA_TEST          0x0BC0
@@ -948,6 +950,16 @@ void std3D_DrawRenderList(void)
      * projection NDC z so this just works. */
     glEnable(GL_DEPTH_TEST);
     glDepthFunc(GL_LEQUAL);
+
+    /* Alpha test: discard pixels with alpha < 128/255 so chroma-keyed
+     * textures (sector-adjoin grates, fence textures, etc.) don't punch
+     * their z into the depth buffer for transparent texels.  Without
+     * this, depth-test + textured-with-alpha = the transparent texels
+     * still occlude back-sector geometry — sector adjoins read as
+     * opaque black.  ALPHA_TEST is fragment-discard; passes don't get
+     * a depth write, so adjacent sectors render correctly through. */
+    glEnable(GL_ALPHA_TEST);
+    glAlphaFunc(GL_GREATER, 0.5f);
 
     {
         static int _f = 0;
