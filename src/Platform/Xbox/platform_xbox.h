@@ -12,20 +12,6 @@
 #define PLATFORM_NOSOCKETS   1
 #define QOL_IMPROVEMENTS     1
 
-/* ── Output resolution ─────────────────────────────────────────── */
-/* Original Xbox supports 480i / 480p / 720p / 1080i.  720p requires
- * a 720p-capable AV pack (component cable typically); the kernel
- * advertises support via XGetVideoFlags() & XC_VIDEO_FLAGS_HDTV_720p.
- * If the cable lacks HD, D3D falls back to 640x480 internally and the
- * backbuffer is scaled down at scan-out, so this is safe to leave
- * defaulted at 720p (no detection path needed for an experimental
- * build — if the user has an SDTV they'll just see scaled output).
- *
- * Code under TARGET_XBOX uses XBOX_RES_W/XBOX_RES_H instead of
- * hardcoded 640/480 so resolution is a one-place flip. */
-#define XBOX_RES_W  1280
-#define XBOX_RES_H  720
-
 /* ── Suppress unavailable features ────────────────────────────── */
 #define TARGET_NO_MULTIPLAYER_MENUS  1
 #define LINUX_TMP                    1

@@ -296,10 +296,10 @@ int std3D_Startup(void)
      * bias produce a near-identity remap that keeps any reasonable input
      * z inside D3D's [0, 1] clip range.  Narrow ranges like (0, 1) flip
      * positive view-z into negative NDC-z, front-clipping the geometry. */
-    glViewport(0, 0, XBOX_RES_W, XBOX_RES_H);
+    glViewport(0, 0, 640, 480);
     glMatrixMode(GL_PROJECTION);
     glLoadIdentity();
-    glOrtho(0.0, (GLdouble)XBOX_RES_W, (GLdouble)XBOX_RES_H, 0.0, -99999.0, 99999.0);
+    glOrtho(0.0, 640.0, 480.0, 0.0, -99999.0, 99999.0);
     glMatrixMode(GL_MODELVIEW);
     glLoadIdentity();
     glDisable(GL_DEPTH_TEST);
@@ -744,10 +744,10 @@ void std3D_Present(void)
 
     /* Restore 2D state for HUD draw — engine left projection in
      * perspective + modelview = view matrix. */
-    glViewport(0, 0, XBOX_RES_W, XBOX_RES_H);
+    glViewport(0, 0, 640, 480);
     glMatrixMode(GL_PROJECTION);
     glLoadIdentity();
-    glOrtho(0.0, (GLdouble)XBOX_RES_W, (GLdouble)XBOX_RES_H, 0.0, -99999.0, 99999.0);
+    glOrtho(0.0, 640.0, 480.0, 0.0, -99999.0, 99999.0);
     glMatrixMode(GL_MODELVIEW);
     glLoadIdentity();
     glDisable(GL_DEPTH_TEST);
@@ -931,7 +931,7 @@ void std3D_DrawRenderList(void)
         half_w = cam_znear * tan_h;
         half_h = cam_znear * tan_v;
 
-        glViewport(0, 0, XBOX_RES_W, XBOX_RES_H);
+        glViewport(0, 0, 640, 480);
         glMatrixMode(GL_PROJECTION);
         glLoadIdentity();
         glFrustum(-half_w, half_w, -half_h, half_h, cam_znear, cam_zfar);

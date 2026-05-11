@@ -58,8 +58,8 @@ __int64 __cdecl _allmul(__int64 a, __int64 b) { return a * b; }
 int   jkGuiRend_thing_four    = 0;
 int   jkGuiRend_thing_five    = 0;
 /* g_app_suspended — in globals.c */
-int   Window_xSize            = XBOX_RES_W;
-int   Window_ySize            = XBOX_RES_H;
+int   Window_xSize            = 640;
+int   Window_ySize            = 480;
 struct rdCanvas;
 struct stdVBuffer;
 rdCanvas*   Video_pCanvasOverlayMap = 0;
