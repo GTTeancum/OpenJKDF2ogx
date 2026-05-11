@@ -1113,6 +1113,15 @@ LABEL_39:
 #endif
 
                 sithControl_ReadFunctionMap(INPUT_FUNC_ACTIVATE, &input_read);
+#ifdef TARGET_XBOX
+                if (input_read) {
+                    static int _al = 0;
+                    if (_al < 16) {
+                        XDBGF("HP ACTIVATE READ: input=%d -> Activate\n", input_read);
+                        _al++;
+                    }
+                }
+#endif
                 if ( input_read != 0 &&  sithThing_MotsTick(2,0,1.0)) // MOTS added
                     sithPlayerActions_Activate(player);
 
@@ -1695,6 +1704,19 @@ void sithControl_PlayerMovement(sithThing *player)
             player->physicsParams.acceleration.x = player->physicsParams.acceleration.x * move_multiplier;
         }
         sithControl_ReadFunctionMap(INPUT_FUNC_JUMP, &v20);
+#ifdef TARGET_XBOX
+        /* Log JUMP read every time it's non-zero so we can see whether
+           the A button (via DIK_X) is reaching this read site in
+           sithControl_PlayerMovement.  Also log USELASTSELECTED and
+           ACTIVATE — same path, different buttons. */
+        if (v20) {
+            static int _jl = 0;
+            if (_jl < 16) {
+                XDBGF("PM JUMP READ: input=%d -> JumpWithVel\n", v20);
+                _jl++;
+            }
+        }
+#endif
         if ( v20 )
             sithPlayerActions_JumpWithVel(player, 1.0);
     }
