@@ -493,13 +493,6 @@ void sithMain_UpdateCamera()
     jkPlayer_fovIsVertical = 0;
     jkPlayer_enableOrigAspect = 0;
 #endif
-#if defined(TARGET_XBOX)
-    /* 90deg horizontal default reads as "fisheye" on 4:3 NTSC.  Drop to
-     * 75deg horizontal (≈59deg vertical at 4:3) for a tighter, less
-     * warped feel that matches modern FPS conventions on a TV. */
-    jkPlayer_fov = 75;
-    jkPlayer_fovIsVertical = 0;
-#endif
 
     if ( (g_submodeFlags & 8) == 0 )
     {
