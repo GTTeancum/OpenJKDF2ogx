@@ -1871,6 +1871,21 @@ void sithRender_RenderLevelGeometry()
 #endif
                 continue;
             }
+#ifdef TARGET_XBOX
+            /* Skip adjoin surfaces that have no material — these are the
+             * invisible sector→sector portals.  Upstream's adjoin
+             * traversal at line 866 treats `!material` as "transparent
+             * adjoin"; the surface render loop never had to skip them
+             * explicitly because the legacy CPU-projection / no-depth-
+             * test renderer would just draw the next sector's geometry
+             * over them.  With our GPU-projection + GL_DEPTH_TEST path
+             * (commit b31c660d), those black untextured adjoin quads
+             * stamp z into the depth buffer first and occlude the
+             * actual back-sector geometry that should show through. */
+            if (v65->adjoin && !v65->surfaceInfo.face.material) {
+                continue;
+            }
+#endif
             vertices_alloc = sithWorld_pCurrentWorld->vertices;
 
             BOOL bIsSkySurface = (v65->surfaceFlags & (SITH_SURFACE_CEILING_SKY|SITH_SURFACE_HORIZON_SKY));
