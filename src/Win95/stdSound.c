@@ -591,7 +591,7 @@ void stdSound_SetPositionOrientation(rdVector3 *pos, rdVector3 *lvec, rdVector3 
     alListenerfv(AL_ORIENTATION, stdSound_listenerOri);
 }
 
-void stdSound_SetPosition(stdSound_buffer_t* pSoundBuf, rdVector3 *pos)
+void stdSound_SetPosition(stdSound_3dBuffer_t* pSoundBuf, rdVector3 *pos)
 {
     if (!pSoundBuf || !pos) return;
 
@@ -607,7 +607,7 @@ void stdSound_SetPosition(stdSound_buffer_t* pSoundBuf, rdVector3 *pos)
     pSoundBuf->bHasPos = 1;
 }
 
-void stdSound_SetVelocity(stdSound_buffer_t* pSoundBuf, rdVector3 *vel)
+void stdSound_SetVelocity(stdSound_3dBuffer_t* pSoundBuf, rdVector3 *vel)
 {
     if (!pSoundBuf || !vel) return;
 
@@ -809,12 +809,12 @@ void stdSound_SetPositionOrientation(rdVector3 *pos, rdVector3 *lvec, rdVector3 
 {
 }
 
-void stdSound_SetPosition(stdSound_buffer_t* sound, rdVector3 *pos)
+void stdSound_SetPosition(stdSound_3dBuffer_t* sound, rdVector3 *pos)
 {
 
 }
 
-void stdSound_SetVelocity(stdSound_buffer_t* sound, rdVector3 *vel)
+void stdSound_SetVelocity(stdSound_3dBuffer_t* sound, rdVector3 *vel)
 {
     
 }

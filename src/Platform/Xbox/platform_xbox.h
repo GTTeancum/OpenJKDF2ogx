@@ -18,7 +18,7 @@
 
 /* ── Sound backend selection ───────────────────────────────────── */
 /* Must be defined before any header that includes types.h          */
-#define STDSOUND_NULL 1
+#define STDSOUND_XBOX 1
 
 /* ── Xbox CRT compatibility ────────────────────────────────────── */
 #define _CRT_SECURE_NO_WARNINGS      1

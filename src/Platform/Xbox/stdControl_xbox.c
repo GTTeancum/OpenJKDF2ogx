@@ -75,7 +75,7 @@ static HANDLE g_hController;
  * sithControl_MapDefaultsJoystick).  Halved from the previous 2.5/2.0
  * which felt too twitchy on hardware. */
 static float g_lookSensX = 1.25f;
-static float g_lookSensY = 1.0f;
+static float g_lookSensY = 1.2f;
 static int   g_openAttempted;  /* deferred XInputOpen: tried once from ReadControls */
 
 /* Key state array — indexed by DIK_ value OR engine-extended joy/mouse

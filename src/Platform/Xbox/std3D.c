@@ -35,6 +35,7 @@ typedef int          GLint;
 typedef int          GLsizei;
 typedef unsigned int GLuint;
 typedef unsigned char GLubyte;
+typedef unsigned char GLboolean;
 typedef int          GLsizeiptr_int; /* placeholder, unused */
 
 void * __stdcall wglCreateContext(void *hdc);
@@ -60,6 +61,8 @@ void __stdcall glFrustum      (GLdouble l, GLdouble r, GLdouble b,
 void __stdcall glEnable       (GLenum cap);
 void __stdcall glDisable      (GLenum cap);
 void __stdcall glDepthFunc    (GLenum func);
+void __stdcall glDepthMask    (GLboolean flag);
+void __stdcall glCullFace     (GLenum mode);
 void __stdcall glAlphaFunc    (GLenum func, GLfloat ref);
 
 /* Texture entry points exposed by FakeGL (fakeglx.cpp:3302+).
@@ -93,6 +96,9 @@ void * __stdcall wglGetProcAddress(const char *s);
 #define GL_LESS                0x0201
 #define GL_LEQUAL              0x0203
 #define GL_GREATER             0x0204
+#define GL_ALWAYS              0x0207
+#define GL_FRONT               0x0404
+#define GL_BACK                0x0405
 #define GL_CULL_FACE           0x0B44
 #define GL_BLEND               0x0BE2
 #define GL_ALPHA_TEST          0x0BC0
@@ -109,6 +115,9 @@ void * __stdcall wglGetProcAddress(const char *s);
 #define GL_LINEAR              0x2601
 #define GL_CLAMP               0x2900
 #define GL_REPEAT              0x2901
+#define GL_ONE                 1
+#define GL_TRUE                1
+#define GL_FALSE               0
 #define GL_SRC_ALPHA           0x0302
 #define GL_ONE_MINUS_SRC_ALPHA 0x0303
 
@@ -975,11 +984,16 @@ void std3D_DrawRenderList(void)
         }}
     }
 
-    /* Depth test: GL_LEQUAL is more forgiving than GL_LESS for coplanar
-     * surfaces (decals, sky polys).  The GPU now writes proper post-
-     * projection NDC z so this just works. */
+    /* Match upstream Platform/GL/std3D.c's rdTri.flags contract:
+     * 0x600 controls alpha blending, 0x800 depth test, 0x1000 depth write,
+     * and 0x10000 cull orientation for double-sided lit faces. */
     glEnable(GL_DEPTH_TEST);
-    glDepthFunc(GL_LEQUAL);
+    glEnable(GL_BLEND);
+    glEnable(GL_CULL_FACE);
+    glDepthFunc(GL_LESS);
+    glDepthMask(GL_TRUE);
+    glCullFace(GL_FRONT);
+    glBlendFunc(GL_SRC_ALPHA, GL_ONE_MINUS_SRC_ALPHA);
 
     /* Alpha test: discard pixels with alpha < 128/255 so chroma-keyed
      * textures (sector-adjoin grates, fence textures, etc.) don't punch
@@ -1028,6 +1042,7 @@ void std3D_DrawRenderList(void)
     {
         int textured_tris = 0, untextured_tris = 0, bind_switches = 0;
         unsigned int last_id = 0;
+        int last_flags = -1;
 
     for (i = 0; i < GL_numTris; ++i)
     {
@@ -1077,6 +1092,22 @@ void std3D_DrawRenderList(void)
                             && t->texture->texture_loaded
                             && t->texture->texture_id != 0
                             && g_pfnBindTexture);
+
+            if (t->flags != last_flags) {
+                if (t->flags & 0x800) glDepthFunc(GL_LESS);
+                else                  glDepthFunc(GL_ALWAYS);
+
+                if (t->flags & 0x1000) glDepthMask(GL_TRUE);
+                else                   glDepthMask(GL_FALSE);
+
+                if (t->flags & 0x10000) glCullFace(GL_BACK);
+                else                    glCullFace(GL_FRONT);
+
+                if (t->flags & 0x600) glBlendFunc(GL_ONE, GL_ONE_MINUS_SRC_ALPHA);
+                else                  glBlendFunc(GL_SRC_ALPHA, GL_ONE_MINUS_SRC_ALPHA);
+
+                last_flags = t->flags;
+            }
 
             if (textured) {
                 unsigned int id = (unsigned int)t->texture->texture_id;
@@ -1136,34 +1167,36 @@ void std3D_DrawRenderList(void)
 #define V_COLOR_R(v) (float)(((v)->color >> 16) & 0xFF) / 255.0f
 #define V_COLOR_G(v) (float)(((v)->color >>  8) & 0xFF) / 255.0f
 #define V_COLOR_B(v) (float)( (v)->color        & 0xFF) / 255.0f
+#define V_COLOR_A(v) (float)((((v)->color >> 24) & 0xFF) ? (((v)->color >> 24) & 0xFF) : 0xFF) / 255.0f
 #define V_COLOR_RGB_NONZERO(v) (((v)->color & 0x00FFFFFFu) != 0u)
             if (textured) {
-                if (V_COLOR_RGB_NONZERO(a)) glColor4f(V_COLOR_R(a), V_COLOR_G(a), V_COLOR_B(a), 1.0f);
-                else                        glColor4f(a->lightLevel, a->lightLevel, a->lightLevel, 1.0f);
+                if (V_COLOR_RGB_NONZERO(a)) glColor4f(V_COLOR_R(a), V_COLOR_G(a), V_COLOR_B(a), V_COLOR_A(a));
+                else                        glColor4f(a->lightLevel, a->lightLevel, a->lightLevel, V_COLOR_A(a));
                 glTexCoord2f(a->tu, a->tv);
                 V3F_ENGINE_TO_GL(a);
-                if (V_COLOR_RGB_NONZERO(b)) glColor4f(V_COLOR_R(b), V_COLOR_G(b), V_COLOR_B(b), 1.0f);
-                else                        glColor4f(b->lightLevel, b->lightLevel, b->lightLevel, 1.0f);
+                if (V_COLOR_RGB_NONZERO(b)) glColor4f(V_COLOR_R(b), V_COLOR_G(b), V_COLOR_B(b), V_COLOR_A(b));
+                else                        glColor4f(b->lightLevel, b->lightLevel, b->lightLevel, V_COLOR_A(b));
                 glTexCoord2f(b->tu, b->tv);
                 V3F_ENGINE_TO_GL(b);
-                if (V_COLOR_RGB_NONZERO(c)) glColor4f(V_COLOR_R(c), V_COLOR_G(c), V_COLOR_B(c), 1.0f);
-                else                        glColor4f(c->lightLevel, c->lightLevel, c->lightLevel, 1.0f);
+                if (V_COLOR_RGB_NONZERO(c)) glColor4f(V_COLOR_R(c), V_COLOR_G(c), V_COLOR_B(c), V_COLOR_A(c));
+                else                        glColor4f(c->lightLevel, c->lightLevel, c->lightLevel, V_COLOR_A(c));
                 glTexCoord2f(c->tu, c->tv);
                 V3F_ENGINE_TO_GL(c);
             } else {
-                if (V_COLOR_RGB_NONZERO(a)) glColor4f(V_COLOR_R(a), V_COLOR_G(a), V_COLOR_B(a), 1.0f);
-                else                        glColor4f(a->lightLevel, a->lightLevel, a->lightLevel, 1.0f);
+                if (V_COLOR_RGB_NONZERO(a)) glColor4f(V_COLOR_R(a), V_COLOR_G(a), V_COLOR_B(a), V_COLOR_A(a));
+                else                        glColor4f(a->lightLevel, a->lightLevel, a->lightLevel, V_COLOR_A(a));
                 V3F_ENGINE_TO_GL(a);
-                if (V_COLOR_RGB_NONZERO(b)) glColor4f(V_COLOR_R(b), V_COLOR_G(b), V_COLOR_B(b), 1.0f);
-                else                        glColor4f(b->lightLevel, b->lightLevel, b->lightLevel, 1.0f);
+                if (V_COLOR_RGB_NONZERO(b)) glColor4f(V_COLOR_R(b), V_COLOR_G(b), V_COLOR_B(b), V_COLOR_A(b));
+                else                        glColor4f(b->lightLevel, b->lightLevel, b->lightLevel, V_COLOR_A(b));
                 V3F_ENGINE_TO_GL(b);
-                if (V_COLOR_RGB_NONZERO(c)) glColor4f(V_COLOR_R(c), V_COLOR_G(c), V_COLOR_B(c), 1.0f);
-                else                        glColor4f(c->lightLevel, c->lightLevel, c->lightLevel, 1.0f);
+                if (V_COLOR_RGB_NONZERO(c)) glColor4f(V_COLOR_R(c), V_COLOR_G(c), V_COLOR_B(c), V_COLOR_A(c));
+                else                        glColor4f(c->lightLevel, c->lightLevel, c->lightLevel, V_COLOR_A(c));
                 V3F_ENGINE_TO_GL(c);
             }
 #undef V_COLOR_R
 #undef V_COLOR_G
 #undef V_COLOR_B
+#undef V_COLOR_A
 #undef V_COLOR_RGB_NONZERO
         }
 #endif

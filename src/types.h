@@ -376,6 +376,8 @@ typedef struct sithAnimclassEntry sithAnimclassEntry;
 typedef struct stdALBuffer stdALBuffer;
 typedef struct stdMaxmodBuffer stdMaxmodBuffer;
 typedef struct stdNullSoundBuffer stdNullSoundBuffer;
+typedef struct stdXboxSoundBuffer stdXboxSoundBuffer;
+typedef struct stdXbox3DBuffer stdXbox3DBuffer;
 typedef struct stdFontCharset stdFontCharset;
 #ifndef RDCACHE_RENDER_NGONS
 typedef struct rdTri rdTri;
@@ -416,6 +418,11 @@ typedef stdALBuffer stdSound_3dBuffer_t;
 typedef stdNullSoundBuffer stdSound_buffer_t;
 typedef stdNullSoundBuffer stdSound_3dBuffer_t;
 #endif 
+
+#ifdef STDSOUND_XBOX
+typedef stdXboxSoundBuffer stdSound_buffer_t;
+typedef stdXbox3DBuffer stdSound_3dBuffer_t;
+#endif
 
 #ifdef STDSOUND_MAXMOD
 typedef stdMaxmodBuffer stdSound_buffer_t;
@@ -1434,7 +1441,7 @@ typedef struct sithEventTask
 typedef struct sithPlayingSound
 {
     stdSound_buffer_t* pSoundBuf;
-    stdSound_buffer_t* p3DSoundObj;
+    stdSound_3dBuffer_t* p3DSoundObj;
     sithSound* sound;
     int32_t flags;
     int32_t idx;

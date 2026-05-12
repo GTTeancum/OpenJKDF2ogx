@@ -90,6 +90,32 @@ typedef struct stdNullSoundBuffer
     rdVector3 vel;
 } stdNullSoundBuffer;
 
+#ifdef STDSOUND_XBOX
+typedef struct stdXboxSoundBuffer
+{
+    void* data;
+    int format;
+    int bStereo;
+    int bitsPerSample;
+    uint32_t nSamplesPerSec;
+    int bufferBytes;
+    int bufferLen;
+    int refcnt;
+    flex_t vol;
+    int bIsCopy;
+    rdVector3 pos;
+    rdVector3 vel;
+} stdXboxSoundBuffer;
+
+typedef struct stdXbox3DBuffer
+{
+    stdXboxSoundBuffer* owner;
+    IDirectSoundBuffer* pDS;
+    rdVector3 pos;
+    rdVector3 vel;
+} stdXbox3DBuffer;
+#endif
+
 #ifdef STDSOUND_MAXMOD
 typedef struct stdMaxmodBuffer
 {
@@ -174,8 +200,8 @@ int stdSound_3DSetMode(stdSound_3dBuffer_t* a1, int a2);
 stdSound_3dBuffer_t* stdSound_BufferQueryInterface(stdSound_buffer_t* a1);
 void stdSound_CommitDeferredSettings();
 void stdSound_SetPositionOrientation(rdVector3 *pos, rdVector3 *lvec, rdVector3 *uvec);
-void stdSound_SetPosition(stdSound_buffer_t* sound, rdVector3 *pos);
-void stdSound_SetVelocity(stdSound_buffer_t* sound, rdVector3 *vel);
+void stdSound_SetPosition(stdSound_3dBuffer_t* sound, rdVector3 *pos);
+void stdSound_SetVelocity(stdSound_3dBuffer_t* sound, rdVector3 *vel);
 int stdSound_IsPlaying(stdSound_buffer_t* a1, rdVector3 *pos);
 void stdSound_3DBufferRelease(stdSound_3dBuffer_t* p3DBuffer);
 #endif

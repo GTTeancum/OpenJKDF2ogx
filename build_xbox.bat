@@ -46,7 +46,7 @@ REM Include order: project sources → XDK 5558 (Xbox-correct D3D8Types.h with
 REM D3DPT_TRIANGLELIST=5 etc.) → XDK 5849 fallback (for headers 5558 lacks
 REM like stdint.h, winsock2.h).
 set CFLAGS=%CFLAGS% /I"%~dp0src" /I"%~dp0src\Platform\Xbox" /I"%~dp03rdparty" /I"%XDK_ROOT%\include" /I"C:\XDK\xbox\include"
-set CFLAGS=%CFLAGS% /DTARGET_XBOX=1 /DSDL2_RENDER=1 /DSTDSOUND_NULL=1 /D_XBOX=1
+set CFLAGS=%CFLAGS% /DTARGET_XBOX=1 /DSDL2_RENDER=1 /DSTDSOUND_XBOX=1 /D_XBOX=1
 set CFLAGS=%CFLAGS% /DPLATFORM_NOSOCKETS=1 /DQOL_IMPROVEMENTS=1
 set CFLAGS=%CFLAGS% /DTARGET_NO_MULTIPLAYER_MENUS=1 /DLINUX_TMP=1
 set CFLAGS=%CFLAGS% /D_CRT_SECURE_NO_WARNINGS /D_CRT_NONSTDC_NO_WARNINGS
@@ -225,6 +225,7 @@ for %%F in (
     src\Platform\Xbox\stdControl_xbox.c
     src\Platform\Xbox\stdFile_xbox.c
     src\Platform\Xbox\stdSound_xbox.c
+    src\Platform\Xbox\stdMci_xbox.c
     src\Platform\Xbox\stdPlatform_xbox.c
     src\Platform\Xbox\Window_xbox.c
     src\Platform\Xbox\xbox_stubs.c
@@ -262,6 +263,7 @@ REM Build linker response file with all obj files
 set RSPFILE=%OBJDIR%\link.rsp
 > "!RSPFILE!" echo /nologo
 >> "!RSPFILE!" echo /OUT:"!OUTEXE!"
+>> "!RSPFILE!" echo /MAP:"!OUTEXE!.map"
 >> "!RSPFILE!" echo /LIBPATH:"!XDK_ROOT!\lib"
 >> "!RSPFILE!" echo /SUBSYSTEM:WINDOWS /ENTRY:mainCRTStartup /FIXED:NO
 >> "!RSPFILE!" echo /IGNORE:4254

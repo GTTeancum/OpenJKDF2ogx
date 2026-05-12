@@ -47,9 +47,11 @@ int stdDisplay_VBufferFill(struct stdVBuffer * a0, int a1, struct rdRect * a2) {
 int stdDisplay_VBufferLock(struct stdVBuffer * vbuf) { if (vbuf) vbuf->bSurfaceLocked = 1; return 1; }
 int stdDisplay_VBufferSetColorKey(struct stdVBuffer * vbuf, int key) { if (vbuf) vbuf->transparent_color = (unsigned int)key; return 1; }
 int stdDisplay_ddraw_waitforvblank(void) { return 0; }
+#ifndef STDSOUND_XBOX
 int stdMci_CheckStatus(void) { return 0; }
 int stdMci_Play(unsigned char a0, unsigned char a1) { return 0; }
 int stdMci_Startup(void) { return 0; }
+#endif
 /* sithCog_actionCogIdk — defined in src/Cog/sithCog.c (now in build) */
 /* sithCog_pActionCog — defined in src/Cog/sithCog.c (now in build) */
 struct stdVBuffer * stdDisplay_VBufferNew(struct stdVBufferTexFmt * fmt, int a1, int a2, void const * a3) {
@@ -76,7 +78,9 @@ struct stdVBuffer * stdDisplay_VBufferNew(struct stdVBufferTexFmt * fmt, int a1,
     return vbuf;
 }
 unsigned char * stdDisplay_GetPalette(void) { return 0; }
+#ifndef STDSOUND_XBOX
 unsigned int stdSound_ParseWav(int a0, unsigned int * a1, int * a2, int * a3, int * a4) { return 0; }
+#endif
 unsigned int util_Weirdchecksum(unsigned char * a0, int a1, unsigned int a2) { return 0; }
 void Video_Shutdown(void) { }
 void Windows_Shutdown(void) { }
@@ -171,9 +175,11 @@ void sithDSS_SendSyncPuppet(struct sithThing * a0, int a1, int a2) { }
 /* stdConffile_Close — now compiled from src\General\stdConffile.c */
 void stdDisplay_VBufferFree(struct stdVBuffer * vbuf) { if (vbuf) free(vbuf); }
 void stdDisplay_VBufferUnlock(struct stdVBuffer * vbuf) { if (vbuf) vbuf->bSurfaceLocked = 0; }
+#ifndef STDSOUND_XBOX
 void stdMci_SetVolume(float a0) { }
 void stdMci_Shutdown(void) { }
 void stdMci_Stop(void) { }
+#endif
 /* xbox_debug_Print/Printf — real implementations in xbox_debug.c */
 
 /* =========================================================================

@@ -561,6 +561,8 @@ LABEL_51:
 
 void sithSoundMixer_PlayingSoundReset(sithPlayingSound *sound)
 {
+    if ((void*)sound->p3DSoundObj == (void*)sound->pSoundBuf)
+        sound->p3DSoundObj = 0;
     stdSound_BufferReset(sound->pSoundBuf);
     sound->flags &= ~SITHSOUNDFLAG_PLAYING;
     sithSoundMixer_activeChannels--;
@@ -837,6 +839,9 @@ void sithSoundMixer_Tick(flex_t deltaSecs)
 #ifdef STDSOUND_OPENAL
     jkGuiSound_numChannels = SITH_MIXER_NUMPLAYINGSOUNDS;
 #endif
+
+    if (sithSoundMixer_bPlayingMci)
+        stdMci_CheckStatus();
 
     if ( !sithCamera_currentCamera )
         return;
@@ -1304,6 +1309,8 @@ void sithSoundMixer_StopSound(sithPlayingSound *pPlayingSound)
     }
     if ( pPlayingSound->pSoundBuf )
     {
+        if ((void*)pPlayingSound->p3DSoundObj == (void*)pPlayingSound->pSoundBuf)
+            pPlayingSound->p3DSoundObj = 0;
         stdSound_BufferRelease(pPlayingSound->pSoundBuf);
         pPlayingSound->pSoundBuf = 0;
     }
