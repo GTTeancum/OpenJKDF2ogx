@@ -29,10 +29,7 @@ int jkGui_SetModeMenu(void const * a0) { return 0; }
 int jkSmack_SmackPlay(char const * a0) { return 0; }
 /* rdMath_PointsCollinear — now in rdMath.c */
 /* rdThing_Draw, NewEntry, SetModel3, SetSprite3, SetParticleCloud — now in rdThing.c */
-/* rdThing_Draw dispatches to these — stub the ones not yet compiled */
-int rdSprite_Draw(struct rdThing * a0, struct rdMatrix34 * a1) { return 0; }
-int rdParticle_Draw(struct rdThing * a0, struct rdMatrix34 * a1) { return 0; }
-int rdPolyLine_Draw(struct rdThing * a0, struct rdMatrix34 * a1) { return 0; }
+/* rdThing_Draw dispatches to these — rdSprite/rdParticle/rdPolyLine now compiled */
 /* sithActor_ActorActorCollide, sithActor_LoadParams, sithActor_sub_4ED1D0 —
  * real impls in src/World/sithActor.c (now in build) */
 int sithComm_Startup(void) { return 0; }
@@ -192,13 +189,7 @@ int sithDSSCog_SendSendTrigger(sithCog *,int,int,int,int,int,int,float,float,flo
 
 /* AI */
 
-/* Sprites */
-void rdSprite_FreeEntry(rdSprite *) { }
-int rdSprite_NewEntry(rdSprite *sprite,char *name,int type,char *mat,float w,float h,int geoMode,int lightMode,int texMode,float extralight,rdVector3 *off) {
-    (void)type; (void)mat; (void)w; (void)h; (void)geoMode; (void)lightMode; (void)texMode; (void)extralight; (void)off;
-    if (sprite && name) { strncpy(sprite->path, name, 31); sprite->path[31] = 0; }
-    return 1;
-}
+/* Sprites — rdSprite_FreeEntry, rdSprite_NewEntry now in rdSprite.c */
 
 /* All jkCog*, jkCogExt*, sithCogFunction*, sithCogParse*, sithCogExec*
  * verbs and helpers — real impls in src/Cog/*.c (now in build). */

@@ -1,5 +1,9 @@
 #include "sithCogFunction.h"
 
+#ifdef TARGET_XBOX
+extern "C" void xbox_debug_Printf(const char*, ...);
+#endif
+
 #include "types.h"
 #include "Cog/sithCog.h"
 #include "Cog/sithCogExec.h"
@@ -1292,6 +1296,12 @@ void sithCogFunction_SelectWeapon(sithCog *ctx)
         binIdx = sithInventory_SelectWeaponFollowing(binIdx);
     }
 
+#ifdef TARGET_XBOX
+    { static int _sw=0; if(_sw<16){
+        xbox_debug_Printf("CogVerb SelectWeapon: cog=%p thing=%p bin=%d\n",
+                          (void*)ctx, (void*)player, binIdx); _sw++; }}
+#endif
+
     if ( player )
     {
         if ( binIdx >= 0 )
@@ -1308,6 +1318,12 @@ void sithCogFunction_AssignWeapon(sithCog *ctx)
         binIdx = sithInventory_SelectWeaponFollowing(binIdx);
     }
 
+#ifdef TARGET_XBOX
+    { static int _aw=0; if(_aw<16){
+        xbox_debug_Printf("CogVerb AssignWeapon: cog=%p thing=%p bin=%d\n",
+                          (void*)ctx, (void*)player, binIdx); _aw++; }}
+#endif
+
     if ( player )
     {
         if ( binIdx >= 1 )
@@ -1319,6 +1335,12 @@ void sithCogFunction_AutoSelectWeapon(sithCog *ctx)
 {
     int weapIdx = sithCogExec_PopInt(ctx);
     sithThing* player = sithCogExec_PopThing(ctx);
+
+#ifdef TARGET_XBOX
+    { static int _asw=0; if(_asw<16){
+        xbox_debug_Printf("CogVerb AutoSelectWeapon: cog=%p thing=%p weap=%d\n",
+                          (void*)ctx, (void*)player, weapIdx); _asw++; }}
+#endif
 
     if ( weapIdx >= 0 && weapIdx <= 2 && player )
     {

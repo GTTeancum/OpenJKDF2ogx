@@ -548,6 +548,7 @@ sithThing* sithWeapon_FireProjectile_0(sithThing *sender, sithThing *projectileT
             projectileTemplate->physicsParams.vel.z = fVar3;
         }
 
+
         if (!v9 )
             return 0;
 
@@ -915,6 +916,26 @@ int sithWeapon_SelectWeapon(sithThing *player, int binIdx, int a3)
     //printf("%x\n", sithWeapon_8BD024);
 
     v4 = sithInventory_GetCurWeapon(player);
+#ifdef TARGET_XBOX
+    /* Guard: AutoSelectWeapon can return -1 ("no weapon found"); even
+     * though sithCogFunction_SelectWeapon gates that off, defend
+     * against any out-of-range binIdx or null playerinfo — both
+     * would crash Xbox mid-cog-STARTUP. */
+    { static int _sw2=0; if(_sw2<24){
+        if (binIdx >= 0 && binIdx < SITHBIN_NUMBINS && player &&
+            player->actorParams.playerinfo &&
+            player->actorParams.playerinfo != (sithPlayerInfo*)-136) {
+            xbox_debug_Printf("SelectWeapon enter: bin=%d curW=%d amt=%f avail=%d 8BD024=%d a3=%d\n",
+                binIdx, v4, (double)sithInventory_GetBinAmount(player, binIdx),
+                sithInventory_GetAvailable(player, binIdx), sithWeapon_8BD024, a3);
+        } else {
+            xbox_debug_Printf("SelectWeapon enter: bin=%d player=%p pi=%p curW=%d 8BD024=%d a3=%d\n",
+                binIdx, (void*)player,
+                player ? (void*)player->actorParams.playerinfo : 0,
+                v4, sithWeapon_8BD024, a3);
+        }
+        _sw2++; }}
+#endif
     if ( binIdx == v4 || sithInventory_GetBinAmount(player, binIdx) == 0.0 || !sithInventory_GetAvailable(player, binIdx) || sithWeapon_8BD024 != -1 )
         return 0;
     v5 = sithInventory_GetBinByIdx(binIdx)->cog;
@@ -1095,9 +1116,31 @@ int sithWeapon_AutoSelect(sithThing *player, int weapIdx)
         sithItemDescriptor* desc =  &sithInventory_aDescriptors[i];
         if (desc->flags & ITEMINFO_WEAPON)
         {
+#ifdef TARGET_XBOX
+            /* Guard: GetBinAmount/GetAvailable check the -136 sentinel
+             * but not NULL, and on Xbox playerinfo can be NULL during
+             * early cog STARTUP — that crash takes the level load down. */
+            { static int _as=0; if(_as<32){
+                if (player && player->actorParams.playerinfo &&
+                    player->actorParams.playerinfo != (sithPlayerInfo*)-136) {
+                    xbox_debug_Printf("AutoSelect bin=%d flags=%X cog=%p amt=%f avail=%d\n",
+                        i, (unsigned)desc->flags, (void*)desc->cog,
+                        (double)sithInventory_GetBinAmount(player, i),
+                        sithInventory_GetAvailable(player, i));
+                } else {
+                    xbox_debug_Printf("AutoSelect bin=%d flags=%X cog=%p (no playerinfo)\n",
+                        i, (unsigned)desc->flags, (void*)desc->cog);
+                }
+                _as++; }}
+#endif
             if (desc->cog)
             {
                 flex_t v5 = sithCog_SendMessageEx(desc->cog, SITH_MESSAGE_AUTOSELECT, SENDERTYPE_SYSTEM, weapIdx, SENDERTYPE_THING, player->thingIdx, 0, 0.0, 0.0, 0.0, 0.0);
+#ifdef TARGET_XBOX
+                { static int _as2=0; if(_as2<32){
+                    xbox_debug_Printf("AutoSelect bin=%d AUTOSELECT_reply=%f\n", i, (double)v5);
+                    _as2++; }}
+#endif
                 if ( v5 > a1a )
                 {
                     a1a = v5;
@@ -1106,6 +1149,10 @@ int sithWeapon_AutoSelect(sithThing *player, int weapIdx)
             }
         }
     }
+#ifdef TARGET_XBOX
+    { static int _asr=0; if(_asr<8){
+        xbox_debug_Printf("AutoSelect result: bin=%d priority=%f\n", v7, (double)a1a); _asr++; }}
+#endif
     return v7;
 }
 
@@ -1215,13 +1262,6 @@ int sithWeapon_HandleWeaponKeys(sithThing *player, flex_t a2)
 
             v18 = sithInventory_GetCurWeapon(player);
             v19 = sithInventory_GetBinByIdx(v18);
-#ifdef TARGET_XBOX
-            { static int _hwk=0; if(_hwk<24){
-                xbox_debug_Printf("HandleWeapon: curBin=%d bin=%p cog=%p\n",
-                                  v18, (void*)v19, v19 ? (void*)v19->cog : 0);
-                _hwk++;
-            }}
-#endif
             v20 = INPUT_FUNC_FIRE2;
             v26 = INPUT_FUNC_FIRE2;
             v25 = 1;
@@ -1231,13 +1271,6 @@ int sithWeapon_HandleWeaponKeys(sithThing *player, flex_t a2)
                 v22 = v20 - 10;
                 if ( sithControl_ReadFunctionMap(v20, &readInput) )
                 {
-#ifdef TARGET_XBOX
-                    { static int _fp=0; if(_fp<8){
-                                xbox_debug_Printf("FirePressed: inputFunc=%d v22=%d readInput=%d cog=%p\n",
-                                          v20, v22, readInput, v19 ? (void*)v19->cog : 0);
-                        _fp++;
-                    }}
-#endif
                     if (sithThing_MotsTick(3, 0, (flex_t)v22) && !sithWeapon_a8BD030[v25]) // MOTS added // FLEXTODO
                     {
                         sithWeapon_a8BD030[v25] = 1;

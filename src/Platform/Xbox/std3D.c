@@ -102,10 +102,23 @@ void * __stdcall wglGetProcAddress(const char *s);
 #define GL_TEXTURE_MAG_FILTER  0x2800
 #define GL_TEXTURE_WRAP_S      0x2802
 #define GL_TEXTURE_WRAP_T      0x2803
+#define GL_TEXTURE_BASE_LEVEL  0x813C
+#define GL_TEXTURE_MAX_LEVEL   0x813D
+#define GL_CLAMP_TO_EDGE       0x812F
 #define GL_NEAREST             0x2600
 #define GL_LINEAR              0x2601
 #define GL_CLAMP               0x2900
 #define GL_REPEAT              0x2901
+#define GL_SRC_ALPHA           0x0302
+#define GL_ONE_MINUS_SRC_ALPHA 0x0303
+
+#ifdef __cplusplus
+extern "C" {
+#endif
+void __stdcall glBlendFunc(GLenum sfactor, GLenum dfactor);
+#ifdef __cplusplus
+}
+#endif
 
 #ifdef __cplusplus
 extern "C" {
@@ -179,7 +192,10 @@ typedef struct
     int flags;
 } rdLine;
 
-/* stdVBufferTexFmt mirror (types.h:1078-1090, no RDMATERIAL_MINIMIZE_STRUCTS). */
+/* stdVBufferTexFmt mirror (types.h:1078-1090, no RDMATERIAL_MINIMIZE_STRUCTS).
+ * The Xbox build does NOT define RDMATERIAL_MINIMIZE_STRUCTS (that's gated
+ * on TARGET_TWL in engine_config.h:298-335), so the full rdTexFormat is
+ * embedded here. */
 typedef struct
 {
     int             width;                  /* 0x00 */
@@ -593,29 +609,55 @@ static void dbg_text(float x, float y, float scale,
     }
 }
 
+/* FPS counter: GetTickCount-based, sampled over a 1-second window.
+ * Drawn in the top-left as a single line "FPS NN".  The verbose 24-slot
+ * debug HUD is suppressed by default — set STD3D_DEBUG_HUD to a non-zero
+ * value to re-enable the full overlay for diagnosis. */
+#ifndef STD3D_DEBUG_HUD
+#define STD3D_DEBUG_HUD 0
+#endif
+
+static unsigned int g_fps_frameCount = 0;
+static unsigned int g_fps_windowStartMs = 0;
+static int          g_fps_current = 0;
+
 static void std3D_DrawDebugHUD(void)
 {
-    int i;
-    float sweep;
+    char fpsBuf[16];
+    unsigned int nowMs = (unsigned int)GetTickCount();
+    unsigned int elapsed;
 
-    /* No background tint — text overlays directly on the engine scene
-     * so the rendered world remains visible behind it. */
-
-    for (i = 0; i < DBG_NUM_LINES; ++i)
-    {
-        if (dbg_lines[i][0])
-            dbg_text(4.0f, 4.0f + i * 12.0f, 2.0f,
-                     1.0f, 1.0f, 1.0f, dbg_lines[i]);
+    /* Roll the 1-second sampling window. */
+    if (g_fps_windowStartMs == 0) g_fps_windowStartMs = nowMs;
+    g_fps_frameCount++;
+    elapsed = nowMs - g_fps_windowStartMs;
+    if (elapsed >= 1000) {
+        g_fps_current = (int)((g_fps_frameCount * 1000) / elapsed);
+        g_fps_frameCount = 0;
+        g_fps_windowStartMs = nowMs;
     }
 
-    /* Sweeper bar at the bottom of the panel — proves StartScene is
-     * being called every frame.  Increment per call. */
-    g_dbgFrameTick++;
-    sweep = (float)(g_dbgFrameTick % 120) / 120.0f;
-    dbg_quad(0.0f,  4.0f + DBG_NUM_LINES * 12.0f, 220.0f, 4.0f,
-             0.1f, 0.1f, 0.1f);
-    dbg_quad(sweep * 208.0f, 4.0f + DBG_NUM_LINES * 12.0f,
-             12.0f, 4.0f, 1.0f, 1.0f, 0.0f);
+    /* Single-line FPS readout, top-left corner. */
+    sprintf(fpsBuf, "FPS %d", g_fps_current);
+    dbg_text(4.0f, 4.0f, 2.0f, 1.0f, 1.0f, 0.2f, fpsBuf);
+
+#if STD3D_DEBUG_HUD
+    {
+        int i;
+        float sweep;
+        for (i = 0; i < DBG_NUM_LINES; ++i) {
+            if (dbg_lines[i][0])
+                dbg_text(4.0f, 24.0f + i * 12.0f, 2.0f,
+                         1.0f, 1.0f, 1.0f, dbg_lines[i]);
+        }
+        g_dbgFrameTick++;
+        sweep = (float)(g_dbgFrameTick % 120) / 120.0f;
+        dbg_quad(0.0f,  24.0f + DBG_NUM_LINES * 12.0f, 220.0f, 4.0f,
+                 0.1f, 0.1f, 0.1f);
+        dbg_quad(sweep * 208.0f, 24.0f + DBG_NUM_LINES * 12.0f,
+                 12.0f, 4.0f, 1.0f, 1.0f, 0.0f);
+    }
+#endif
 }
 
 /* ====================================================================== */
@@ -713,18 +755,6 @@ void std3D_Present(void)
     char buf[32];
     if (!g_initialized) { XDBG("std3D_Present: not initialized\n"); return; }
     g_presentCalls++;
-    if ((g_presentCalls % 60) == 1) {
-        XDBGF("Scene: STARTS=%u CLEARS=%u ENDS=%u ENDTR=%u PRES=%u\n",
-              g_startCalls, g_clearCalls, g_endCalls,
-              g_endTransitions, g_presentCalls);
-        if (g_bboxValid) {
-            XDBGF("Vert bbox: x[%d..%d] y[%d..%d] z[%d..%d] color=%08X\n",
-                  (int)g_bboxXmin, (int)g_bboxXmax,
-                  (int)g_bboxYmin, (int)g_bboxYmax,
-                  (int)g_bboxZmin, (int)g_bboxZmax,
-                  g_firstColor);
-        }
-    }
 
     /* Publish vertex bbox to HUD slots 5/6/7.  Format: "VX  min max". */
     if (g_bboxValid) {
@@ -1006,6 +1036,32 @@ void std3D_DrawRenderList(void)
         D3DVERTEX  *b  = &GL_tmpVertices[t->v2];
         D3DVERTEX  *c  = &GL_tmpVertices[t->v3];
 
+        /* SmallTri probe: log every small-mesh-sized triangle (textured
+         * or solid) in view.  No view-z filter — capture good shots
+         * AND bad shots so we can compare.  Only spatial-size filter
+         * (~bolt size) to keep world geometry out. */
+        {
+            float xmin=a->x, xmax=a->x, ymin=a->y, ymax=a->y, zmin=a->z, zmax=a->z;
+            if (b->x < xmin) xmin = b->x; if (b->x > xmax) xmax = b->x;
+            if (c->x < xmin) xmin = c->x; if (c->x > xmax) xmax = c->x;
+            if (b->y < ymin) ymin = b->y; if (b->y > ymax) ymax = b->y;
+            if (c->y < ymin) ymin = c->y; if (c->y > ymax) ymax = c->y;
+            if (b->z < zmin) zmin = b->z; if (b->z > zmax) zmax = b->z;
+            if (c->z < zmin) zmin = c->z; if (c->z > zmax) zmax = c->z;
+            if ((xmax - xmin) < 0.3f && (ymax - ymin) < 0.3f && (zmax - zmin) < 0.3f &&
+                ymin > 0.01f && ymin < 8.0f) {
+                static int _st = 0;
+                if (_st < 800) {
+                    xbox_debug_Printf("SmallTri[%d] tex=%p: A=(%.3f %.3f %.3f) B=(%.3f %.3f %.3f) C=(%.3f %.3f %.3f)\n",
+                        _st, (void*)t->texture,
+                        (double)a->x,(double)a->y,(double)a->z,
+                        (double)b->x,(double)b->y,(double)b->z,
+                        (double)c->x,(double)c->y,(double)c->z);
+                    _st++;
+                }
+            }
+        }
+
 #if STD3D_WIREFRAME
         glBegin(GL_LINES);
         glColor4f(1.0f, 1.0f, 1.0f, 1.0f);
@@ -1060,24 +1116,55 @@ void std3D_DrawRenderList(void)
              * TODO when JKM_LIGHTING is on we'll want to use .color so
              * coloured lights work; for now JK1 is monochrome and the
              * .color field can't be trusted. */
+            /* DIFFUSE source for the vertex.
+             *
+             * Untextured ("solid color") faces: rdCache writes the palette-
+             * resolved ARGB into vertex.color (rdCache.c:1346 mirrors
+             * upstream rdCache.c:1346).  That's how bryar bolts get their
+             * red, sky polys get their colour, and any color-only .mat
+             * surface gets its tint.  USE .color in this case.
+             *
+             * Textured faces: rdCache may leave .color at 0xFF000000 on JK1
+             * because the palette tint path doesn't bump R/G/B for identity
+             * colormaps (long comment at rdCache.c:351-362 explains).  In
+             * that case, fall back to monochrome lightLevel so texture
+             * modulation produces a lit colour.  If .color does carry real
+             * lighting (MOTS JKM_LIGHTING, coloured lights), use that.
+             *
+             * Decode: vertex.color is ARGB8888 — see rdCache.c:1345 packing.
+             */
+#define V_COLOR_R(v) (float)(((v)->color >> 16) & 0xFF) / 255.0f
+#define V_COLOR_G(v) (float)(((v)->color >>  8) & 0xFF) / 255.0f
+#define V_COLOR_B(v) (float)( (v)->color        & 0xFF) / 255.0f
+#define V_COLOR_RGB_NONZERO(v) (((v)->color & 0x00FFFFFFu) != 0u)
             if (textured) {
-                glColor4f(a->lightLevel, a->lightLevel, a->lightLevel, 1.0f);
+                if (V_COLOR_RGB_NONZERO(a)) glColor4f(V_COLOR_R(a), V_COLOR_G(a), V_COLOR_B(a), 1.0f);
+                else                        glColor4f(a->lightLevel, a->lightLevel, a->lightLevel, 1.0f);
                 glTexCoord2f(a->tu, a->tv);
                 V3F_ENGINE_TO_GL(a);
-                glColor4f(b->lightLevel, b->lightLevel, b->lightLevel, 1.0f);
+                if (V_COLOR_RGB_NONZERO(b)) glColor4f(V_COLOR_R(b), V_COLOR_G(b), V_COLOR_B(b), 1.0f);
+                else                        glColor4f(b->lightLevel, b->lightLevel, b->lightLevel, 1.0f);
                 glTexCoord2f(b->tu, b->tv);
                 V3F_ENGINE_TO_GL(b);
-                glColor4f(c->lightLevel, c->lightLevel, c->lightLevel, 1.0f);
+                if (V_COLOR_RGB_NONZERO(c)) glColor4f(V_COLOR_R(c), V_COLOR_G(c), V_COLOR_B(c), 1.0f);
+                else                        glColor4f(c->lightLevel, c->lightLevel, c->lightLevel, 1.0f);
                 glTexCoord2f(c->tu, c->tv);
                 V3F_ENGINE_TO_GL(c);
             } else {
-                glColor4f(a->lightLevel, a->lightLevel, a->lightLevel, 1.0f);
+                if (V_COLOR_RGB_NONZERO(a)) glColor4f(V_COLOR_R(a), V_COLOR_G(a), V_COLOR_B(a), 1.0f);
+                else                        glColor4f(a->lightLevel, a->lightLevel, a->lightLevel, 1.0f);
                 V3F_ENGINE_TO_GL(a);
-                glColor4f(b->lightLevel, b->lightLevel, b->lightLevel, 1.0f);
+                if (V_COLOR_RGB_NONZERO(b)) glColor4f(V_COLOR_R(b), V_COLOR_G(b), V_COLOR_B(b), 1.0f);
+                else                        glColor4f(b->lightLevel, b->lightLevel, b->lightLevel, 1.0f);
                 V3F_ENGINE_TO_GL(b);
-                glColor4f(c->lightLevel, c->lightLevel, c->lightLevel, 1.0f);
+                if (V_COLOR_RGB_NONZERO(c)) glColor4f(V_COLOR_R(c), V_COLOR_G(c), V_COLOR_B(c), 1.0f);
+                else                        glColor4f(c->lightLevel, c->lightLevel, c->lightLevel, 1.0f);
                 V3F_ENGINE_TO_GL(c);
             }
+#undef V_COLOR_R
+#undef V_COLOR_G
+#undef V_COLOR_B
+#undef V_COLOR_RGB_NONZERO
         }
 #endif
 
@@ -1149,7 +1236,7 @@ static rdColor24_local *g_pCurrentPalette = 0;
  * is 256x256 (most JK textures ≤ 128x128).  Buffer is scratch — FakeGL's
  * glTexImage2D copies pixels into D3D8 texture memory, so we can reuse
  * this between uploads. */
-#define STD3D_TEX_SCRATCH_W  512
+#define STD3D_TEX_SCRATCH_W  1024
 #define STD3D_TEX_SCRATCH_H  512
 static unsigned char g_texScratch[STD3D_TEX_SCRATCH_W * STD3D_TEX_SCRATCH_H * 4];
 
@@ -1202,21 +1289,73 @@ int std3D_AddToTextureCache(stdVBuffer *vbuf, rdDDrawSurface *texture,
         return 0;
     }
 
-    /* For now, only handle 8bpp paletted (the bulk of JK textures).
-     * 16-bit RGB565/RGB1555 path is a Milestone C+ extension. */
+    src = (const unsigned char *)vbuf->surface_lock_alloc;
+
+    /* 16-bit RGB565/RGB1555 world materials — bryar bolts, blaster lasers,
+     * sky textures, particle sprites, etc.  Engine stores a magenta-as-
+     * transparency value in vbuf->transparent_color.  Mirror upstream
+     * (_ORIGINAL_READ_ONLY/.../Platform/GL/std3D.c:3150-3199): convert
+     * per-channel 5/6-bit → 8-bit via the (val * 527 + 23) >> 6 expansion
+     * and compare against transparent_color per-channel to set alpha=0. */
     if (vbuf->format.fmt_is16bit) {
+        const unsigned short *src16 = (const unsigned short *)src;
+        unsigned int g_bits = vbuf->format.fmt_g_bits;
+        unsigned int tk     = vbuf->transparent_color;
+        unsigned int j;
+
         if (fail_logN < 6) {
-            XDBGF("ATC fail 16bit: vbuf=%p w=%u h=%u is16=%u bpp=%u\n",
-                  (void*)vbuf, w, h,
-                  vbuf->format.fmt_is16bit, vbuf->format.fmt_bpp);
+            XDBGF("ATC 16bit OK: vbuf=%p w=%u h=%u rgb=(%u,%u,%u) tkey=0x%X\n",
+                  (void*)vbuf, w, h, vbuf->format.fmt_r_bits, g_bits,
+                  vbuf->format.fmt_b_bits, tk);
             fail_logN++;
         }
-        fail_16bit++; g_texFailed++;
-        std3D_DebugLineKV(0, "TFAIL", g_texFailed);
-        return 0;
+
+        total = w * h;
+        if (g_bits == 6) {
+            /* RGB565 */
+            unsigned int tk_r5 = (tk >> 11) & 0x1F;
+            unsigned int tk_g6 = (tk >>  5) & 0x3F;
+            unsigned int tk_b5 = (tk >>  0) & 0x1F;
+            for (j = 0; j < total; ++j) {
+                unsigned int px = src16[j];
+                unsigned int r5 = (px >> 11) & 0x1F;
+                unsigned int g6 = (px >>  5) & 0x3F;
+                unsigned int b5 = (px >>  0) & 0x1F;
+                unsigned int o  = j * 4;
+                unsigned int a8 = 0xFF;
+                if (tk && r5 == tk_r5 && g6 == tk_g6 && b5 == tk_b5) a8 = 0;
+                g_texScratch[o + 0] = (unsigned char)((r5 * 527u + 23u) >> 6);
+                g_texScratch[o + 1] = (unsigned char)((g6 * 259u + 33u) >> 6);
+                g_texScratch[o + 2] = (unsigned char)((b5 * 527u + 23u) >> 6);
+                g_texScratch[o + 3] = (unsigned char)a8;
+            }
+        } else {
+            /* RGB1555 */
+            unsigned int tk_a1 = (tk >> 15) & 0x01;
+            unsigned int tk_r5 = (tk >> 10) & 0x1F;
+            unsigned int tk_g5 = (tk >>  5) & 0x1F;
+            unsigned int tk_b5 = (tk >>  0) & 0x1F;
+            for (j = 0; j < total; ++j) {
+                unsigned int px = src16[j];
+                unsigned int a1 = (px >> 15) & 0x01;
+                unsigned int r5 = (px >> 10) & 0x1F;
+                unsigned int g5 = (px >>  5) & 0x1F;
+                unsigned int b5 = (px >>  0) & 0x1F;
+                unsigned int o  = j * 4;
+                unsigned int a8 = a1 ? 0xFF : 0;
+                if (tk && a1 == tk_a1 && r5 == tk_r5 && g5 == tk_g5 && b5 == tk_b5) a8 = 0;
+                g_texScratch[o + 0] = (unsigned char)((r5 * 527u + 23u) >> 6);
+                g_texScratch[o + 1] = (unsigned char)((g5 * 527u + 23u) >> 6);
+                g_texScratch[o + 2] = (unsigned char)((b5 * 527u + 23u) >> 6);
+                g_texScratch[o + 3] = (unsigned char)a8;
+            }
+        }
+
+        /* Goto the bind+upload tail.  The 8-bit conversion below is
+         * skipped via a flag — easier than restructuring the function. */
+        goto std3D_atc_do_upload;
     }
 
-    src = (const unsigned char *)vbuf->surface_lock_alloc;
     pal = (rdColor24_local *)vbuf->palette;
     if (!pal) pal = g_pCurrentPalette;
     if (!pal) {
@@ -1272,6 +1411,7 @@ int std3D_AddToTextureCache(stdVBuffer *vbuf, rdDDrawSurface *texture,
         }
     }
 
+std3D_atc_do_upload:
     /* Allocate an id and upload.  glBindTexture before glTexImage2D so
      * FakeGL's TextureTable creates the entry under our chosen id. */
     id = g_nextTexId++;
@@ -1313,6 +1453,516 @@ int std3D_AddToTextureCache(stdVBuffer *vbuf, rdDDrawSurface *texture,
       } }
 
     return 1;
+}
+
+/* ====================================================================== */
+/* HUD bitmap upload + drawing (std3D_DrawUI* family).                    */
+/*                                                                        */
+/* Uploads stdBitmap mips to FakeGL texture ids stored in                 */
+/* pBmp->aTextureIds[mipIdx]. Draws are immediate-mode textured quads     */
+/* in 2D ortho space (matches std3D_Present's GL_Set2D setup).            */
+/*                                                                        */
+/* Engine-side stdBitmap layout under SDL2_RENDER (no
+ * OPTIMIZE_AWAY_UNUSED_FIELDS, no STDBITMAP_PARTIAL_LOAD,
+ * no RDMATERIAL_MINIMIZE_STRUCTS).  STDBITMAP_PARTIAL_LOAD and the
+ * MINIMIZE define are gated on TARGET_TWL (engine_config.h:298-335);
+ * Xbox doesn't define TARGET_TWL so neither applies here. */
+typedef struct stdBitmap_local {
+    char                 fpath[32];           /* 0x00 */
+    int                  field_20;            /* 0x20 */
+    int                  palFmt;              /* 0x24 */
+    unsigned int         format[14];          /* 0x28 — rdTexFormat (14 u32) */
+    void                *palette;             /* 0x60 */
+    int                  numMips;             /* 0x64 */
+    int                  field_68;            /* 0x68 */
+    int                  xPos;                /* 0x6C */
+    int                  yPos;                /* 0x70 */
+    unsigned int         colorkey;            /* 0x74 */
+    stdVBuffer         **mipSurfaces;         /* 0x78 */
+    int                  is_16bit;            /* 0x7C */
+    int                 *abLoadedToGPU;       /* 0x80 */
+    unsigned int        *aTextureIds;         /* 0x84 */
+    void               **paDataDepthConverted;/* 0x88 */
+} stdBitmap_local;
+
+typedef struct rdRect_local {
+    int x;
+    int y;
+    int width;
+    int height;
+} rdRect_local;
+
+/* Round v up to next power of two (v <= 1 → 1; v=59 → 64; v=129 → 256). */
+static unsigned int xbox_next_pow2(unsigned int v)
+{
+    unsigned int r = 1;
+    if (v == 0) return 1;
+    while (r < v) r <<= 1;
+    return r;
+}
+
+static int xbox_upload_bitmap_mip(stdBitmap_local *bm, int mipIdx, int is_alpha_tex)
+{
+    stdVBuffer          *vbuf;
+    unsigned int         w, h, i, padW, padH, x, y;
+    const unsigned char *src;
+    rdColor24_local     *pal;
+    unsigned int         id;
+
+    if (!bm || !bm->mipSurfaces || !bm->aTextureIds || !bm->abLoadedToGPU) {
+        { static int _r=0; if(_r<8){ XDBGF("xup#A: bm=%p mipS=%p aTex=%p aL=%p\n",
+            (void*)bm, bm?(void*)bm->mipSurfaces:0, bm?(void*)bm->aTextureIds:0,
+            bm?(void*)bm->abLoadedToGPU:0); _r++; } }
+        return 0;
+    }
+    if (mipIdx < 0 || mipIdx >= bm->numMips) {
+        { static int _r=0; if(_r<8){ XDBGF("xup#B: mipIdx=%d numMips=%d\n", mipIdx, bm->numMips); _r++; } }
+        return 0;
+    }
+    if (bm->abLoadedToGPU[mipIdx]) return 1;
+
+    vbuf = bm->mipSurfaces[mipIdx];
+    if (!vbuf || !vbuf->surface_lock_alloc) {
+        { static int _r=0; if(_r<8){ XDBGF("xup#C: vbuf=%p alloc=%p (mip=%d)\n",
+            (void*)vbuf, vbuf?(void*)vbuf->surface_lock_alloc:0, mipIdx); _r++; } }
+        return 0;
+    }
+
+    w = vbuf->format.width_in_pixels;
+    h = (unsigned int)vbuf->format.height;
+    /* FakeGL pushes pixels through XGSwizzleRect (fakeglx.cpp:2459), which
+     * requires power-of-two destination dimensions.  JK1 world textures are
+     * authored pow2, but HUD/UI BMs are not (statusLeft16.bm = 59x60,
+     * stHealth16.bm = 18x18, etc.) — uploading them at native size lands
+     * pixel rows at undefined offsets and the HUD shows scrambled rectangles
+     * instead of the artwork.  Pad to pow2 here; the draw side mirrors the
+     * same padding when computing UVs so only the populated sub-rect samples. */
+    padW = xbox_next_pow2(w);
+    padH = xbox_next_pow2(h);
+    if (w == 0 || h == 0 || padW > STD3D_TEX_SCRATCH_W || padH > STD3D_TEX_SCRATCH_H) {
+        { static int _r=0; if(_r<8){ XDBGF("xup#D: w=%u h=%u pad=%ux%u scratch=%dx%d\n",
+            w, h, padW, padH, STD3D_TEX_SCRATCH_W, STD3D_TEX_SCRATCH_H); _r++; } }
+        return 0;
+    }
+    src = (const unsigned char *)vbuf->surface_lock_alloc;
+
+    /* Clear the full padded RGBA buffer to transparent black before writing
+     * the populated sub-rect.  Padding pixels never sample (UVs are clamped
+     * to w/padW, h/padH), but keep them deterministic. */
+    {
+        unsigned int total_pad = padW * padH * 4u;
+        for (i = 0; i < total_pad; ++i) g_texScratch[i] = 0;
+    }
+
+    if (vbuf->format.fmt_is16bit) {
+        /* 16-bit source — engine stores RGB565 (or ARGB1555) in u16 pixels.
+         * Use the format-descriptor's r/g/b bits+shifts to extract channels.
+         * HUD bitmaps (jkstrings text, status numbers) take this path. */
+        const unsigned short *src16 = (const unsigned short *)src;
+        unsigned int r_bits  = vbuf->format.fmt_r_bits;
+        unsigned int g_bits  = vbuf->format.fmt_g_bits;
+        unsigned int b_bits  = vbuf->format.fmt_b_bits;
+        /* Mirror upstream OpenJKDF2 (Platform/GL/std3D.c:3150-3199): pixels
+         * are RGB565 (or RGB1555); the engine stores a magenta-as-key in
+         * vbuf->transparent_color and expects per-channel equality at the
+         * channel-bit width (not scaled).  Use (r5 * 527 + 23) >> 6 for the
+         * 5→8 / 6→8 scale (matches upstream Bourbie expansion).
+         *
+         * Shifts/bits sanity check: log showed (5,6,5) shifts (11,5,0) for
+         * HUD bitmaps so this is RGB565.  We branch RGB565 vs RGB1555 on
+         * g_bits. */
+        unsigned int tk = vbuf->transparent_color;
+        int has_color_key = (bm->palFmt & 1) != 0;
+
+        /* Match upstream PC GL: 16-bit RGB565 UI/SFT pixels are transparent
+         * only when the bitmap carries an actual color key.  Unkeyed SFT
+         * font strips use 0x0000 black as real glyph/background data, not as
+         * implicit transparency. */
+
+        { static int _ru = 0; if (_ru < 4) {
+            XDBGF("xup 16bit: w=%u h=%u rbg=(%u,%u,%u) tkey=0x%X palFmt=%d\n",
+                  w, h, vbuf->format.fmt_r_bits, g_bits, b_bits, tk, bm->palFmt);
+            _ru++;
+        }}
+
+        if (g_bits == 6) {
+            /* RGB565: r at bit 11, g at bit 5, b at bit 0. */
+            unsigned int tk_r5 = (tk >> 11) & 0x1F;
+            unsigned int tk_g6 = (tk >>  5) & 0x3F;
+            unsigned int tk_b5 = (tk >>  0) & 0x1F;
+            for (y = 0; y < h; ++y) {
+                for (x = 0; x < w; ++x) {
+                    unsigned int px = src16[y * w + x];
+                    unsigned int r5 = (px >> 11) & 0x1F;
+                    unsigned int g6 = (px >>  5) & 0x3F;
+                    unsigned int b5 = (px >>  0) & 0x1F;
+                    unsigned int o  = (y * padW + x) * 4;
+                    unsigned int r8 = (r5 * 527u + 23u) >> 6;
+                    unsigned int g8 = (g6 * 259u + 33u) >> 6;
+                    unsigned int b8 = (b5 * 527u + 23u) >> 6;
+                    unsigned int a8 = 0xFF;
+                    if (has_color_key && r5 == tk_r5 && g6 == tk_g6 && b5 == tk_b5) {
+                        a8 = 0;
+                    }
+                    g_texScratch[o + 0] = (unsigned char)r8;
+                    g_texScratch[o + 1] = (unsigned char)g8;
+                    g_texScratch[o + 2] = (unsigned char)b8;
+                    g_texScratch[o + 3] = (unsigned char)a8;
+                }
+            }
+        } else {
+            /* RGB1555: alpha at bit 15, r at bit 10, g at bit 5, b at bit 0. */
+            unsigned int tk_a1 = (tk >> 15) & 0x01;
+            unsigned int tk_r5 = (tk >> 10) & 0x1F;
+            unsigned int tk_g5 = (tk >>  5) & 0x1F;
+            unsigned int tk_b5 = (tk >>  0) & 0x1F;
+            for (y = 0; y < h; ++y) {
+                for (x = 0; x < w; ++x) {
+                    unsigned int px = src16[y * w + x];
+                    unsigned int a1 = (px >> 15) & 0x01;
+                    unsigned int r5 = (px >> 10) & 0x1F;
+                    unsigned int g5 = (px >>  5) & 0x1F;
+                    unsigned int b5 = (px >>  0) & 0x1F;
+                    unsigned int o  = (y * padW + x) * 4;
+                    unsigned int r8 = (r5 * 527u + 23u) >> 6;
+                    unsigned int g8 = (g5 * 527u + 23u) >> 6;
+                    unsigned int b8 = (b5 * 527u + 23u) >> 6;
+                    unsigned int a8 = a1 ? 0xFF : 0;
+                    if (has_color_key && a1 == tk_a1 && r5 == tk_r5 && g5 == tk_g5 && b5 == tk_b5) {
+                        a8 = 0;
+                    }
+                    g_texScratch[o + 0] = (unsigned char)r8;
+                    g_texScratch[o + 1] = (unsigned char)g8;
+                    g_texScratch[o + 2] = (unsigned char)b8;
+                    g_texScratch[o + 3] = (unsigned char)a8;
+                }
+            }
+        }
+        /* 16-bit UI textures encode transparency via colorkey — force
+         * alpha-blend on so the keyed pixels actually punch through. */
+        is_alpha_tex = 1;
+    } else {
+        /* 8-bit palettized.  Look up RGB through the bitmap or world pal. */
+        pal = (rdColor24_local *)vbuf->palette;
+        if (!pal) pal = (rdColor24_local *)bm->palette;
+        if (!pal) pal = g_pCurrentPalette;
+        if (!pal) {
+            void *world_pal = xbox_get_world_palette();
+            if (world_pal) pal = (rdColor24_local*)world_pal;
+        }
+        if (!pal) {
+            { static int _r=0; if(_r<8){ XDBGF("xup#F: pal NULL (vbuf.pal=%p bm.pal=%p curPal=%p)\n",
+                (void*)vbuf->palette, (void*)bm->palette, (void*)g_pCurrentPalette); _r++; } }
+            return 0;
+        }
+
+        for (y = 0; y < h; ++y) {
+            for (x = 0; x < w; ++x) {
+                unsigned int idx = src[y * w + x];
+                unsigned int o   = (y * padW + x) * 4;
+                /* Palette index 0 → fully transparent.  JK1 8-bit convention.
+                 * Mirror upstream `_ORIGINAL_READ_ONLY/.../Platform/GL/std3D.c:3294-3296`. */
+                if (idx == 0) {
+                    g_texScratch[o + 0] = 0;
+                    g_texScratch[o + 1] = 0;
+                    g_texScratch[o + 2] = 0;
+                    g_texScratch[o + 3] = 0;
+                } else {
+                    g_texScratch[o + 0] = pal[idx].r;
+                    g_texScratch[o + 1] = pal[idx].g;
+                    g_texScratch[o + 2] = pal[idx].b;
+                    g_texScratch[o + 3] = 0xFF;
+                }
+            }
+        }
+    }
+
+    if (!g_pfnBindTexture) return 0;
+    id = g_nextTexId++;
+    g_pfnBindTexture(GL_TEXTURE_2D, id);
+    /* UI textures: NEAREST + CLAMP_TO_EDGE.  Mirror upstream
+     * `_ORIGINAL_READ_ONLY/.../Platform/GL/std3D.c:3106-3115,3124-3125`.
+     * LINEAR was producing blurred HUD pixels (XBOX_HACKS.md option 2);
+     * NEAREST matches the 1997 JK1 look and keeps pixel art crisp. */
+    glTexParameterf(GL_TEXTURE_2D, GL_TEXTURE_MIN_FILTER, (GLfloat)GL_NEAREST);
+    glTexParameterf(GL_TEXTURE_2D, GL_TEXTURE_MAG_FILTER, (GLfloat)GL_NEAREST);
+    glTexParameterf(GL_TEXTURE_2D, GL_TEXTURE_WRAP_S,    (GLfloat)GL_CLAMP);
+    glTexParameterf(GL_TEXTURE_2D, GL_TEXTURE_WRAP_T,    (GLfloat)GL_CLAMP);
+    /* Do NOT set GL_TEXTURE_BASE_LEVEL / GL_TEXTURE_MAX_LEVEL — FakeGL's
+     * glTexParameterf hits its default:/LocalDebugBreak path on those
+     * pnames (fakeglx.cpp:2367-2399) and still calls SetRenderStateDirty +
+     * DirtyTexture as side-effects.  Since each xbox_upload_bitmap_mip
+     * call creates a single-level D3D texture anyway (CreateTexture with
+     * levels=1), the GPU never samples a non-existent mip. */
+    /* internalFormat=4 (legacy GL 1.1 "n components" form).  FakeGL on
+     * Xbox handles this; switching to GL_RGBA broke the world render. */
+    /* Upload at padded pow2 dimensions — required by FakeGL's
+     * XGSwizzleRect (fakeglx.cpp:2459).  The first w×h pixels carry the
+     * real artwork; the rest is zero-cleared and never sampled because
+     * the draw clamps UVs to w/padW × h/padH. */
+    glTexImage2D(GL_TEXTURE_2D, 0, 4, (GLsizei)padW, (GLsizei)padH, 0,
+                 GL_RGBA, GL_UNSIGNED_BYTE, g_texScratch);
+
+    bm->aTextureIds[mipIdx]   = id;
+    bm->abLoadedToGPU[mipIdx] = 1;
+
+    { static int _n = 0;
+      if (_n < 16) {
+          XDBGF("UI tex upload: bm=%p mip=%d id=%u w=%u h=%u alpha=%d\n",
+                (void*)bm, mipIdx, id, w, h, is_alpha_tex);
+          _n++;
+      } }
+    return 1;
+}
+
+int std3D_AddBitmapToTextureCache(void *pBmp, int mipIdx, int is_alpha_tex, int no_mip)
+{
+    (void)no_mip;
+    if (!g_initialized) return 1;
+    if (!pBmp) return 1;
+    return xbox_upload_bitmap_mip((stdBitmap_local*)pBmp, mipIdx, is_alpha_tex);
+}
+
+void std3D_PurgeBitmapRefs(void *pBmp)
+{
+    /* No-op: FakeGL doesn't expose glDeleteTextures via the wgl proc table
+     * we use. HUD textures are few and small; leak until process exit. */
+    (void)pBmp;
+}
+
+/* Switch GL state to pixel-space ortho UI mode. Called per UI draw — the
+ * engine reprograms projection for 3D rendering each frame, so we restore
+ * the 2D setup defensively. Cheap (a few state pokes). */
+static void xbox_set_ui_state(int enable_blend)
+{
+    glViewport(0, 0, 640, 480);
+    glMatrixMode(GL_PROJECTION);
+    glLoadIdentity();
+    glOrtho(0.0, 640.0, 480.0, 0.0, -99999.0, 99999.0);
+    glMatrixMode(GL_MODELVIEW);
+    glLoadIdentity();
+    glDisable(GL_DEPTH_TEST);
+    glDisable(GL_CULL_FACE);
+    glDisable(GL_ALPHA_TEST);
+    if (enable_blend) {
+        glEnable(GL_BLEND);
+        glBlendFunc(GL_SRC_ALPHA, GL_ONE_MINUS_SRC_ALPHA);
+    } else {
+        glDisable(GL_BLEND);
+    }
+}
+
+void std3D_DrawUIBitmapRGBA(void *pBmp_v, int mipIdx, float dstX, float dstY,
+                             rdRect_local *srcRect, float scaleX, float scaleY,
+                             int bAlphaOverwrite,
+                             unsigned char cr, unsigned char cg,
+                             unsigned char cb, unsigned char ca)
+{
+    stdBitmap_local *pBmp = (stdBitmap_local *)pBmp_v;
+    stdVBuffer      *vbuf;
+    unsigned int     texW, texH;
+    float            srcX, srcY, srcW, srcH;
+    float            u1, v1, u2, v2;
+    float            dstW, dstH;
+    unsigned int     texId;
+    int              palFmt;
+    int              is_alpha_tex;
+
+    (void)bAlphaOverwrite;
+
+    { static int _gn = 0;
+      if (_gn < 6) {
+          XDBGF("UI gate: bm=%p init=%d mipSurf=%p aLoaded=%p aTex=%p numMips=%d mip=%d palFmt=%d\n",
+                pBmp_v, g_initialized,
+                pBmp ? (void*)pBmp->mipSurfaces : (void*)0,
+                pBmp ? (void*)pBmp->abLoadedToGPU : (void*)0,
+                pBmp ? (void*)pBmp->aTextureIds : (void*)0,
+                pBmp ? pBmp->numMips : -1, mipIdx,
+                pBmp ? pBmp->palFmt : -1);
+          _gn++;
+      } }
+
+    if (!g_initialized || !pBmp || !pBmp->mipSurfaces || !pBmp->abLoadedToGPU) {
+        { static int _r=0; if(_r<3){ XDBGF("UI ret#A: init=%d bmp=%p mipS=%p aL=%p\n",
+            g_initialized, (void*)pBmp,
+            pBmp?(void*)pBmp->mipSurfaces:0, pBmp?(void*)pBmp->abLoadedToGPU:0); _r++; } }
+        return;
+    }
+    if (mipIdx < 0 || mipIdx >= pBmp->numMips) {
+        { static int _r=0; if(_r<3){ XDBGF("UI ret#B: mip=%d numMips=%d\n", mipIdx, pBmp->numMips); _r++; } }
+        return;
+    }
+
+    vbuf = pBmp->mipSurfaces[mipIdx];
+    if (!vbuf) {
+        { static int _r=0; if(_r<3){ XDBGF("UI ret#C: vbuf NULL for mip=%d\n", mipIdx); _r++; } }
+        return;
+    }
+
+    palFmt       = pBmp->palFmt;
+    is_alpha_tex = !(palFmt & 1);
+
+    if (!pBmp->abLoadedToGPU[mipIdx]) {
+        { static int _r=0; if(_r<3){ XDBGF("UI lazy upload: bm=%p mip=%d palFmt=%d alpha=%d\n",
+            (void*)pBmp, mipIdx, palFmt, is_alpha_tex); _r++; } }
+        if (!xbox_upload_bitmap_mip(pBmp, mipIdx, is_alpha_tex)) {
+            { static int _r=0; if(_r<3){ XDBGF("UI ret#D: upload failed mip=%d\n", mipIdx); _r++; } }
+            return;
+        }
+    }
+    texId = pBmp->aTextureIds[mipIdx];
+    if (!texId || !g_pfnBindTexture) {
+        { static int _r=0; if(_r<3){ XDBGF("UI ret#E: texId=%u bindFn=%p\n", texId, (void*)g_pfnBindTexture); _r++; } }
+        return;
+    }
+
+    texW = vbuf->format.width_in_pixels;
+    texH = (unsigned int)vbuf->format.height;
+    if (!texW || !texH) {
+        { static int _r=0; if(_r<3){ XDBGF("UI ret#F: texW=%u texH=%u\n", texW, texH); _r++; } }
+        return;
+    }
+    /* The GPU texture is padded to pow2 (see xbox_upload_bitmap_mip — FakeGL
+     * requires pow2 dims for XGSwizzleRect).  Compute UVs against the
+     * padded dims so they map only the populated sub-rect. */
+    {
+        unsigned int padTexW = xbox_next_pow2(texW);
+        unsigned int padTexH = xbox_next_pow2(texH);
+
+        { static int _ok=0; if(_ok<6){ XDBGF("UI proceed: bm=%p texId=%u w=%u h=%u pad=%ux%u\n",
+            (void*)pBmp, texId, texW, texH, padTexW, padTexH); _ok++; } }
+
+        if (srcRect) {
+            srcX = (float)srcRect->x;
+            srcY = (float)srcRect->y;
+            srcW = (float)srcRect->width;
+            srcH = (float)srcRect->height;
+        } else {
+            srcX = 0.0f; srcY = 0.0f;
+            srcW = (float)texW; srcH = (float)texH;
+        }
+        u1 = srcX / (float)padTexW;
+        v1 = srcY / (float)padTexH;
+        u2 = (srcX + srcW) / (float)padTexW;
+        v2 = (srcY + srcH) / (float)padTexH;
+    }
+
+    dstW = srcW * scaleX;
+    dstH = srcH * scaleY;
+
+    /* UI bitmaps that arrived as 16-bit (RGB565) encode transparency via
+     * vbuf->transparent_color (typically magenta).  Their palFmt bit
+     * doesn't reflect that, so always enable alpha blend when the source
+     * is 16-bit — otherwise alpha=0 keyed pixels rasterize as solid
+     * magenta. */
+    {
+        int need_blend = is_alpha_tex || ca < 0xFF;
+        if (vbuf && vbuf->format.fmt_is16bit) need_blend = 1;
+        xbox_set_ui_state(need_blend);
+    }
+
+    /* Order matters: world DRL (std3D.c:1023-1030) binds the texture
+     * BEFORE glEnable(GL_TEXTURE_2D).  FakeGL's dirty-state mechanism
+     * requires bind-first so the next SetGLRenderState commits the right
+     * texture stage source. */
+    g_pfnBindTexture(GL_TEXTURE_2D, texId);
+    glEnable(GL_TEXTURE_2D);
+
+    /* CRITICAL: textured UI MUST be one-tri-per-glBegin, matching the
+     * world DRL loop (std3D.c:1000+).  FakeGL's inline-mode off-by-one
+     * (fakeglx.cpp:1416 -- `drawMode+1`) maps GL_TRIANGLES(4) to
+     * D3DPT_TRIANGLESTRIP(5).  3-vertex submissions render identically
+     * under either type; 6-vert submissions misinterpolate UVs and
+     * render as transparent / fuchsia.
+     *
+     * Also: glColor4f goes INSIDE glBegin once per vertex, matching the
+     * world DRL's per-vertex DIFFUSE writes.  If color is set outside
+     * glBegin, FakeGL's m_OGLPrimitiveVertexBuffer.SetColor doesn't bind
+     * to any vertex and the per-tri DIFFUSE state stays at the
+     * leftover/default — which is typically fuchsia for unset vertex
+     * data on NV2A. */
+    {
+        float r = (float)cr / 255.0f;
+        float g = (float)cg / 255.0f;
+        float b = (float)cb / 255.0f;
+        float a = (float)ca / 255.0f;
+
+        glBegin(GL_TRIANGLES);
+        glColor4f(r, g, b, a); glTexCoord2f(u1, v1); glVertex3f(dstX,        dstY,        0.0f);
+        glColor4f(r, g, b, a); glTexCoord2f(u2, v1); glVertex3f(dstX + dstW, dstY,        0.0f);
+        glColor4f(r, g, b, a); glTexCoord2f(u2, v2); glVertex3f(dstX + dstW, dstY + dstH, 0.0f);
+        glEnd();
+
+        glBegin(GL_TRIANGLES);
+        glColor4f(r, g, b, a); glTexCoord2f(u1, v1); glVertex3f(dstX,        dstY,        0.0f);
+        glColor4f(r, g, b, a); glTexCoord2f(u2, v2); glVertex3f(dstX + dstW, dstY + dstH, 0.0f);
+        glColor4f(r, g, b, a); glTexCoord2f(u1, v2); glVertex3f(dstX,        dstY + dstH, 0.0f);
+        glEnd();
+    }
+
+
+    glDisable(GL_TEXTURE_2D);
+
+    { static int _n = 0;
+      if (_n < 8) {
+          XDBGF("UI draw: bm=%p mip=%d id=%u dst=(%d,%d) sz=(%d,%d) tint=%02X%02X%02X%02X\n",
+                (void*)pBmp, mipIdx, texId, (int)dstX, (int)dstY,
+                (int)dstW, (int)dstH, cr, cg, cb, ca);
+          _n++;
+      } }
+}
+
+void std3D_DrawUIBitmap(void *pBmp, int mipIdx, float dstX, float dstY,
+                        rdRect_local *srcRect, float scale, int bAlphaOverwrite)
+{
+    std3D_DrawUIBitmapRGBA(pBmp, mipIdx, dstX, dstY, srcRect, scale, scale,
+                            bAlphaOverwrite, 0xFF, 0xFF, 0xFF, 0xFF);
+}
+
+void std3D_DrawUIClearedRectRGBA(unsigned char cr, unsigned char cg,
+                                  unsigned char cb, unsigned char ca,
+                                  rdRect_local *dstRect)
+{
+    float x, y, w, h;
+    if (!g_initialized || !dstRect) return;
+
+    x = (float)dstRect->x;
+    y = (float)dstRect->y;
+    w = (float)dstRect->width;
+    h = (float)dstRect->height;
+    if (w <= 0.0f || h <= 0.0f) return;
+
+    xbox_set_ui_state(ca < 0xFF);
+    glDisable(GL_TEXTURE_2D);
+
+    glBegin(GL_TRIANGLES);
+    glColor4f((float)cr / 255.0f, (float)cg / 255.0f, (float)cb / 255.0f, (float)ca / 255.0f);
+    glVertex3f(x,     y,     0.0f);
+    glVertex3f(x + w, y,     0.0f);
+    glVertex3f(x + w, y + h, 0.0f);
+    glVertex3f(x,     y,     0.0f);
+    glVertex3f(x + w, y + h, 0.0f);
+    glVertex3f(x,     y + h, 0.0f);
+    glEnd();
+}
+
+void std3D_DrawUIClearedRect(unsigned char palIdx, rdRect_local *dstRect)
+{
+    /* Engine passes palette index for the colour. Resolve via current
+     * palette (set by std3D_SetCurrentPalette) or world palette. */
+    rdColor24_local *pal = g_pCurrentPalette;
+    unsigned char r = 0xFF, g = 0xFF, b = 0xFF;
+
+    if (!pal) {
+        void *world_pal = xbox_get_world_palette();
+        if (world_pal) pal = (rdColor24_local *)world_pal;
+    }
+    if (pal) {
+        r = pal[palIdx].r;
+        g = pal[palIdx].g;
+        b = pal[palIdx].b;
+    }
+    std3D_DrawUIClearedRectRGBA(r, g, b, 0xFF, dstRect);
 }
 
 void std3D_UnloadAllTextures(void)              {}

@@ -245,13 +245,7 @@ void sithThing_TickAll(flex_t deltaSeconds, int deltaMs)
                 continue;
 
             if ( (pThingIter->thingflags & (SITH_TF_TIMER|SITH_TF_PULSE)) != 0 ) {
-#ifdef TARGET_XBOX
-                { static int _c = 0; if (_c < 5) { XDBGF("  pre Cog_HandleThingTimerPulse[%d]\n", i); _c++; } }
-#endif
                 sithCog_HandleThingTimerPulse(pThingIter);
-#ifdef TARGET_XBOX
-                { static int _c = 0; if (_c < 5) { XDBGF("  post Cog_HandleThingTimerPulse[%d]\n", i); _c++; } }
-#endif
             }
 
             switch ( pThingIter->controlType )
@@ -275,13 +269,7 @@ void sithThing_TickAll(flex_t deltaSeconds, int deltaMs)
             switch ( pThingIter->type )
             {
                 case SITH_THING_PLAYER:
-#ifdef TARGET_XBOX
-                    { static int _p = 0; if (_p < 5) { XDBGF("  pre Player_Tick[%d] pInfo=%p\n", i, (void*)pThingIter->actorParams.playerinfo); _p++; } }
-#endif
                     sithPlayer_Tick(pThingIter->actorParams.playerinfo, deltaSeconds);
-#ifdef TARGET_XBOX
-                    { static int _p = 0; if (_p < 5) { XDBGF("  post Player_Tick[%d]\n", i); _p++; } }
-#endif
                 case SITH_THING_ACTOR:
                     sithActor_Tick(pThingIter, deltaMs);
                     break;
@@ -290,13 +278,7 @@ void sithThing_TickAll(flex_t deltaSeconds, int deltaMs)
                     break;
             }
             if ( sithThing_handler && pThingIter->jkFlags ) {
-#ifdef TARGET_XBOX
-                { static int _h = 0; if (_h < 5) { XDBGF("  pre handler[%d] fn=%p jk=%X\n", i, (void*)sithThing_handler, (unsigned)pThingIter->jkFlags); _h++; } }
-#endif
                 sithThing_handler(pThingIter);
-#ifdef TARGET_XBOX
-                { static int _h = 0; if (_h < 5) { XDBGF("  post handler[%d]\n", i); _h++; } }
-#endif
             }
             if ( pThingIter->moveType == SITH_MT_PHYSICS )
             {
@@ -304,51 +286,7 @@ void sithThing_TickAll(flex_t deltaSeconds, int deltaMs)
 #ifdef TARGET_TWL
                 if (bCanAlwaysUpdatePhysics || pThingIter->lastRenderedTickIdx >= jkPlayer_currentTickIdx-3 || bCanUpdateOffscreen)
 #endif
-#ifdef TARGET_XBOX
-                /* For thing 0 (player), log accel/vel/pos pre and post each
-                 * physics tick so we can see whether sithPhysics_ThingTick
-                 * is actually integrating the inputs HandlePlayer wrote. */
-                if (i == 0) {
-                    static int _yy = 0; static unsigned int _yyEvery = 0;
-                    _yyEvery++;
-                    if (_yy < 30 || (_yyEvery % 120) == 0) {
-                        XDBGF("  PRE_phys[T0,#%u]: accel=(%.3f,%.3f,%.3f) vel=(%.3f,%.3f,%.3f) pos=(%.3f,%.3f,%.3f) physflg=%X attach=%X\n",
-                              _yyEvery,
-                              (float)pThingIter->physicsParams.acceleration.x,
-                              (float)pThingIter->physicsParams.acceleration.y,
-                              (float)pThingIter->physicsParams.acceleration.z,
-                              (float)pThingIter->physicsParams.vel.x,
-                              (float)pThingIter->physicsParams.vel.y,
-                              (float)pThingIter->physicsParams.vel.z,
-                              (float)pThingIter->position.x,
-                              (float)pThingIter->position.y,
-                              (float)pThingIter->position.z,
-                              (unsigned)pThingIter->physicsParams.physflags,
-                              (unsigned)pThingIter->attach_flags);
-                        _yy++;
-                    }
-                }
-                { static int _y = 0; if (_y < 5) { XDBGF("  pre Physics_ThingTick[%d] sect=%p physflg=%X\n", i, (void*)pThingIter->sector, (unsigned)pThingIter->physicsParams.physflags); _y++; } }
-#endif
                 sithPhysics_ThingTick(pThingIter, deltaSeconds);
-#ifdef TARGET_XBOX
-                if (i == 0) {
-                    static int _yyp = 0; static unsigned int _yypEvery = 0;
-                    _yypEvery++;
-                    if (_yyp < 30 || (_yypEvery % 120) == 0) {
-                        XDBGF("  POST_phys[T0,#%u]: vel=(%.3f,%.3f,%.3f) pos=(%.3f,%.3f,%.3f)\n",
-                              _yypEvery,
-                              (float)pThingIter->physicsParams.vel.x,
-                              (float)pThingIter->physicsParams.vel.y,
-                              (float)pThingIter->physicsParams.vel.z,
-                              (float)pThingIter->position.x,
-                              (float)pThingIter->position.y,
-                              (float)pThingIter->position.z);
-                        _yyp++;
-                    }
-                }
-                { static int _y = 0; if (_y < 5) { XDBGF("  post Physics_ThingTick[%d]\n", i); _y++; } }
-#endif
             }
             else if ( pThingIter->moveType == SITH_MT_PATH )
             {
@@ -359,26 +297,14 @@ void sithThing_TickAll(flex_t deltaSeconds, int deltaMs)
 #ifdef TARGET_TWL
             if (bCanAlwaysUpdatePhysics || pThingIter->lastRenderedTickIdx >= jkPlayer_currentTickIdx-3 || bCanUpdateOffscreen)
 #endif
-#ifdef TARGET_XBOX
-            { static int _z = 0; if (_z < 5) { XDBGF("  pre TickPhysics[%d]\n", i); _z++; } }
-#endif
             sithThing_TickPhysics(pThingIter, deltaSeconds);
-#ifdef TARGET_XBOX
-            { static int _z2 = 0; if (_z2 < 5) { XDBGF("  post TickPhysics[%d]\n", i); _z2++; } }
-#endif
 
             // CPU optimization testing
 #ifdef TARGET_TWL
             if ((pThingIter->type == SITH_THING_PLAYER) || bActorCanUpdateNow || bActorCanUpdateEveryOther || (pThingIter->type != SITH_THING_ACTOR && pThingIter->lastRenderedTickIdx >= jkPlayer_currentTickIdx-3) || bCanUpdateOffscreen)
             sithPuppet_Tick(pThingIter, bActorCanUpdateEveryOther ? deltaSeconds * 2 : deltaSeconds);
 #else
-#ifdef TARGET_XBOX
-            { static int _u = 0; if (_u < 5) { XDBGF("  pre Puppet_Tick[%d]\n", i); _u++; } }
-#endif
             sithPuppet_Tick(pThingIter, deltaSeconds);
-#ifdef TARGET_XBOX
-            { static int _u2 = 0; if (_u2 < 5) { XDBGF("  post Puppet_Tick[%d]\n", i); _u2++; } }
-#endif
 #endif
             continue;
         }
@@ -844,6 +770,7 @@ void sithThing_EnterSector(sithThing* pThing, sithSector *sector, int a3, int a4
     pThing->prevThing = 0;
     sector->thingsList = pThing;
     pThing->sector = sector;
+
 
     if (sector->flags & SITH_SECTOR_UNDERWATER)
     {

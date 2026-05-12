@@ -1,5 +1,9 @@
 #include "jkHud.h"
 
+#ifdef TARGET_XBOX
+#include "Platform/Xbox/xbox_debug.h"
+#endif
+
 #include "Gameplay/sithInventory.h"
 #include "Win95/Video.h"
 #include "Win95/Windows.h"
@@ -983,6 +987,20 @@ void jkHud_DrawGPU()
     {
         return;
     }
+
+#ifdef TARGET_XBOX
+    /* One-shot diagnostic: did we reach jkHud_DrawGPU and what do the
+     * key bitmap pointers look like?  NULL pointers mean stdBitmap_Load
+     * failed silently (file not in GOB).  Non-NULL but no UI draws
+     * downstream means the std3D path is rejecting them. */
+    { static int _hd = 0;
+      if (_hd < 2) {
+          xbox_debug_Printf("jkHud_DrawGPU: bOpened=%d viewIdx=%u hudScale=%f\n",
+              jkHud_bOpened, (unsigned)Video_modeStruct.viewSizeIdx, (double)jkPlayer_hudScale);
+          xbox_debug_Printf("  statusL=%p statusR=%p\n",
+              (void*)jkHud_pStatusLeftBm, (void*)jkHud_pStatusRightBm);
+          _hd++; } }
+#endif
 
     //std3D_DrawUIBitmap(0,0,64,64,0,0,4.0,jkHud_pTestbitmap);
 

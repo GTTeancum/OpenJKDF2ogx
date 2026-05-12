@@ -23,6 +23,10 @@
 #include "Dss/sithDSSThing.h"
 #include "jk.h"
 
+#ifdef TARGET_XBOX
+#include "Platform/Xbox/xbox_debug.h"
+#endif
+
 // Added: noclip
 int sithPlayer_bNoClippingRend = 0;
 
@@ -284,6 +288,22 @@ void sithPlayer_AddDynamicTint(flex_t fR, flex_t fG, flex_t fB)
     pPalEffects->tint.x = stdMath_Clamp(fR + pPalEffects->tint.x, 0.0, 1.0);
     pPalEffects->tint.y = stdMath_Clamp(fG + pPalEffects->tint.y, 0.0, 1.0);
     pPalEffects->tint.z = stdMath_Clamp(fB + pPalEffects->tint.z, 0.0, 1.0);
+#ifdef TARGET_XBOX
+    /* Damage flash path: sithActor_DamagePlayer calls AddDynamicTint(R,0,0)
+     * with R = damage*0.04.  Log so we can correlate hit events with the
+     * black-frame symptom on hardware. */
+    {
+        static int _adt = 0;
+        if (_adt < 8) {
+            XDBGF("ADT: AddDynamicTint(%.3f,%.3f,%.3f) -> idx1.tint=(%.3f,%.3f,%.3f)\n",
+                  (double)fR, (double)fG, (double)fB,
+                  (double)pPalEffects->tint.x,
+                  (double)pPalEffects->tint.y,
+                  (double)pPalEffects->tint.z);
+            _adt++;
+        }
+    }
+#endif
 }
 
 void sithPlayer_AddDyamicAdd(int r, int g, int b)

@@ -11,6 +11,7 @@
 #include "xbox_debug.h"
 #include <xtl.h>
 #include <string.h>
+#include <math.h>
 
 /* Engine extended-key constants (KEY_JOY1_B1..B17, etc.).  These are
  * the DirectInput-equivalent slot numbers the engine binds INPUT_FUNC_*
@@ -29,7 +30,8 @@
 #define DIK_RBRACKET    0x1B    /* Next Weapon */
 #define DIK_RETURN      0x1C    /* Use Inventory */
 #define DIK_LCONTROL    0x1D    /* Crouch */
-#define DIK_LSHIFT      0x2A    /* Sprint */
+#define DIK_LSHIFT      0x2A    /* Sprint (INPUT_FUNC_FAST) */
+#define DIK_CAPITAL     0x3A    /* Walk  (INPUT_FUNC_SLOW)  */
 #define DIK_LALT        0x38
 #define DIK_SPACE       0x39    /* Activate */
 #define DIK_RCONTROL    0x9D
@@ -65,6 +67,7 @@ static BYTE  g_prevAnalog[8];
 static WORD  g_prevButtons;
 static int   g_crouchToggle;
 static int   g_sprintToggle;
+static int   g_walkToggle;       /* L3 toggle: 1 = walk (DIK_CAPITAL held) */
 static int   g_connected;
 static HANDLE g_hController;
 /* Right-stick sensitivity multipliers.  These compound with the engine's
@@ -119,6 +122,23 @@ static float xbox_NormalizeStick(SHORT raw)
     return 0.0f;
 }
 
+/* Apply a response curve to the right (look) stick.  Linear mapping
+ * makes small flicks feel twitchy and large pushes feel weak — squaring
+ * the magnitude (signed) gives a flatter low end for precise aim and a
+ * faster top end for fast turns.  Exponent 2.0 = quadratic; higher
+ * values feel even more "deadzoned" in the middle.  Applied AFTER
+ * deadzone+normalize so v is already in [-1, 1]. */
+static float xbox_LookCurve(float v, float exponent)
+{
+    float mag = (v < 0.0f) ? -v : v;
+    float curved;
+    if (mag <= 0.0f) return 0.0f;
+    /* powf is overkill for a fixed exponent of 2; just square */
+    if (exponent == 2.0f) curved = mag * mag;
+    else                  curved = (float)pow((double)mag, (double)exponent);
+    return (v < 0.0f) ? -curved : curved;
+}
+
 /* Bridge to xbox_world_helper.cpp — populates engine's
  * stdControl_aJoysticks[idx] table so MapAxisFunc accepts our axes.
  * stdControl_xbox.c is compiled with /Tp (as C++) per build_xbox.bat,
@@ -140,7 +160,7 @@ int stdControl_Startup(void)
      * ReadControls call the game loop is running and USB is ready. */
     memset(g_axisValues, 0, sizeof(g_axisValues));
     memset(g_prevAnalog, 0, sizeof(g_prevAnalog));
-    g_prevButtons = 0; g_crouchToggle = 0; g_sprintToggle = 0;
+    g_prevButtons = 0; g_crouchToggle = 0; g_sprintToggle = 0; g_walkToggle = 0;
     g_hController = NULL; g_connected = 0; g_openAttempted = 0;
 
     /* Mark our 4 joystick axes as enabled in stdControl_aJoysticks[].
@@ -223,15 +243,30 @@ void stdControl_ReadControls(void)
     buttons = pad->wButtons;
     changed = buttons ^ g_prevButtons;
 
-    if (changed & XINPUT_GAMEPAD_DPAD_LEFT)  stdControl_SetKeydown(DIK_LBRACKET, (buttons & XINPUT_GAMEPAD_DPAD_LEFT)  ? 1 : 0, tick);
-    if (changed & XINPUT_GAMEPAD_DPAD_RIGHT) stdControl_SetKeydown(DIK_RBRACKET, (buttons & XINPUT_GAMEPAD_DPAD_RIGHT) ? 1 : 0, tick);
-    if (changed & XINPUT_GAMEPAD_DPAD_UP)    stdControl_SetKeydown(DIK_E,        (buttons & XINPUT_GAMEPAD_DPAD_UP)    ? 1 : 0, tick);
-    if (changed & XINPUT_GAMEPAD_DPAD_DOWN)  stdControl_SetKeydown(DIK_Q,        (buttons & XINPUT_GAMEPAD_DPAD_DOWN)  ? 1 : 0, tick);
-    if (changed & XINPUT_GAMEPAD_START)      stdControl_SetKeydown(DIK_ESCAPE,   (buttons & XINPUT_GAMEPAD_START)      ? 1 : 0, tick);
+    /* D-pad → inventory/skill cycle.  Engine's MapDefaultsJoystick
+     * (sithControl.c:2421-2424) binds NEXTINV/PREVINV/PREVSKILL/NEXTSKILL
+     * to KEY_JOY1_HUP/HDOWN/HLEFT/HRIGHT — write those slots directly. */
+    if (changed & XINPUT_GAMEPAD_DPAD_UP)    stdControl_SetKeydown(KEY_JOY1_HUP,    (buttons & XINPUT_GAMEPAD_DPAD_UP)    ? 1 : 0, tick);
+    if (changed & XINPUT_GAMEPAD_DPAD_DOWN)  stdControl_SetKeydown(KEY_JOY1_HDOWN,  (buttons & XINPUT_GAMEPAD_DPAD_DOWN)  ? 1 : 0, tick);
+    if (changed & XINPUT_GAMEPAD_DPAD_LEFT)  stdControl_SetKeydown(KEY_JOY1_HLEFT,  (buttons & XINPUT_GAMEPAD_DPAD_LEFT)  ? 1 : 0, tick);
+    if (changed & XINPUT_GAMEPAD_DPAD_RIGHT) stdControl_SetKeydown(KEY_JOY1_HRIGHT, (buttons & XINPUT_GAMEPAD_DPAD_RIGHT) ? 1 : 0, tick);
+    /* Start → toggle pause (sithTime_Pause/Resume).  No menu — just freeze
+     * the world clock.  When the menu is wired later this will move to a
+     * proper "open pause overlay" call, but for now: press Start, sithTime
+     * stops; press again, it resumes.  Avoids the DIK_ESCAPE → menu route
+     * that we don't have a working menu for yet. */
+    if ((changed & XINPUT_GAMEPAD_START) && (buttons & XINPUT_GAMEPAD_START))
+    {
+        extern int sithTime_bRunning;
+        extern void sithTime_Pause(void);
+        extern void sithTime_Resume(void);
+        if (sithTime_bRunning) sithTime_Resume(); else sithTime_Pause();
+        XDBGF("Start: pause toggle -> %s\n", sithTime_bRunning ? "PAUSED" : "running");
+    }
     if (changed & XINPUT_GAMEPAD_BACK)       stdControl_SetKeydown(DIK_TAB,      (buttons & XINPUT_GAMEPAD_BACK)       ? 1 : 0, tick);
 
-    /* R3 - sprint toggle */
-    if ((changed & XINPUT_GAMEPAD_RIGHT_THUMB) && (buttons & XINPUT_GAMEPAD_RIGHT_THUMB))
+    /* R3 - sprint toggle (DIK_LSHIFT = INPUT_FUNC_FAST) */
+    if ((changed & XINPUT_GAMEPAD_LEFT_THUMB) && (buttons & XINPUT_GAMEPAD_LEFT_THUMB))
     {
         g_sprintToggle = !g_sprintToggle;
         stdControl_SetKeydown(DIK_LSHIFT, g_sprintToggle, tick);
@@ -246,9 +281,15 @@ void stdControl_ReadControls(void)
     }
     cur = (pad->bAnalogButtons[XB_BTN_X] > ANALOG_THRESHOLD); prev = (g_prevAnalog[XB_BTN_X] > ANALOG_THRESHOLD); if (cur != prev) stdControl_SetKeydown(DIK_SPACE,    cur, tick);  /* X = Activate */
     cur = (pad->bAnalogButtons[XB_BTN_Y] > ANALOG_THRESHOLD); prev = (g_prevAnalog[XB_BTN_Y] > ANALOG_THRESHOLD); if (cur != prev) stdControl_SetKeydown(DIK_RETURN,   cur, tick);  /* Y = Use Inventory */
-    /* Analog buttons — shoulders */
-    cur = (pad->bAnalogButtons[XB_BTN_WHITE] > ANALOG_THRESHOLD); prev = (g_prevAnalog[XB_BTN_WHITE] > ANALOG_THRESHOLD); if (cur != prev) stdControl_SetKeydown(DIK_F,       cur, tick);  /* White/RB = Use Force */
-    cur = (pad->bAnalogButtons[XB_BTN_BLACK] > ANALOG_THRESHOLD); prev = (g_prevAnalog[XB_BTN_BLACK] > ANALOG_THRESHOLD); if (cur != prev) stdControl_SetKeydown(DIK_E,       cur, tick);  /* Black/LB = Next Force Power */
+    /* Shoulders → weapon cycle.  Engine's MapDefaultsJoystick
+     * (sithControl.c:2426-2427) binds PREVWEAPON/NEXTWEAPON to
+     * KEY_JOY1_B10/B11 — write those slots directly so weapon select
+     * works without needing a DIK round-trip.  Black=PREV (B10),
+     * White=NEXT (B11).  This is what equips the bryar pistol since
+     * the level-startup cog explicitly leaves the player on weapon 0
+     * (fists) — the player must cycle to bin 2. */
+    cur = (pad->bAnalogButtons[XB_BTN_BLACK] > ANALOG_THRESHOLD); prev = (g_prevAnalog[XB_BTN_BLACK] > ANALOG_THRESHOLD); if (cur != prev) stdControl_SetKeydown(KEY_JOY1_B10, cur, tick);  /* Black = Prev Weapon */
+    cur = (pad->bAnalogButtons[XB_BTN_WHITE] > ANALOG_THRESHOLD); prev = (g_prevAnalog[XB_BTN_WHITE] > ANALOG_THRESHOLD); if (cur != prev) stdControl_SetKeydown(KEY_JOY1_B11, cur, tick);  /* White = Next Weapon */
     /* Triggers → joystick fire buttons.  Engine's MapDefaultsJoystick
      * (sithControl.c:2399-2400) binds INPUT_FUNC_FIRE1 to KEY_JOY1_B17
      * and INPUT_FUNC_FIRE2 to KEY_JOY1_B16, so we write directly into
@@ -278,16 +319,34 @@ void stdControl_ReadControls(void)
      *    no negation. (Earlier negation flipped it the wrong way.)
      *  - sThumbRY: was already negated for "look-up = positive PITCH"
      *    convention; keep as-is. */
-    g_axisValues[XBOX_AXIS_TURN]    =  xbox_NormalizeStick(pad->sThumbLX);
-    g_axisValues[XBOX_AXIS_FORWARD] = -xbox_NormalizeStick(pad->sThumbLY);
-    g_axisValues[XBOX_AXIS_LOOK_LR] =  xbox_NormalizeStick(pad->sThumbRX) * g_lookSensX;
-    g_axisValues[XBOX_AXIS_LOOK_UD] = -xbox_NormalizeStick(pad->sThumbRY) * g_lookSensY;
+    /* Left stick: DIGITAL only (snap to {-1, 0, +1}).
+     * Console-FPS feel — forward/back and strafe run at full speed or not
+     * at all.  Sprint/walk modulate that speed via the FAST/SLOW keys.
+     * Analog left-stick magnitude makes pacing fights for fine movement
+     * which doesn't fit how JK plays.  Only the right (look) stick stays
+     * analog — that's what needs the continuous range for aim precision.
+     * Threshold 0.35 ≈ ~30% stick travel beyond the deadzone. */
+    {
+        float lx = xbox_NormalizeStick(pad->sThumbLX);
+        float ly = -xbox_NormalizeStick(pad->sThumbLY);
+        const float DIGITAL_THRESHOLD = 0.35f;
+        g_axisValues[XBOX_AXIS_TURN]    = (lx >  DIGITAL_THRESHOLD) ?  1.0f
+                                        : (lx < -DIGITAL_THRESHOLD) ? -1.0f
+                                        :  0.0f;
+        g_axisValues[XBOX_AXIS_FORWARD] = (ly >  DIGITAL_THRESHOLD) ?  1.0f
+                                        : (ly < -DIGITAL_THRESHOLD) ? -1.0f
+                                        :  0.0f;
+    }
+    /* Look (right stick): apply quadratic response curve before sensitivity
+     * multiplier.  Small inputs become much smaller (precise aim), large
+     * inputs stay near full speed.  Feels much less twitchy than linear. */
+    g_axisValues[XBOX_AXIS_LOOK_LR] =  xbox_LookCurve(xbox_NormalizeStick(pad->sThumbRX), 2.0f) * g_lookSensX;
+    g_axisValues[XBOX_AXIS_LOOK_UD] = -xbox_LookCurve(xbox_NormalizeStick(pad->sThumbRY), 2.0f) * g_lookSensY;
 
-    /* Per-call axis-value log to confirm input is reaching us.  Throttled
-     * so the log doesn't drown — first 5 calls plus once per ~60 frames
-     * after.  Look for nonzero values when sticks are pushed. */
-    { static int _r = 0; static unsigned int _re = 0; _re++;
-      if (_r < 5 || (_re % 60) == 0) {
+    /* Per-call axis log: first 3 calls only, just for boot sanity.  No
+     * periodic spam — it floods D:\debug_openjkdf2.txt over time. */
+    { static int _r = 0;
+      if (_r < 3) {
         XDBGF("ReadCtl: btns=%04X LX=%d LY=%d RX=%d RY=%d -> ax[%f %f %f %f]\n",
               (unsigned)pad->wButtons,
               (int)pad->sThumbLX, (int)pad->sThumbLY,

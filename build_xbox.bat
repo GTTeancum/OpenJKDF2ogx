@@ -164,7 +164,10 @@ for %%F in (
     src\Engine\rdLight.c
     src\Engine\rdActive.c
     src\Primitives\rdModel3.c
+    src\Primitives\rdParticle.c
+    src\Primitives\rdPolyLine.c
     src\Primitives\rdPrimit3.c
+    src\Primitives\rdSprite.c
     src\Primitives\rdMath.c
     src\Primitives\rdVector.c
     src\Primitives\rdMatrix.c

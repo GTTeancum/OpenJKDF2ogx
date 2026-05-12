@@ -160,20 +160,34 @@ void __cdecl main(void)
     { static int loopCount = 0;
     while (Window_xbox_PumpMessages())
     {
+        /* Heartbeat / per-step tick logging.  Commented out — game is
+         * healthy and these flood D:\debug_openjkdf2.txt faster than we
+         * can read it.  Restore by uncommenting for boot-path diagnosis
+         * or main-loop hangs. */
+        /*
         if (loopCount < 5 || (loopCount % 100) == 0) {
             XDBGF("main: tick %d\n", loopCount);
         }
+        */
         loopCount++;
-        if (loopCount < 5) XDBG("main: -> StartScene\n");
+        /* if (loopCount < 5) XDBG("main: -> StartScene\n"); */
         std3D_StartScene();
-        if (loopCount < 5) XDBG("main: -> GuiAdvance\n");
+        /* if (loopCount < 5) XDBG("main: -> GuiAdvance\n"); */
         jkMain_GuiAdvance();
-        if (loopCount < 5) XDBG("main: -> EndScene\n");
+        /* if (loopCount < 5) XDBG("main: -> EndScene\n"); */
         std3D_EndScene();
-        if (loopCount < 5) XDBG("main: -> Present\n");
+        /* if (loopCount < 5) XDBG("main: -> Present\n"); */
         std3D_Present();  /* Swap buffers AFTER EndScene, outside scene block */
-        if (loopCount < 5) XDBG("main: -> Sleep\n");
-        Sleep(16);
+        /* if (loopCount < 5) XDBG("main: -> Sleep\n"); */
+        /* Sleep(1) yields to the kernel scheduler without imposing a
+         * long idle.  Sleep(16) was capping us to ~30 fps on hardware:
+         * render+logic ≈ 18ms per frame, plus 16ms sleep = ~34ms ≈ 29
+         * fps.  With Sleep(1) the loop becomes render-bound and dt
+         * shrinks, giving the engine more responsive physics ticks
+         * (the engine itself is fully fixed-timestep, so running the
+         * outer loop faster doesn't speed up gameplay — it just
+         * reduces input-to-display latency and increases dt accuracy). */
+        Sleep(1);
     }
     } /* close loopCount scope */
 

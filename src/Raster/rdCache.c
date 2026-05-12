@@ -323,6 +323,51 @@ int rdCache_SendFaceListToHardware()
             flags_idk = 0x833;
             break;
     }
+#ifdef TARGET_XBOX
+    /* Diagnostic: log when the pal-effect tint or filter is non-zero (damage
+     * flash, screen-tint cog verb, etc.) so we can correlate hardware events
+     * with the values being applied.  Fires once per "edge" from zero. */
+    {
+        static int _ptint = 0;
+        int hasTint   = (rdroid_curColorEffects.tint.x   > 0.01 ||
+                         rdroid_curColorEffects.tint.y   > 0.01 ||
+                         rdroid_curColorEffects.tint.z   > 0.01);
+        int hasFilter = (rdroid_curColorEffects.filter.x ||
+                         rdroid_curColorEffects.filter.y ||
+                         rdroid_curColorEffects.filter.z);
+        int hasFade   = (rdroid_curColorEffects.fade < 0.999);
+        if ((hasTint || hasFilter || hasFade) && _ptint < 8) {
+            XDBGF("SFTH: pal-effect ACTIVE  tint=(%.3f,%.3f,%.3f) filter=(%d,%d,%d) fade=%.3f\n",
+                  (double)rdroid_curColorEffects.tint.x,
+                  (double)rdroid_curColorEffects.tint.y,
+                  (double)rdroid_curColorEffects.tint.z,
+                  (int)rdroid_curColorEffects.filter.x,
+                  (int)rdroid_curColorEffects.filter.y,
+                  (int)rdroid_curColorEffects.filter.z,
+                  (double)rdroid_curColorEffects.fade);
+            _ptint++;
+        }
+    }
+    /* Xbox-textured pipeline doesn't consume the per-vertex .color field
+     * (std3D.c emits glColor4f(lightLevel,...) instead — see comment in
+     * std3D_DrawRenderList).  But the engine's pal-effect tint code below
+     * sets `flags_idk |= 0x8000` AND scales vertex_r/g/b in a way that, on
+     * the upstream PC build, multiplies through the colormap then re-packs
+     * .color.  On JK1 sectors where the lit color is 0xFF000000 (identity
+     * colormap), the tint scalars don't produce sensible output, and the
+     * filter path (v129) wholesale zeros channels.  Pal-effects are a
+     * palette-era concept — skip the whole vertex-color modulation here on
+     * Xbox.  std3D's lightLevel path keeps geometry visible; the damage
+     * flash will need to be re-implemented later as a full-screen overlay
+     * if we want the red tint back. */
+    v0   = 0;
+    v1   = 0;
+    v130 = 0;
+    v129 = 0;
+    red_scalar   = 0.0;
+    green_scalar = 0.0;
+    blue_scalar  = 0.0;
+#else
     if ( rdroid_curColorEffects.tint.x > 0.0 || rdroid_curColorEffects.tint.y > 0.0 || rdroid_curColorEffects.tint.z > 0.0 )
     {
         v2 = rdroid_curColorEffects.tint.y * 0.5;
@@ -339,6 +384,7 @@ int rdCache_SendFaceListToHardware()
         v1 = 1;
         v129 = 1;
     }
+#endif
 
     if ( v0 || v1 || (rdGetVertexColorMode() == 1)) // MOTS added
     {
@@ -821,6 +867,31 @@ int rdCache_SendFaceListToHardware()
                             light_level = active_6c->light_level_static;
 #ifdef SDL2_RENDER
                         rdCache_aHWVertices[rdCache_totalVerts].lightLevel = light_level / 255.0;
+                        /* Self-illumination fallback for the LIGHTED (1),
+                         * DIFFUSE (2), and FULLYLIT (4) modes.  Upstream PC
+                         * engine relies on a palette-tint pass that re-bumps
+                         * vertex .color channels back up — for materials
+                         * where the engine's lit color is 0 (very common on
+                         * projectiles, glow sprites, saber edges, anything
+                         * marked "always bright"), the tint path produces
+                         * visible output.  The Xbox port skips palette tint
+                         * (the comment at the top of this file explains why)
+                         * and reads our lightLevel straight into glColor4f
+                         * as DIFFUSE — so a zero light_level_static modulates
+                         * TEXTURE * 0 = invisible.
+                         *
+                         * Fix: when light_level computes to exactly 0 in any
+                         * mode OTHER than GOURAUD (where 0 is meaningful per
+                         * vertex), force lightLevel = 1.0.  Surfaces in dim
+                         * sectors have non-zero ambient (light_level_static
+                         * > 0) so they keep their dim look untouched.
+                         * Projectile faces and glow sprites — which the .3do
+                         * loader writes with light_level_static = 0 because
+                         * they're supposed to self-illuminate — now light up
+                         * to texture-color via TEXTURE * 1.0. */
+                        if (light_level == 0 && lighting_capability != 3) {
+                            rdCache_aHWVertices[rdCache_totalVerts].lightLevel = 1.0;
+                        }
 #endif
 #ifdef TARGET_TWL
                         rdCache_aHWVertices[rdCache_totalVerts].lightLevel = (int)light_level;
@@ -1110,6 +1181,17 @@ LABEL_232:
         alpha_upshifta = red_and_alpha << 8;
         for (vtx_idx = 0; vtx_idx < active_6c->numVertices; vtx_idx++)
         {
+#ifdef TARGET_XBOX
+            /* Solid-color faces (weapon bolts, debug polys, etc.) also arrive
+               here in view-space.  Keep x/y/z intact so std3D's glFrustum path
+               can do the same HW projection used by textured faces above. */
+            rdCache_aHWVertices[rdCache_totalVerts].x  = active_6c->vertices[tmpiter].x;
+            rdCache_aHWVertices[rdCache_totalVerts].y  = active_6c->vertices[tmpiter].y;
+            rdCache_aHWVertices[rdCache_totalVerts].z  = active_6c->vertices[tmpiter].z;
+            rdCache_aHWVertices[rdCache_totalVerts].nx = 0.0;
+            rdCache_aHWVertices[rdCache_totalVerts].nz = 0.0;
+            v88 = (active_6c->vertices[tmpiter].y == 0.0) ? 0.0 : 1.0 / active_6c->vertices[tmpiter].y;
+#else
 #ifndef TARGET_TWL
             rdCache_aHWVertices[rdCache_totalVerts].x = (active_6c->vertices[tmpiter].x);  // Added: The original game rounded to ints here (with ceilf?)
             rdCache_aHWVertices[rdCache_totalVerts].y = (active_6c->vertices[tmpiter].y);  // Added: The original game rounded to ints here (with ceilf?)
@@ -1151,6 +1233,7 @@ LABEL_232:
 #ifdef TARGET_TWL
             rdCache_aHWVertices[rdCache_totalVerts].lightLevel = 0xFF;
 #endif
+#endif /* TARGET_XBOX */
 
             // Added: nullptr check and fallback
             if (!(rdColormap *)active_6c->colormap || !v137) {

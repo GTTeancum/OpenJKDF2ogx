@@ -322,10 +322,6 @@ void sithRender_Draw()
     std3D_DebugLineKV(1, "GEO0",   xb_exitGeo0);
     std3D_DebugLineKV(2, "NOCAM",  xb_exitNoCam);
     std3D_DebugLineKV(3, "FULL",   xb_exitFull);
-    if ((xb_drawCalls % 60) == 1) {
-        XDBGF("DrawSummary: calls=%d exitGeo0=%d exitNoCam=%d exitFull=%d\n",
-              xb_drawCalls, xb_exitGeo0, xb_exitNoCam, xb_exitFull);
-    }
 #endif
 
     //printf("%x %x %x\n", sithRender_texMode, rdroid_curTextureMode, sithRender_lightMode);
@@ -1910,9 +1906,6 @@ void sithRender_RenderLevelGeometry()
 
             BOOL bIsSkySurface = (v65->surfaceFlags & (SITH_SURFACE_CEILING_SKY|SITH_SURFACE_HORIZON_SKY));
             flex_t dist = rdMath_DistancePointToPlane(&sithCamera_currentCamera->vec3_1, &v65->surfaceInfo.face.normal, &vertices_alloc[*v65->surfaceInfo.face.vertexPosIdx]);
-#ifdef TARGET_XBOX
-            { static int _rlg2=0; if(_rlg2<1000){ XDBGF("RLG: surf[%d] geoMode=%d adjoin=%p dist=%f\n", v75, (int)v65->surfaceInfo.face.geometryMode, (void*)v65->adjoin, dist); _rlg2++; } }
-#endif
             if (UNLIKELY(dist <= 0.0)) {
 #ifdef TARGET_XBOX
                 xb_distNeg++;
@@ -2595,7 +2588,28 @@ LABEL_150:
             }
 
             { static int _tl=0; if(_tl<3){ XDBGF("ThingLoop: i=%p flags=0x%x type=%d model3=%p frustum=%p\n", (void*)i, i->thingflags, i->rdthing.type, (void*)i->rdthing.model3, (void*)level_idk->clipFrustum); _tl++; } }
-            if (!i->rdthing.model3) continue;
+            /* Projectile-specific log: sithThing.type==3 is SITH_THING_WEAPON
+             * (i.e. blaster bolts).  Helps diagnose whether spawned bolts
+             * reach the render path at all. */
+            if (i->type == 3) {
+                static int _tp=0;
+                if (_tp < 10) {
+                    XDBGF("ThingLoop PROJECTILE: i=%p sect=%p rdtype=%d model3=%p pos=(%.2f,%.2f,%.2f)\n",
+                          (void*)i, (void*)i->sector, i->rdthing.type, (void*)i->rdthing.model3,
+                          (double)i->position.x, (double)i->position.y, (double)i->position.z);
+                    _tp++;
+                }
+            }
+            if (!i->rdthing.model3) {
+                if (i->type == 3) {
+                    static int _tm=0;
+                    if (_tm < 10) {
+                        XDBGF("ThingLoop PROJECTILE skip: model3 NULL i=%p\n", (void*)i);
+                        _tm++;
+                    }
+                }
+                continue;
+            }
             rdMatrix_TransformPoint34(&i->screenPos, &i->position, &rdCamera_pCurCamera->view_matrix);
             { static int _ta=0; if(_ta<3){ XDBGF("ThingLoop: TransformPoint done, calling SphereInFrustum radius=%f\n", i->rdthing.model3->radius); _ta++; } }
             v63 = rdClip_SphereInFrustum(level_idk->clipFrustum, &i->screenPos, i->rdthing.model3->radius);
@@ -2609,7 +2623,23 @@ LABEL_150:
 #endif
             i->rdthing.clippingIdk = v63;
             if (LIKELY(v63 == SPHERE_FULLY_OUTSIDE)) {
+                if (i->type == 3) {
+                    static int _tf=0;
+                    if (_tf < 10) {
+                        XDBGF("ThingLoop PROJECTILE culled: v63=%d radius=%f screenPos=(%.2f,%.2f,%.2f)\n",
+                              v63, (double)i->rdthing.model3->radius,
+                              (double)i->screenPos.x, (double)i->screenPos.y, (double)i->screenPos.z);
+                        _tf++;
+                    }
+                }
                 continue;
+            }
+            if (i->type == 3) {
+                static int _ts=0;
+                if (_ts < 10) {
+                    XDBGF("ThingLoop PROJECTILE survived: i=%p v63=%d -> RenderThing\n", (void*)i, v63);
+                    _ts++;
+                }
             }
 
             // REMOVED: This was bugged idk
@@ -2671,17 +2701,9 @@ LABEL_150:
         }
 
         ++sithRender_sectorsDrawn;
-        { static int _sd=0; if(_sd<20){ XDBGF("RLG: sector done sectorsDrawn=%d\n", sithRender_sectorsDrawn); _sd++; } }
     }
 
 #ifdef TARGET_XBOX
-    /* Per-frame reject summary — one line, throttled to 30 frames. */
-    { static int _rs = 0; if (_rs < 30) {
-        XDBGF("RLG_summary: walked=%d gm0=%d distNeg=%d alphaAdj=%d sphereOut=%d noPE=%d reachClip=%d clipPass=%d\n",
-              xb_walked, xb_geomode0, xb_distNeg, xb_alphaAdj,
-              xb_sphereOut, xb_noProcEntry, xb_reachedClip, xb_clipPass);
-        _rs++;
-    } }
     /* Wire RLG breakdown to the on-screen HUD as labeled lines. */
     std3D_DebugLineKV(11, "WALK",    xb_walked);
     std3D_DebugLineKV(12, "GM0",     xb_geomode0);
@@ -3188,6 +3210,27 @@ int sithRender_RenderThing(sithThing *pThing)
 
     pThing->lastRenderedTickIdx = jkPlayer_currentTickIdx;
     pThing->lookOrientation.scale = pThing->position;
+
+#ifdef TARGET_XBOX
+    /* Sync probe: log projectile's physics position and matrix scale
+     * RIGHT BEFORE rdThing_Draw, so we can match against the std3D
+     * BoltTri probe (which sees the post-view-transform vertex coords).
+     * If pos.z != lookOrientation.scale.z, sithRender is feeding wrong
+     * data.  If they match but view-space Z is still inflated downstream,
+     * the bug is in the matrix multiply path. */
+    if (pThing->type == 3) {
+        static int _bs = 0;
+        if (_bs < 400) {  /* lots of room — fight-through-crowd may need many shots */
+            xbox_debug_Printf("BoltSrc[%d]: thing=%p pos=(%.3f %.3f %.3f) loScale=(%.3f %.3f %.3f) loLvec=(%.3f %.3f %.3f) loUvec=(%.3f %.3f %.3f)\n",
+                _bs, (void*)pThing,
+                (double)pThing->position.x, (double)pThing->position.y, (double)pThing->position.z,
+                (double)pThing->lookOrientation.scale.x, (double)pThing->lookOrientation.scale.y, (double)pThing->lookOrientation.scale.z,
+                (double)pThing->lookOrientation.lvec.x, (double)pThing->lookOrientation.lvec.y, (double)pThing->lookOrientation.lvec.z,
+                (double)pThing->lookOrientation.uvec.x, (double)pThing->lookOrientation.uvec.y, (double)pThing->lookOrientation.uvec.z);
+            _bs++;
+        }
+    }
+#endif
 
 #ifdef TARGET_TWL
     int skip_this_thing = 0;

@@ -948,22 +948,6 @@ int sithControl_HandlePlayer(sithThing *player, flex_t deltaSecs)
     int input_read;
     int tmp;
 
-#ifdef TARGET_XBOX
-    /* Phase 4: trace inputs being read by the player handler.  Throttled
-     * to first ~30 invocations + one per second after to keep log small. */
-    { static int _hp = 0; static unsigned int _hpEvery = 0;
-      _hpEvery++;
-      if (_hp < 30 || (_hpEvery % 60) == 0) {
-        flex_t fwd = sithControl_GetAxisTimeCorrected(INPUT_FUNC_FORWARD);
-        flex_t turn= sithControl_GetAxisTimeCorrected(INPUT_FUNC_TURN);
-        flex_t pitch=sithControl_GetAxisTimeCorrected(INPUT_FUNC_PITCH);
-        XDBGF("HandlePlayer[%u]: thing=%p mt=%d fwd=%f turn=%f pitch=%f\n",
-              _hpEvery, (void*)player, (int)player->moveType,
-              (float)fwd, (float)turn, (float)pitch);
-        _hp++;
-      }
-    }
-#endif
 
     //g_debugmodeFlags |= 0x100;
 
@@ -975,26 +959,6 @@ int sithControl_HandlePlayer(sithThing *player, flex_t deltaSecs)
     if ( player->moveType != SITH_MT_PHYSICS )
         return 0;
 
-#ifdef TARGET_XBOX
-    /* Phase 4: trace why character doesn't move despite axes being non-zero.
-     * Log: typeflags (SITH_AF_DISABLED gate), attach_flags (Movement vs
-     * FreeCam branch), thingflags (DEAD gate), sithCamera_state, and
-     * post-call accel/vel values to find which layer drops input. */
-    { static int _dp = 0; static unsigned int _dpEvery = 0;
-      _dpEvery++;
-      if (_dp < 30 || (_dpEvery % 60) == 0) {
-        XDBGF("HP_state[%u]: type=%d typeflags=%X thingflags=%X attach=%X cam=%d debug=%X dead=%d\n",
-              _dpEvery, (int)player->type,
-              (unsigned)player->actorParams.typeflags,
-              (unsigned)player->thingflags,
-              (unsigned)player->attach_flags,
-              (int)sithCamera_state,
-              (unsigned)g_debugmodeFlags,
-              (player->thingflags & SITH_TF_DEAD) ? 1 : 0);
-        _dp++;
-      }
-    }
-#endif
 
     // Added: dedicated
     if (sithNet_isServer && jkGuiNetHost_bIsDedicated) {
@@ -1014,6 +978,12 @@ int sithControl_HandlePlayer(sithThing *player, flex_t deltaSecs)
     {
         if (player->thingflags & SITH_TF_DEAD)
         {
+#ifdef TARGET_XBOX
+            { static int _dN=0; if(_dN<20){ XDBGF("DEAD: tf=%X af=%X msgtimer=%u curMs=%u falling=%d\n",
+                (unsigned)player->thingflags, (unsigned)player->actorParams.typeflags,
+                (unsigned)sithControl_death_msgtimer, (unsigned)sithTime_curMs,
+                (int)((player->actorParams.typeflags & SITH_AF_FALLING_TO_DEATH)!=0)); _dN++; } }
+#endif
             if (!(player->actorParams.typeflags & SITH_AF_FALLING_TO_DEATH))
             {
                 if ( !sithControl_death_msgtimer )
@@ -1039,13 +1009,27 @@ LABEL_39:
 #ifdef QOL_IMPROVEMENTS
                     // HACK: Prevent exploding yourself on reloading
                     tmp = sithControl_ReadFunctionMap(INPUT_FUNC_ACTIVATE, &input_read);
+#ifdef TARGET_XBOX
+                    { static int _lN=0; int actHeld=tmp; int actPress=input_read; int fireHeld, firePress;
+                      fireHeld = sithControl_ReadFunctionMap(INPUT_FUNC_FIRE1, &firePress);
+                      if(_lN<40 || actPress || firePress || actHeld || fireHeld){
+                        XDBGF("RESPAWN: deb=%d actHeld=%d actPress=%d fireHeld=%d firePress=%d\n",
+                            (int)sithControl_buttonPressDebounce, actHeld, actPress, fireHeld, firePress);
+                        _lN++; } }
+#endif
                     if (!sithControl_buttonPressDebounce && (input_read != 0 || (sithControl_ReadFunctionMap(INPUT_FUNC_FIRE1, &input_read), input_read != 0) ))
                     {
                         sithControl_buttonPressDebounce = 1;
+#ifdef TARGET_XBOX
+                        XDBG("RESPAWN: debounce armed\n");
+#endif
                     }
                     else if (sithControl_buttonPressDebounce && tmp == 0 && !sithControl_ReadFunctionMap(INPUT_FUNC_FIRE1, &input_read) )
                     {
                         sithControl_buttonPressDebounce = 0;
+#ifdef TARGET_XBOX
+                        XDBG("RESPAWN: firing loadauto\n");
+#endif
                         sithPlayer_debug_loadauto(player);
                         return 0;
                     }
@@ -1083,34 +1067,6 @@ LABEL_39:
                     sithControl_PlayerMovement(player);
                 else
                     sithControl_FreeCam(player);
-
-#ifdef TARGET_XBOX
-                /* Log resulting acceleration / angVel + current vel/pos so
-                 * we can see whether the input made it into physicsParams,
-                 * and whether the physics tick is integrating that to
-                 * position. */
-                { static int _dh = 0; static unsigned int _dhEvery = 0;
-                  _dhEvery++;
-                  if (_dh < 30 || (_dhEvery % 60) == 0) {
-                    XDBGF("HP_apply[%u]: branch=%s accel=(%.3f,%.3f,%.3f) angV=(%.3f,%.3f,%.3f) vel=(%.3f,%.3f,%.3f) pos=(%.3f,%.3f,%.3f)\n",
-                          _dhEvery,
-                          player->attach_flags ? "MOVE" : "FREE",
-                          (float)player->physicsParams.acceleration.x,
-                          (float)player->physicsParams.acceleration.y,
-                          (float)player->physicsParams.acceleration.z,
-                          (float)player->physicsParams.angVel.x,
-                          (float)player->physicsParams.angVel.y,
-                          (float)player->physicsParams.angVel.z,
-                          (float)player->physicsParams.vel.x,
-                          (float)player->physicsParams.vel.y,
-                          (float)player->physicsParams.vel.z,
-                          (float)player->position.x,
-                          (float)player->position.y,
-                          (float)player->position.z);
-                    _dh++;
-                  }
-                }
-#endif
 
                 sithControl_ReadFunctionMap(INPUT_FUNC_ACTIVATE, &input_read);
 #ifdef TARGET_XBOX
@@ -1671,22 +1627,6 @@ void sithControl_PlayerMovement(sithThing *player)
         }
         v11 = sithControl_GetAxisTimeCorrected(0);
         y_vel = (player->actorParams.maxThrust + player->actorParams.extraSpeed) * v11;
-#ifdef TARGET_XBOX
-        /* Log thrust state and axis read inside PlayerMovement to confirm
-         * which factor is zero when motion fails. */
-        { static int _pm = 0; static unsigned int _pmEvery = 0;
-          _pmEvery++;
-          if (_pm < 30 || (_pmEvery % 60) == 0) {
-            XDBGF("PM_calc[%u]: fwd=%f maxThrust=%f extraSpeed=%f angV=%f y_vel=%f\n",
-                  _pmEvery, (float)v11,
-                  (float)player->actorParams.maxThrust,
-                  (float)player->actorParams.extraSpeed,
-                  (float)player->physicsParams.angVel.y,
-                  (float)y_vel);
-            _pm++;
-          }
-        }
-#endif
         if ( v11 < 0.0 )
             y_vel = y_vel * 0.5;
         player->physicsParams.acceleration.y = y_vel;

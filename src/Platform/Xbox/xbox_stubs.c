@@ -97,15 +97,48 @@ void jkGuiMain_ShowCutscenes(void) STUBV
 extern int jkMain_SwitchTo5(char *pJklFname);
 extern int jkSmack_gameMode;
 extern void jkRes_LoadGob(char *a1);
+extern int jkHudInv_InitItems(void);
+extern int sithMain_Load(char *jklFname);
+extern float jkPlayer_hudScale;
 extern "C" void xbox_debug_Print(const char*);
+extern "C" void xbox_debug_Printf(const char*, ...);
 void jkGuiMain_Show(void)
 {
     static int autostarted = 0;
     xbox_debug_Print("jkGuiMain_Show called\n");
     if (!autostarted) {
+        int items_ok;
+        int static_ok;
         autostarted = 1;
+        /* HUD scale: PC SDL2 default is 2.0 (for hi-DPI desktop windows).
+         * Xbox renders at 640x480 native and our UI ortho matches,
+         * so the HUD bitmaps are 1:1. */
+        jkPlayer_hudScale = 1.0f;
         xbox_debug_Print("jkGuiMain_Show: loading episode GOB 'JK1'\n");
         jkRes_LoadGob("JK1");
+
+        /* Mirror jkMain_TitleShow's order (src/Main/jkMain.c:862):
+         *   sithMain_Load("static.jkl");  // registers shared cogs into sithWorld_pStatic
+         *   jkHudInv_InitItems();          // parses items.dat, calls
+         *                                  // sithCog_LoadCogscript(name) per bin
+         *
+         * items.dat lines like `bin 2 bryar.cog 0 1 0x10` reference cog
+         * scripts by name.  Without static.jkl loaded first, the
+         * per-bin LoadCogscript returns NULL, every descriptor gets
+         * cog=0, and AutoSelectWeapon's `if (desc->cog)` gate skips
+         * every weapon — sithCog_SendMessageEx is never sent so
+         * priority stays at -1 forever.  Result: bryar in inventory
+         * but no equip on level start.
+         *
+         * Re-ordering is what the title-screen path does upstream;
+         * this just makes the same call chain happen on Xbox without
+         * the title screen. */
+        static_ok = sithMain_Load("static.jkl");
+        xbox_debug_Printf("jkGuiMain_Show: sithMain_Load(static.jkl) -> %d\n", static_ok);
+
+        items_ok = jkHudInv_InitItems();
+        xbox_debug_Printf("jkGuiMain_Show: jkHudInv_InitItems -> %d\n", items_ok);
+
         xbox_debug_Print("jkGuiMain_Show: auto-starting 01narshadda.jkl\n");
         jkMain_SwitchTo5("01narshadda.jkl");
         /* SwitchTo5 sets jkSmack_gameMode=3 which doesn't match any init
@@ -304,8 +337,8 @@ void sithInventory_SetCarries(void* a, int b) STUBV
 int  sithPlayer_GetBinAmt(void* a, int b) STUB0
 void sithPlayer_SetBinAmt(void* a, int b, int c) STUBV
 
-/* sithGamesave — needs save system */
-int  sithGamesave_Load(void* a) STUB0
+/* sithGamesave — auto-stub in xbox_autostubs.c. Soft-respawn hijack
+ * reverted: it broke the boot path. See XBOX_HACKS.md. */
 
 /* sithTime_Pause, sithTime_Resume — real impls in src/Gameplay/sithTime.c (now in build) */
 
@@ -487,12 +520,7 @@ int  rdPrimit2_DrawClippedLine(struct rdCanvas* c, int x1, int y1, int x2, int y
     { (void)c; (void)x1; (void)y1; (void)x2; (void)y2; (void)col; (void)mask; return 0; }
 void jkQuakeConsole_ExecuteCommand(const char* pCmd)                        { (void)pCmd; }
 
-int  rdParticle_LoadEntry(char* fpath, struct rdParticle* p)                { (void)fpath; (void)p; return 0; }
-struct rdParticle* rdParticle_New(int a, float b, struct rdMaterial* c, int d, int e)
-    { (void)a; (void)b; (void)c; (void)d; (void)e; return 0; }
-struct rdParticle* rdParticle_Clone(struct rdParticle* p)                   { (void)p; return 0; }
-void rdParticle_Free(struct rdParticle* p)                                  { (void)p; }
-void rdParticle_FreeEntry(struct rdParticle* p)                             { (void)p; }
+/* rdParticle_* — real impls now in src/Primitives/rdParticle.c */
 
 /* MSVC CRT helper: __isspace (single underscore _isspace exists in libc; the
    double-underscore mangling is what stdStrTable.c references via macros.) */
@@ -538,13 +566,9 @@ void stdDisplay_ddraw_surface_flip2(void) { }
 
 /* stdColor, stdFont, stdBitmap — real impls in src/General/std{Color,Font,Bitmap}.c (now in build) */
 
-/* std3D bitmap-cache hooks — Xbox std3D.c doesn't implement texture-cache
-   bookkeeping yet (texture upload happens lazily in std3D_DrawIndexed*).
-   Stub: stdBitmap will treat caching as a no-op and re-upload as needed. */
-extern "C" {
-    int  std3D_AddBitmapToTextureCache(struct stdBitmap* b, int a, int c, int d) { (void)b; (void)a; (void)c; (void)d; return 1; }
-    void std3D_PurgeBitmapRefs(struct stdBitmap* b) { (void)b; }
-}
+/* std3D_AddBitmapToTextureCache + std3D_PurgeBitmapRefs are implemented
+ * in src/Platform/Xbox/std3D.c (uploads stdBitmap mips as FakeGL
+ * textures, stored in pBmp->aTextureIds for HUD blits). */
 
 /* stdDisplay_VBufferConvertColorFormat — DDraw colour conversion path,
    not used on Xbox (we render to D3D8 surfaces, not DDraw VBuffers). */
@@ -561,17 +585,14 @@ extern "C" wchar_t* __wcsrchr(const wchar_t* s, wchar_t c) {
     return (wchar_t*)last;
 }
 
-/* rdPolyLine — saber trail rendering. Stubbed: no saber trail. */
-int rdPolyLine_NewEntry(struct rdPolyLine* p, char* a, char* b, char* c, float d, float e, float f, int g, int h, int i, float j)
-    { (void)p; (void)a; (void)b; (void)c; (void)d; (void)e; (void)f; (void)g; (void)h; (void)i; (void)j; return 0; }
-void rdPolyLine_FreeEntry(struct rdPolyLine* p) { (void)p; }
+/* rdPolyLine — real impl in src/Primitives/rdPolyLine.c (now in build).
+ * Powers laser-bolt projectiles (bryar etc.) and saber trails. */
 
-/* std3D_Screenshot, std3D_DrawUI* — extra rendering helpers, declared elsewhere */
+/* std3D_DrawUIBitmap + std3D_DrawUIClearedRect are implemented in
+ * src/Platform/Xbox/std3D.c (immediate-mode textured/solid quads via
+ * the FakeGL adapter). std3D_Screenshot kept as a stub. */
 extern "C" {
     int  std3D_Screenshot(void) { return 0; }
-    void std3D_DrawUIClearedRect(int a, int b, int c, int d, int e, int f) { (void)a; (void)b; (void)c; (void)d; (void)e; (void)f; }
-    void std3D_DrawUIBitmap(void* a, int b, int c, int d, int e, int f, int g, int h)
-        { (void)a; (void)b; (void)c; (void)d; (void)e; (void)f; (void)g; (void)h; }
 }
 
 /* stdFileUtil_MkDir — directory creation (config save). C linkage. */

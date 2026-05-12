@@ -43,6 +43,20 @@ extern "C" int xbox_get_camera_params(float* fov_out, float* aspect_out,
     return 1;
 }
 
+/* Diagnostic accessor: copy the current camera view_matrix into a flat
+ * 12-float buffer (rvec[3], lvec[3], uvec[3], scale[3]).  Returns 0 if
+ * the camera isn't ready.  Used by std3D bolt diagnostics. */
+extern "C" int xbox_get_view_matrix(float* out12)
+{
+    if (!rdCamera_pCurCamera || !out12) return 0;
+    rdMatrix34* vm = &rdCamera_pCurCamera->view_matrix;
+    out12[ 0] = (float)vm->rvec.x; out12[ 1] = (float)vm->rvec.y; out12[ 2] = (float)vm->rvec.z;
+    out12[ 3] = (float)vm->lvec.x; out12[ 4] = (float)vm->lvec.y; out12[ 5] = (float)vm->lvec.z;
+    out12[ 6] = (float)vm->uvec.x; out12[ 7] = (float)vm->uvec.y; out12[ 8] = (float)vm->uvec.z;
+    out12[ 9] = (float)vm->scale.x; out12[10] = (float)vm->scale.y; out12[11] = (float)vm->scale.z;
+    return 1;
+}
+
 /* Populate stdControl_aJoysticks[idx] so the engine treats the axis as
  * connected.  Mirrors the canonical PC stdControl_InitAxis impl in
  * src/Platform/Common/stdControl.c:545 — sets flags|=1 (axis exists),

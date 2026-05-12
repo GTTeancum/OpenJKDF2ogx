@@ -15,6 +15,10 @@
 #include "Primitives/rdPrimit3.h"
 #include "Primitives/rdDebug.h"
 
+#ifdef TARGET_XBOX
+extern "C" void xbox_debug_Printf(const char* fmt, ...);
+#endif
+
 model3Loader_t rdModel3_RegisterLoader(model3Loader_t loader)
 {
     model3Loader_t result = pModel3Loader;
@@ -1158,7 +1162,25 @@ int rdModel3_Draw(rdThing *thing, rdMatrix34 *matrix_4_3)
     
     pCurThing = thing;
     pCurModel3 = thing->model3;
-    
+
+#ifdef TARGET_XBOX
+    if (pCurModel3 && pCurModel3->radius > 0.0f && pCurModel3->radius < 0.5f && matrix_4_3) {
+        static void* _seen[32] = {0};
+        static int _nseen = 0;
+        int already = 0, i;
+        for (i = 0; i < _nseen; i++) {
+            if (_seen[i] == (void*)pCurModel3) { already = 1; break; }
+        }
+        if (!already && _nseen < 32) {
+            _seen[_nseen++] = (void*)pCurModel3;
+            xbox_debug_Printf("Model3Draw[NEW model=%p]: radius=%.3f scale=(%.3f %.3f %.3f) curCullFlags=%d\n",
+                (void*)pCurModel3, (double)pCurModel3->radius,
+                (double)matrix_4_3->scale.x, (double)matrix_4_3->scale.y, (double)matrix_4_3->scale.z,
+                (int)rdroid_curCullFlags);
+        }
+    }
+#endif
+
     if (rdroid_curCullFlags & 2) {
         rdVector3 vertex_out;
         rdClipFrustum* pThingFrustum = rdCamera_pCurCamera->pClipFrustum;
@@ -1178,6 +1200,22 @@ int rdModel3_Draw(rdThing *thing, rdMatrix34 *matrix_4_3)
         frustumCull = thing->clippingIdk;
     }
     thingFrustumCull = frustumCull;
+#ifdef TARGET_XBOX
+    if (pCurModel3 && pCurModel3->radius > 0.0f && pCurModel3->radius < 0.5f && matrix_4_3) {
+        static void* _seen[32] = {0};
+        static int _nseen = 0;
+        int already = 0, i;
+        for (i = 0; i < _nseen; i++) {
+            if (_seen[i] == (void*)pCurModel3) { already = 1; break; }
+        }
+        if (!already && _nseen < 32) {
+            _seen[_nseen++] = (void*)pCurModel3;
+            xbox_debug_Printf("Model3Cull[NEW model=%p]: radius=%.3f frustumCull=%d (1=INSIDE 2=EDGE 3=OUTSIDE) thing->clippingIdk=%d\n",
+                (void*)pCurModel3, (double)pCurModel3->radius,
+                (int)frustumCull, (int)thing->clippingIdk);
+        }
+    }
+#endif
     if (frustumCull == SPHERE_FULLY_OUTSIDE) {
         return 0;
     }
@@ -1298,9 +1336,28 @@ void rdModel3_DrawMesh(rdMesh *meshIn, rdMatrix34 *mat)
     rdMatrix34 out;
 
     pCurMesh = meshIn;
+
+#ifdef TARGET_XBOX
+    if (meshIn->numVertices > 0 && meshIn->numVertices < 32 && mat) {
+        static void* _seen[32] = {0};
+        static int _nseen = 0;
+        int already = 0, i;
+        for (i = 0; i < _nseen; i++) {
+            if (_seen[i] == (void*)meshIn) { already = 1; break; }
+        }
+        if (!already && _nseen < 32) {
+            _seen[_nseen++] = (void*)meshIn;
+            xbox_debug_Printf("DrawMeshEnter[NEW mesh=%p]: nVerts=%d geoMode=%d thingFC=%d matScale=(%.3f %.3f %.3f)\n",
+                (void*)meshIn, meshIn->numVertices, (int)meshIn->geometryMode,
+                (int)thingFrustumCull,
+                (double)mat->scale.x, (double)mat->scale.y, (double)mat->scale.z);
+        }
+    }
+#endif
+
     if ( !meshIn->geometryMode )
         return;
-    
+
     if (thingFrustumCull != SPHERE_FULLY_INSIDE) {
         rdVector3 vertex_out;
         rdClipFrustum* pMeshFrustum = rdCamera_pCurCamera->pClipFrustum;
@@ -1327,6 +1384,29 @@ void rdModel3_DrawMesh(rdMesh *meshIn, rdMatrix34 *mat)
     rdMatrix_Multiply34(&out, &rdCamera_pCurCamera->view_matrix, mat);
     rdMatrix_TransformPointLst34(&out, pCurMesh->vertices, aView, pCurMesh->numVertices);
     rdMatrix_InvertOrtho34(&matInv, mat);
+
+#ifdef TARGET_XBOX
+    /* In-transform probe: catches bolt view-space coords AT the moment
+     * they're produced (no cross-pass contamination from rdCamera global).
+     * Filter to small meshes (bolt = 15 verts) and post the source matrix
+     * (mat) + the produced view-space vertex 0 together. */
+    if (pCurMesh->numVertices > 0 && pCurMesh->numVertices < 32 && mat) {
+        static int _ix = 0;
+        /* No view-z filter — log every small-mesh transform so we
+         * capture good shots AND bad shots in the same trace. */
+        if (_ix < 400) {
+            xbox_debug_Printf("XformProbe[%d]: nVerts=%d matScale=(%.3f %.3f %.3f) viewMatScale=(%.3f %.3f %.3f) -> v0_view=(%.3f %.3f %.3f) outScale=(%.3f %.3f %.3f)\n",
+                _ix, pCurMesh->numVertices,
+                (double)mat->scale.x, (double)mat->scale.y, (double)mat->scale.z,
+                (double)rdCamera_pCurCamera->view_matrix.scale.x,
+                (double)rdCamera_pCurCamera->view_matrix.scale.y,
+                (double)rdCamera_pCurCamera->view_matrix.scale.z,
+                (double)aView[0].x, (double)aView[0].y, (double)aView[0].z,
+                (double)out.scale.x, (double)out.scale.y, (double)out.scale.z);
+            _ix++;
+        }
+    }
+#endif
     
     rdModel3_geometryMode = pCurMesh->geometryMode;
     if ( rdModel3_geometryMode >= curGeometryMode )
