@@ -331,6 +331,16 @@ void jkGuiTitle_ShowLoadingStatic()
     jkGuiRend_gui_sets_handler_framebufs(&jkGuiTitle_menuLoadStatic);
 }
 
+void jkGuiTitle_LoadingStaticFinalizeMenu()
+{
+    if (jkGuiTitle_whichLoading == 1)
+    {
+        sithWorld_SetLoadPercentCallback(0);
+        jkGuiRend_sub_50FDB0();
+        jkGuiTitle_whichLoading = 0;
+    }
+}
+
 void jkGuiTitle_ShowLoading(char *a1, wchar_t *a2)
 {
     wchar_t *v4; // ebx

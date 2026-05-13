@@ -552,6 +552,13 @@ sithThing* sithWeapon_FireProjectile_0(sithThing *sender, sithThing *projectileT
         if (!v9 )
             return 0;
 
+        if ((v9->weaponParams.typeflags & SITH_WF_INSTANT_IMPACT) == 0 && v9->light <= 0.0)
+        {
+            v9->thingflags |= SITH_TF_LIGHT;
+            v9->light = 0.22;
+            v9->lightMin = 0.22;
+        }
+
         if (Main_bMotsCompat) {
             a5a.x = (flex_t)extra; // FLEXTODO
             a5a.y = 0.0;

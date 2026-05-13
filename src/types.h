@@ -1547,6 +1547,11 @@ typedef struct rdMeshinfo
     rdVector3* vertices;
     rdVector2* vertexUVs;
     flex_t* paDynamicLight;
+#ifdef JKM_LIGHTING
+    flex_t* paDynamicLightR;
+    flex_t* paDynamicLightG;
+    flex_t* paDynamicLightB;
+#endif
     flex_t* intensities;
 #ifdef JKM_LIGHTING
     flex_t* paRedIntensities;
@@ -2277,6 +2282,11 @@ typedef struct sithWorld
     rdVector3* verticesTransformed;
     int32_t* alloc_unk98;
     flex_t* verticesDynamicLight;
+#ifdef JKM_LIGHTING
+    flex_t* verticesDynamicLightR;
+    flex_t* verticesDynamicLightG;
+    flex_t* verticesDynamicLightB;
+#endif
     int32_t* alloc_unk9c;
     int32_t numVertexUVs;
     rdVector2* vertexUVs;

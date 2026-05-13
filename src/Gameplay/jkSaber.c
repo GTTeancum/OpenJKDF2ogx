@@ -20,6 +20,51 @@
 #include "jk.h"
 
 #define JKSABER_EXTENDTIME (0.3000000)
+#define JKSABER_LIGHT_MAX (0.42)
+
+static int jkSaber_StrContainsI(const char *haystack, const char *needle)
+{
+    int i, j;
+
+    if (!haystack || !needle || !needle[0])
+        return 0;
+
+    for (i = 0; haystack[i]; i++)
+    {
+        for (j = 0; needle[j]; j++)
+        {
+            char a = haystack[i + j];
+            char b = needle[j];
+
+            if (!a)
+                return 0;
+            if (a >= 'A' && a <= 'Z')
+                a = (char)(a + ('a' - 'A'));
+            if (b >= 'A' && b <= 'Z')
+                b = (char)(b + ('a' - 'A'));
+            if (a != b)
+                break;
+        }
+        if (!needle[j])
+            return 1;
+    }
+    return 0;
+}
+
+static uint32_t jkSaber_ColorFromMaterial(const char *material_fname)
+{
+    if (jkSaber_StrContainsI(material_fname, "red"))
+        return 0xFF3030;
+    if (jkSaber_StrContainsI(material_fname, "blue"))
+        return 0x4070FF;
+    if (jkSaber_StrContainsI(material_fname, "yellow"))
+        return 0xFFD840;
+    if (jkSaber_StrContainsI(material_fname, "purple"))
+        return 0xB040FF;
+    if (jkSaber_StrContainsI(material_fname, "orange"))
+        return 0xFF8030;
+    return 0x40FF40;
+}
 
 void jkSaber_InitializeSaberInfo(sithThing *thing, char *material_side_fname, char *material_tip_fname, flex_t base_rad, flex_t tip_rad, flex_t len, sithThing *wall_sparks, sithThing *blood_sparks, sithThing *saber_sparks)
 {
@@ -53,6 +98,7 @@ void jkSaber_InitializeSaberInfo(sithThing *thing, char *material_side_fname, ch
     saberinfo->blood_sparks = blood_sparks;
     saberinfo->saber_sparks = saber_sparks;
     saberinfo->length = len;
+    thing->actorParams.field_1A8 = jkSaber_ColorFromMaterial(material_side_fname);
 }
 
 void jkSaber_PolylineRand(rdThing *thing)
@@ -97,6 +143,7 @@ void jkSaber_UpdateLength(sithThing *thing)
 
     if (!(thing->jkFlags & JKFLAG_SABERON)) {
         playerInfo->polyline.length = 0;
+        thing->actorParams.timeLeftLengthChange = 0.0;
         return; // Added: Wanted more logic in jkSaber_UpdateLength
     }
 
@@ -143,11 +190,11 @@ void jkSaber_UpdateLength(sithThing *thing)
         thing->jkFlags &= ~JKFLAG_SABERRETRACT;
 
         playerInfo->polyline.length = newLength;
-        thing->actorParams.timeLeftLengthChange = deltaLen * (1.0 - JKSABER_EXTENDTIME);
+        thing->actorParams.timeLeftLengthChange = deltaLen * JKSABER_LIGHT_MAX;
         if (newLength >= playerInfo->length) // ? verify, IDA crapped out on this comparison
         {
             playerInfo->polyline.length = playerInfo->length;
-            thing->actorParams.timeLeftLengthChange = (1.0 - JKSABER_EXTENDTIME);
+            thing->actorParams.timeLeftLengthChange = JKSABER_LIGHT_MAX;
             thing->jkFlags &= ~(JKFLAG_SABERRETRACT | JKFLAG_SABEREXTEND);
         }
     }
@@ -159,7 +206,7 @@ void jkSaber_UpdateLength(sithThing *thing)
         thing->jkFlags &= ~JKFLAG_SABEREXTEND;
 
         playerInfo->polyline.length = newLength;
-        thing->actorParams.timeLeftLengthChange = deltaLen * (1.0 - JKSABER_EXTENDTIME);
+        thing->actorParams.timeLeftLengthChange = deltaLen * JKSABER_LIGHT_MAX;
         if ( newLength <= 0.0 ) // ? verify, IDA crapped out on this comparison
         {
             playerInfo->polyline.length = 0.0;
@@ -170,7 +217,7 @@ void jkSaber_UpdateLength(sithThing *thing)
     else if (thing->jkFlags & JKFLAG_SABERFORCEON) // Used for starting a level with the saber on, ie DF2 lv4
     {
         playerInfo->polyline.length = playerInfo->length;
-        thing->actorParams.timeLeftLengthChange = (1.0 - JKSABER_EXTENDTIME);
+        thing->actorParams.timeLeftLengthChange = JKSABER_LIGHT_MAX;
         thing->jkFlags &= ~(JKFLAG_SABERRETRACT | JKFLAG_SABEREXTEND);
         thing->jkFlags |= JKFLAG_SABERON;
 
@@ -354,7 +401,7 @@ void jkSaber_UpdateCollision(sithThing *player, int joint, int bSecondary)
         return;
 
     rdVector_Copy3(&player->actorParams.saberBladePos, &jointMat.scale);
-    rdVector_MultAcc3(&player->actorParams.saberBladePos, &jointMat.lvec, playerInfo->polyline.length);
+    rdVector_MultAcc3(&player->actorParams.saberBladePos, &jointMat.lvec, playerInfo->polyline.length * 0.5);
 
     if ( player->jkFlags & JKFLAG_40 )
     {

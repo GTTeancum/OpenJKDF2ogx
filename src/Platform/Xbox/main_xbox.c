@@ -36,6 +36,8 @@ extern uint32_t g_app_suspended;
 extern void jkRes_LoadGob(char *a1);
 extern int sithMain_Load(char *jklFname);
 extern int jkHudInv_InitItems(void);
+extern void jkGuiTitle_WorldLoadCallback(float percentage);
+extern void jkGuiTitle_LoadingStaticFinalizeMenu(void);
 extern float jkPlayer_hudScale;
 struct stdVideoMode;
 struct stdVBuffer;
@@ -137,9 +139,14 @@ void __cdecl main(void)
      * stub loaded JK1/static.jkl/items.dat before jumping into a level.  Keep
      * that real engine initialization, but let the real menu choose the level. */
     jkPlayer_hudScale = 1.0f;
+    jkGuiTitle_WorldLoadCallback(93.0f);
     jkRes_LoadGob("JK1");
+    jkGuiTitle_WorldLoadCallback(96.0f);
     sithMain_Load("static.jkl");
+    jkGuiTitle_WorldLoadCallback(98.0f);
     jkHudInv_InitItems();
+    jkGuiTitle_WorldLoadCallback(100.0f);
+    jkGuiTitle_LoadingStaticFinalizeMenu();
 
     /* Initialize XInput — must be after Main_Startup (XDK subsystems up) */
     stdControl_Startup();

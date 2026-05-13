@@ -8,6 +8,12 @@
 
 #include "jk.h"
 
+#ifdef JKM_LIGHTING
+#define RDPRIMIT3_DYNAMIC_R(info, idx) ((info)->paDynamicLightR ? (info)->paDynamicLightR[(idx)] : (info)->paDynamicLight[(idx)])
+#define RDPRIMIT3_DYNAMIC_G(info, idx) ((info)->paDynamicLightG ? (info)->paDynamicLightG[(idx)] : (info)->paDynamicLight[(idx)])
+#define RDPRIMIT3_DYNAMIC_B(info, idx) ((info)->paDynamicLightB ? (info)->paDynamicLightB[(idx)] : (info)->paDynamicLight[(idx)])
+#endif
+
 void rdPrimit3_ClearFrameCounters()
 {
 }
@@ -1120,9 +1126,9 @@ void rdPrimit3_NoClipFaceRGB
                     _vertexDst->vertices[i] = _vertexSrc->vertices[vtxIdx];
                     _vertexDst->vertexUVs[i] = _vertexSrc->vertexUVs[uvIdx];
                     rdVector_Add2Acc(&_vertexDst->vertexUVs[i], idkIn);
-                    _vertexDst->paRedIntensities[i] = stdMath_Clamp(_vertexSrc->paRedIntensities[vtxIdx] + _vertexSrc->paDynamicLight[vtxIdx], 0.0, 1.0);
-                    _vertexDst->paGreenIntensities[i] = stdMath_Clamp(_vertexSrc->paGreenIntensities[vtxIdx] + _vertexSrc->paDynamicLight[vtxIdx], 0.0, 1.0);
-                    _vertexDst->paBlueIntensities[i] = stdMath_Clamp(_vertexSrc->paBlueIntensities[vtxIdx] + _vertexSrc->paDynamicLight[vtxIdx], 0.0, 1.0);
+                    _vertexDst->paRedIntensities[i] = stdMath_Clamp(_vertexSrc->paRedIntensities[vtxIdx] + RDPRIMIT3_DYNAMIC_R(_vertexSrc, vtxIdx), 0.0, 1.0);
+                    _vertexDst->paGreenIntensities[i] = stdMath_Clamp(_vertexSrc->paGreenIntensities[vtxIdx] + RDPRIMIT3_DYNAMIC_G(_vertexSrc, vtxIdx), 0.0, 1.0);
+                    _vertexDst->paBlueIntensities[i] = stdMath_Clamp(_vertexSrc->paBlueIntensities[vtxIdx] + RDPRIMIT3_DYNAMIC_B(_vertexSrc, vtxIdx), 0.0, 1.0);
                 }
 
                 _vertexDst->numVertices = _vertexSrc->numVertices;
@@ -1613,9 +1619,9 @@ void rdPrimit3_ClipFaceRGBLevel
                     iVar12 = *piVar18;
                     prVar1 = prVar7 + iVar12;
                     rdVector_Copy3(prVar20, prVar1);
-                    *redIter = stdMath_Clamp(idxInfo->paRedIntensities[idxIter] + pfVar9[iVar12], 0.0, 1.0);
-                    *greenIter = stdMath_Clamp(idxInfo->paGreenIntensities[idxIter] + pfVar9[iVar12], 0.0, 1.0);
-                    *blueIter = stdMath_Clamp(idxInfo->paBlueIntensities[idxIter] + pfVar9[iVar12], 0.0, 1.0);
+                    *redIter = stdMath_Clamp(idxInfo->paRedIntensities[idxIter] + RDPRIMIT3_DYNAMIC_R(idxInfo, iVar12), 0.0, 1.0);
+                    *greenIter = stdMath_Clamp(idxInfo->paGreenIntensities[idxIter] + RDPRIMIT3_DYNAMIC_G(idxInfo, iVar12), 0.0, 1.0);
+                    *blueIter = stdMath_Clamp(idxInfo->paBlueIntensities[idxIter] + RDPRIMIT3_DYNAMIC_B(idxInfo, iVar12), 0.0, 1.0);
                     prVar20++;
                     piVar18++;
 
@@ -1695,9 +1701,9 @@ void rdPrimit3_ClipFaceRGBLevel
                         iVar13 = *piVar18;
                         prVar17->x = prVar5[iVar13].x + idkIn->x;
                         prVar17->y = prVar5[iVar13].y + idkIn->y;
-                        *redIter = stdMath_Clamp(pfVar9[iVar12] + idxInfo->paRedIntensities[idxIter], 0.0, 1.0);
-                        *greenIter = stdMath_Clamp(pfVar9[iVar12] + idxInfo->paGreenIntensities[idxIter], 0.0, 1.0);
-                        *blueIter = stdMath_Clamp(pfVar9[iVar12] + idxInfo->paBlueIntensities[idxIter], 0.0, 1.0);
+                        *redIter = stdMath_Clamp(RDPRIMIT3_DYNAMIC_R(idxInfo, iVar12) + idxInfo->paRedIntensities[idxIter], 0.0, 1.0);
+                        *greenIter = stdMath_Clamp(RDPRIMIT3_DYNAMIC_G(idxInfo, iVar12) + idxInfo->paGreenIntensities[idxIter], 0.0, 1.0);
+                        *blueIter = stdMath_Clamp(RDPRIMIT3_DYNAMIC_B(idxInfo, iVar12) + idxInfo->paBlueIntensities[idxIter], 0.0, 1.0);
 
                         local_10++;
                         prVar17++;
@@ -1729,9 +1735,9 @@ void rdPrimit3_ClipFaceRGBLevel
                     mesh_out->vertices[i] = idxInfo->vertices[vtxIdx];
                     mesh_out->vertexUVs[i] = idxInfo->vertexUVs[uvIdx];
                     rdVector_Add2Acc(&mesh_out->vertexUVs[i], idkIn);
-                    mesh_out->paRedIntensities[i] = idxInfo->paRedIntensities[i] + idxInfo->paDynamicLight[vtxIdx];
-                    mesh_out->paGreenIntensities[i] = idxInfo->paGreenIntensities[i] + idxInfo->paDynamicLight[vtxIdx];
-                    mesh_out->paBlueIntensities[i] = idxInfo->paBlueIntensities[i] + idxInfo->paDynamicLight[vtxIdx];
+                    mesh_out->paRedIntensities[i] = idxInfo->paRedIntensities[i] + RDPRIMIT3_DYNAMIC_R(idxInfo, vtxIdx);
+                    mesh_out->paGreenIntensities[i] = idxInfo->paGreenIntensities[i] + RDPRIMIT3_DYNAMIC_G(idxInfo, vtxIdx);
+                    mesh_out->paBlueIntensities[i] = idxInfo->paBlueIntensities[i] + RDPRIMIT3_DYNAMIC_B(idxInfo, vtxIdx);
                 }
 #endif
                 return;

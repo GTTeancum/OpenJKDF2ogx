@@ -2,6 +2,7 @@
 
 #ifdef TARGET_XBOX
 #include "xbox_debug.h"
+extern uint32_t g_app_suspended;
 #else
 #define xbox_debug_Print(msg) ((void)0)
 #endif
@@ -286,7 +287,11 @@ int Main_Startup(const char *cmdline)
     jkPlayer_setDisableCutscenes = 0;
     jkPlayer_setRotateOverlayMap = 1;
     jkPlayer_setDrawStatus = 1;
+#ifdef TARGET_XBOX
+    jkPlayer_setCrosshair = 1;
+#else
     jkPlayer_setCrosshair = 0;
+#endif
     jkPlayer_setSaberCam = 0;
     jkGuiNetHost_gameFlags = 144;
     jkGuiNetHost_scoreLimit = 100;
@@ -430,6 +435,12 @@ int Main_Startup(const char *cmdline)
 #endif
         jkGuiSaveLoad_Startup();
         jkGuiControlSaveLoad_Startup();
+#ifdef TARGET_XBOX
+        xbox_debug_Print("Main_Startup: showing startup loading screen\n");
+        g_app_suspended = 1;
+        jkGuiTitle_ShowLoadingStatic();
+        jkGuiTitle_WorldLoadCallback(5.0);
+#endif
 #ifdef QOL_IMPROVEMENTS
         jkGuiMods_Startup();
 #endif
@@ -437,6 +448,9 @@ int Main_Startup(const char *cmdline)
         smack_Startup(); // TODO
 #endif
         xbox_debug_Print("Main_Startup: sithMain_Startup...\n");
+#ifdef TARGET_XBOX
+        jkGuiTitle_WorldLoadCallback(20.0);
+#endif
         sithMain_Startup(&hs); // ~TODO
         jkAI_Startup();
         jkCog_Startup();
@@ -444,7 +458,13 @@ int Main_Startup(const char *cmdline)
         jkEpisode_Startup();
         jkDev_Startup();
         jkGame_Startup();
+#ifdef TARGET_XBOX
+        jkGuiTitle_WorldLoadCallback(45.0);
+#endif
         Video_Startup();
+#ifdef TARGET_XBOX
+        jkGuiTitle_WorldLoadCallback(60.0);
+#endif
         jkControl_Startup(); // ~TODO
         jkHudInv_Startup();
         jkDSS_Startup();
@@ -454,11 +474,17 @@ int Main_Startup(const char *cmdline)
 
         xbox_debug_Print("Main_Startup: engine stubs done, std3D...\n");
         std3D_Startup(); // Added
+#ifdef TARGET_XBOX
+        jkGuiTitle_WorldLoadCallback(75.0);
+#endif
 #ifdef QUAKE_CONSOLE
         jkQuakeConsole_Startup(); // Added
 #endif
 
         xbox_debug_Print("Main_Startup: jkRes_LoadCD...\n");
+#ifdef TARGET_XBOX
+        jkGuiTitle_WorldLoadCallback(85.0);
+#endif
         if (jkRes_LoadCD(0))
         {
 #if defined(QOL_IMPROVEMENTS) && !defined(TARGET_NO_MULTIPLAYER_MENUS)
@@ -477,6 +503,9 @@ int Main_Startup(const char *cmdline)
             }
             
             xbox_debug_Print("Main_Startup: LoadCD OK, entering game\n");
+#ifdef TARGET_XBOX
+            jkGuiTitle_WorldLoadCallback(90.0);
+#endif
             Window_SetDrawHandlers(stdDisplay_DrawAndFlipGdi, stdDisplay_SetCooperativeLevel);
             return 1;
         }

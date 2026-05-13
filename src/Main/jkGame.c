@@ -119,7 +119,11 @@ void jkGame_SetDefaultSettings()
     jkPlayer_setDisableCutscenes = 0;
     jkPlayer_setRotateOverlayMap = 1;
     jkPlayer_setDrawStatus = 1;
+#ifdef TARGET_XBOX
+    jkPlayer_setCrosshair = 1;
+#else
     jkPlayer_setCrosshair = 0;
+#endif
     jkPlayer_setSaberCam = 0;
 }
 
