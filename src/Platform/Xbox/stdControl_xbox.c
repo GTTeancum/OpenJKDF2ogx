@@ -17,6 +17,9 @@
  * the DirectInput-equivalent slot numbers the engine binds INPUT_FUNC_*
  * against — must match what sithControl_MapDefaultsJoystick uses. */
 #include "../../types_enums.h"
+#include "../../Main/jkMain.h"
+#include "../../Main/jkSmack.h"
+#include "../../globals.h"
 
 #define DIK_ESCAPE      0x01
 #define DIK_TAB         0x0F
@@ -255,13 +258,16 @@ void stdControl_ReadControls(void)
      * proper "open pause overlay" call, but for now: press Start, sithTime
      * stops; press again, it resumes.  Avoids the DIK_ESCAPE → menu route
      * that we don't have a working menu for yet. */
-    if ((changed & XINPUT_GAMEPAD_START) && (buttons & XINPUT_GAMEPAD_START))
+    if (changed & XINPUT_GAMEPAD_START)
     {
-        extern int sithTime_bRunning;
-        extern void sithTime_Pause(void);
-        extern void sithTime_Resume(void);
-        if (sithTime_bRunning) sithTime_Resume(); else sithTime_Pause();
-        XDBGF("Start: pause toggle -> %s\n", sithTime_bRunning ? "PAUSED" : "running");
+        int down = (buttons & XINPUT_GAMEPAD_START) ? 1 : 0;
+        if (down && jkSmack_currentGuiState != JK_GAMEMODE_ESCAPE)
+        {
+            XDBGF("StartPause: state=%d stop=%d -> escape\n", jkSmack_currentGuiState, jkSmack_stopTick);
+            jkSmack_nextGuiState = JK_GAMEMODE_ESCAPE;
+            jkSmack_stopTick = 1;
+        }
+        stdControl_SetKeydown(DIK_ESCAPE, down, tick);
     }
     if (changed & XINPUT_GAMEPAD_BACK)       stdControl_SetKeydown(DIK_TAB,      (buttons & XINPUT_GAMEPAD_BACK)       ? 1 : 0, tick);
 
@@ -271,15 +277,19 @@ void stdControl_ReadControls(void)
         g_sprintToggle = !g_sprintToggle;
         stdControl_SetKeydown(DIK_LSHIFT, g_sprintToggle, tick);
     }
+    if (changed & XINPUT_GAMEPAD_RIGHT_THUMB)
+        stdControl_SetKeydown(KEY_JOY1_B9, (buttons & XINPUT_GAMEPAD_RIGHT_THUMB) ? 1 : 0, tick);
     g_prevButtons = buttons;
 
     /* Analog buttons — face */
     cur = (pad->bAnalogButtons[XB_BTN_A] > ANALOG_THRESHOLD); prev = (g_prevAnalog[XB_BTN_A] > ANALOG_THRESHOLD);
     if (cur != prev) {
+        if (jkSmack_GetCurrentGuiState() != JK_GAMEMODE_GAMEPLAY)
+            stdControl_SetKeydown(KEY_JOY1_B1, cur, tick); /* GUI confirm */
         stdControl_SetKeydown(DIK_X, cur, tick);  /* A = Jump (DIK_X = 0x2D bound to INPUT_FUNC_JUMP at sithControl.c:1916) */
-        { static int _ab=0; if(_ab<8){ XDBGF("ABtn A: cur=%d prev=%d -> DIK_X(0x2D)=%d\n", cur, prev, cur); _ab++; } }
+        { static int _ab=0; if(_ab<8){ XDBGF("ABtn A: cur=%d prev=%d -> jump=%d\n", cur, prev, cur); _ab++; } }
     }
-    cur = (pad->bAnalogButtons[XB_BTN_X] > ANALOG_THRESHOLD); prev = (g_prevAnalog[XB_BTN_X] > ANALOG_THRESHOLD); if (cur != prev) stdControl_SetKeydown(DIK_SPACE,    cur, tick);  /* X = Activate */
+    cur = (pad->bAnalogButtons[XB_BTN_X] > ANALOG_THRESHOLD); prev = (g_prevAnalog[XB_BTN_X] > ANALOG_THRESHOLD); if (cur != prev) { stdControl_SetKeydown(KEY_JOY1_B3, cur, tick); stdControl_SetKeydown(DIK_SPACE, cur, tick); }  /* X = GUI OK shortcut / Activate */
     cur = (pad->bAnalogButtons[XB_BTN_Y] > ANALOG_THRESHOLD); prev = (g_prevAnalog[XB_BTN_Y] > ANALOG_THRESHOLD); if (cur != prev) stdControl_SetKeydown(DIK_RETURN,   cur, tick);  /* Y = Use Inventory */
     /* Shoulders → weapon cycle.  Engine's MapDefaultsJoystick
      * (sithControl.c:2426-2427) binds PREVWEAPON/NEXTWEAPON to
@@ -305,6 +315,7 @@ void stdControl_ReadControls(void)
      * dormant because the OR-overwrite zeroed pOut before FIRE1 saw it. */
     cur  = (pad->bAnalogButtons[XB_BTN_B] > ANALOG_THRESHOLD);
     prev = (g_prevAnalog[XB_BTN_B]         > ANALOG_THRESHOLD);
+    if (cur != prev) stdControl_SetKeydown(KEY_JOY1_B2, cur, tick); /* GUI cancel */
     if (cur && !prev) { g_crouchToggle = !g_crouchToggle; stdControl_SetKeydown(DIK_C, g_crouchToggle, tick); }
 
     for (i = 0; i < 8; i++) g_prevAnalog[i] = pad->bAnalogButtons[i];
@@ -384,7 +395,13 @@ int   stdControl_ReadKey(int keyNum, int *pOut) {
 void  stdControl_FinishRead(void)       { }
 
 void stdControl_ToggleCursor(int a)     { (void)a; }
-int  stdControl_ShowCursor(int a)       { (void)a; return 0; }
+int  stdControl_ShowCursor(int a)
+{
+    /* Match Win32 ShowCursor count semantics closely enough for GUI code:
+     * visible is non-negative, hidden is negative. jkGuiRend_UpdateCursor()
+     * loops until it sees those signs, so returning 0 for hide hangs. */
+    return a ? 0 : -1;
+}
 void stdControl_ToggleMouse(void)       { }
 void stdControl_ReadMouse(void)         { }
 void stdControl_SetMouseSensitivity(float x, float y) { g_lookSensX=x*2.5f; g_lookSensY=y*2.0f; }

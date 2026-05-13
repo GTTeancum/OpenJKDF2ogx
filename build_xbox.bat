@@ -217,6 +217,17 @@ for %%F in (
     src\Main\jkHudScope.c
     src\Main\jkHudCameraView.c
     src\Main\jkStrings.c
+    src\Gui\jkGUI.c
+    src\Gui\jkGUIRend.c
+    src\Gui\jkGUIMain.c
+    src\Gui\jkGUISingleplayer.c
+    src\Gui\jkGUIDialog.c
+    src\Gui\jkGUIEsc.c
+    src\Gui\jkGUIForce.c
+    src\Gui\jkGUIObjectives.c
+    src\Gui\jkGUISaveLoad.c
+    src\Gui\jkGUISingleTally.c
+    src\Gui\jkGUITitle.c
     src\Platform\Xbox\std3D.c
     src\Platform\Xbox\std3D_draw.cpp
     src\Platform\Xbox\fakeglx.cpp
@@ -224,6 +235,7 @@ for %%F in (
     src\Platform\Xbox\main_xbox.c
     src\Platform\Xbox\stdControl_xbox.c
     src\Platform\Xbox\stdFile_xbox.c
+    src\Platform\Xbox\stdDisplay_xbox.c
     src\Platform\Xbox\stdSound_xbox.c
     src\Platform\Xbox\stdMci_xbox.c
     src\Platform\Xbox\stdPlatform_xbox.c

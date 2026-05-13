@@ -31,7 +31,12 @@ int  stdControl_Startup(void);
 void jkMain_GuiAdvance(void);
 extern int jkSmack_stopTick;
 extern int jkSmack_nextGuiState;
+extern int jkPlayer_setDisableCutscenes;
 extern uint32_t g_app_suspended;
+extern void jkRes_LoadGob(char *a1);
+extern int sithMain_Load(char *jklFname);
+extern int jkHudInv_InitItems(void);
+extern float jkPlayer_hudScale;
 struct stdVideoMode;
 struct stdVBuffer;
 extern struct stdVideoMode* stdDisplay_pCurVideoMode;
@@ -126,6 +131,15 @@ void __cdecl main(void)
      *    Pass empty string for default behaviour (no episode override).
      * -------------------------------------------------------------- */
     Main_Startup("");
+    jkPlayer_setDisableCutscenes = 1;
+
+    /* Preserve the pre-menu Xbox gameplay init path: the old jkGuiMain_Show
+     * stub loaded JK1/static.jkl/items.dat before jumping into a level.  Keep
+     * that real engine initialization, but let the real menu choose the level. */
+    jkPlayer_hudScale = 1.0f;
+    jkRes_LoadGob("JK1");
+    sithMain_Load("static.jkl");
+    jkHudInv_InitItems();
 
     /* Initialize XInput — must be after Main_Startup (XDK subsystems up) */
     stdControl_Startup();

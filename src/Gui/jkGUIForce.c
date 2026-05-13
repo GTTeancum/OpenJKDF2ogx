@@ -154,7 +154,7 @@ jkGuiElement jkGuiForce_buttonsMots[31] = {
                 0, { 0, 0, 0, 0 }, 0, 0, NULL, NULL, NULL, NULL, {0}, 0 },
 
 // HACK: Just make an unused slider
-/*30*/  { ELEMENT_SLIDER,      0, 0, .origExtraInt = 200,  
+/*30*/  { ELEMENT_SLIDER,      0, 0, (const void*)200,  
         100, {150, 418, 340, 40}, 1, 0,  NULL,           0,  0,          jkGuiForce_sliderBitmapIndices, {0},  0}, 
 };  
 
@@ -210,7 +210,7 @@ static jkGuiElement jkGuiForce_buttons[25] = {
 /*22*/  { ELEMENT_CUSTOM,      0, 0, NULL,               
           0, {150, 418, 170, 40}, 1, 0, "GUI_LIGHTSIDE", jkGuiForce_DarkLightHoverDraw, 0,  0, {0},  0}, 
 
-/*23*/  { ELEMENT_SLIDER,      0, 0, .origExtraInt = 200,  
+/*23*/  { ELEMENT_SLIDER,      0, 0, (const void*)200,  
         100, {150, 418, 340, 40}, 1, 0,  NULL,           0,  0,          jkGuiForce_sliderBitmapIndices, {0},  0}, 
 /*24*/  { ELEMENT_END,         0, 0, NULL,               
           0, {0},                 0, 0,  NULL,           0,  0,                             0, {0},  0}

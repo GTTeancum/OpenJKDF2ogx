@@ -227,7 +227,11 @@ void jkGui_SmolScreenFixup(jkGuiMenu *menu, BOOL bForce) {
 
 int jkGui_MessageBeep()
 {
+#ifdef TARGET_XBOX
+    return 0;
+#else
     return jk_MessageBeep(0x30u);
+#endif
 }
 
 void jkGui_LoadBmIdx(int idx) {
@@ -349,6 +353,9 @@ int jkGui_Startup()
 
     Window_ShowCursorUnwindowed(Main_bWindowGUI == 0);
     stdBitmap_EnsureData(jkGui_stdBitmaps[JKGUI_BM_BK_MAIN]); // Added
+#ifdef TARGET_XBOX
+    stdBitmap_EnsureData(jkGui_stdBitmaps[JKGUI_BM_BK_LOADING]);
+#endif
     jkGuiRend_SetPalette((uint8_t*)jkGui_stdBitmaps[JKGUI_BM_BK_MAIN]->palette);
     jkGui_bInitialized = 1;
     return 1;

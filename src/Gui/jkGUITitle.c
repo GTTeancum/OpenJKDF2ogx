@@ -19,6 +19,9 @@
 #include "General/stdFnames.h"
 #include "General/stdMath.h"
 #include "Platform/std3D.h"
+#ifdef TARGET_XBOX
+#include "Platform/Xbox/xbox_debug.h"
+#endif
 
 static wchar_t jkGuiTitle_tmpBuffer[512];
 static wchar_t jkGuiTitle_versionBuffer[64];
@@ -26,7 +29,7 @@ static flex_t jkGuiTitle_loadPercent;
 
 static jkGuiElement jkGuiTitle_elementsLoad[6] = {
     {ELEMENT_TEXT,  0,  2,  0,  3, {250, 50, 390, 80},  1,  0,  0,  0,  0,  0, {0},  0},
-    {ELEMENT_CUSTOM,  0,  0, .origExtraInt = 0xE1,  0, {330, 131, 240, 20},  1,  0,  0, jkGuiTitle_LoadBarDraw,  0,  0, {0},  0},
+    {ELEMENT_CUSTOM,  0,  0, (const void*)0xE1,  0, {330, 131, 240, 20},  1,  0,  0, jkGuiTitle_LoadBarDraw,  0,  0, {0},  0},
     {ELEMENT_TEXT,  0,  0, "GUI_LOADING",  3, {330, 152, 240, 20},  1,  0,  0,  0,  0,  0, {0},  0},
     
 #ifdef QOL_IMPROVEMENTS
@@ -42,7 +45,7 @@ static jkGuiMenu jkGuiTitle_menuLoad = {jkGuiTitle_elementsLoad, -1, 0xFF, 0xE1,
 
 static jkGuiElement jkGuiTitle_elementsLoadStatic[6] = {
     {ELEMENT_TEXT,  0,  2, "GUI_LOADING",  3, {60, 280, 520, 30},  1,  0,  0,  0,  0,  0, {0},  0},
-    {ELEMENT_CUSTOM,  0,  0, .origExtraInt = 0xE1,  0, {220, 240, 200, 20},  1,  0,  0, jkGuiTitle_LoadBarDraw,  0,  0, {0},  0},
+    {ELEMENT_CUSTOM,  0,  0, (const void*)0xE1,  0, {220, 240, 200, 20},  1,  0,  0, jkGuiTitle_LoadBarDraw,  0,  0, {0},  0},
     {ELEMENT_TEXT,  0,  1, "GUI_COPYRIGHT1",  3, {10, 420, 620, 30},  1,  0,  0,  0,  0,  0, {0},  0},
     {ELEMENT_TEXT,  0,  1, "GUI_COPYRIGHT2",  3, {10, 440, 620, 30},  1,  0,  0,  0,  0,  0, {0},  0},
     {ELEMENT_TEXT,  0,  0,  0,  3, {560, 440, 70, 30},  1,  0,  0,  0,  0,  0, {0},  0},
@@ -284,7 +287,7 @@ void jkGuiTitle_WorldLoadCallback(flex_t percentage)
             jkGuiTitle_elementsLoad[1].selectedTextEntry = (__int64)percentage;
             jkGuiRend_UpdateAndDrawClickable(&jkGuiTitle_elementsLoad[1], &jkGuiTitle_menuLoad, 1);
         }
-#if defined(SDL2_RENDER) || defined(TARGET_TWL)
+#if defined(SDL2_RENDER) || defined(TARGET_TWL) || defined(TARGET_XBOX)
 #if defined(PLATFORM_POSIX) && !defined(TARGET_TWL)
     static uint64_t lastRefresh = 0;
     // Only update loading bar at 30fps, so that we don't waste time
@@ -335,31 +338,59 @@ void jkGuiTitle_ShowLoading(char *a1, wchar_t *a2)
     char key[64]; // [esp+Ch] [ebp-80h] BYREF
     char v8[64]; // [esp+4Ch] [ebp-40h] BYREF
 
+#ifdef TARGET_XBOX
+    xbox_debug_Printf("TitleShowLoading: enter level='%s'\n", a1 ? a1 : "(null)");
+#endif
+
 #ifdef QOL_IMPROVEMENTS
     jkGuiTitle_elementsLoad[4].bIsVisible = 0;
 #endif
 
-    // Added
-    stdBitmap_EnsureData(jkGui_stdBitmaps[JKGUI_BM_BK_MAIN]);
+    // Xbox keeps the loading background resident. Reloading it here can collide
+    // with episode GOB state after New Game has already selected a campaign.
+#ifndef TARGET_XBOX
+    stdBitmap_EnsureData(jkGui_stdBitmaps[JKGUI_BM_BK_LOADING]);
+#endif
 
+#ifdef TARGET_XBOX
+    xbox_debug_Print("TitleShowLoading: setting menu mode\n");
+#endif
     jkGui_SetModeMenu(jkGui_stdBitmaps[JKGUI_BM_BK_MAIN]->palette);
+#ifdef TARGET_XBOX
+    xbox_debug_Print("TitleShowLoading: menu mode set\n");
+#endif
     jkGuiTitle_whichLoading = 2;
     jkGuiRend_SetCursorVisible(0);
     sithWorld_SetLoadPercentCallback(jkGuiTitle_WorldLoadCallback);
     jkGuiTitle_elementsLoad[1].selectedTextEntry = 0;
 
+#ifdef TARGET_XBOX
+    xbox_debug_Print("TitleShowLoading: resolving mission text\n");
+#endif
     v4 = jkGui_sub_412ED0();
 
     jkGuiTitle_elementsLoad[0].wstr = a2;
     if ( !a2 )
         jkGuiTitle_elementsLoad[0].wstr = v4;
+#ifdef TARGET_XBOX
+    xbox_debug_Print("TitleShowLoading: painting loading menu\n");
+#endif
     jkGuiRend_gui_sets_handler_framebufs(&jkGuiTitle_menuLoad);
+#ifdef TARGET_XBOX
+    stdDisplay_DDrawGdiSurfaceFlip();
+#endif
+#ifdef TARGET_XBOX
+    xbox_debug_Print("TitleShowLoading: done\n");
+#endif
 }
 
 void jkGuiTitle_LoadingFinalize()
 {
 #ifdef QOL_IMPROVEMENTS
     int shouldSkip = jkPlayer_bFastMissionText || sithNet_isMulti || !sithWorld_pCurrentWorld;
+#ifdef TARGET_XBOX
+    shouldSkip = 1;
+#endif
     if ( jkGuiTitle_whichLoading != 1)
     {
         int selected = -1;
@@ -373,7 +404,7 @@ void jkGuiTitle_LoadingFinalize()
             if (shouldSkip) break;
             int selected = jkGuiRend_DisplayAndReturnClicked(&jkGuiTitle_menuLoad);
 
-#if defined(SDL2_RENDER) || defined(TARGET_TWL)
+#if defined(SDL2_RENDER) || defined(TARGET_TWL) || defined(TARGET_XBOX)
 #if defined(PLATFORM_POSIX) && !defined(TARGET_TWL)
             static uint64_t lastRefresh = 0;
             // Only update loading bar at 30fps, so that we don't waste time

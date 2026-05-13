@@ -11,6 +11,41 @@
 
 #define INT_FLOAT_SCALED(x, s) ((int)((flex_t)(x) * (flex_t)(s))) // FLEXTODO
 
+static int stdFont_IsWhitespace(wchar_t c)
+{
+    if (_iswspace(c))
+        return 1;
+
+    switch ((uint32_t)c)
+    {
+        case 0x0020:
+        case 0x00A0: /* non-breaking space */
+        case 0x1680:
+        case 0x180E:
+        case 0x2000:
+        case 0x2001:
+        case 0x2002:
+        case 0x2003:
+        case 0x2004:
+        case 0x2005:
+        case 0x2006:
+        case 0x2007:
+        case 0x2008:
+        case 0x2009:
+        case 0x200A:
+        case 0x200B:
+        case 0x2028:
+        case 0x2029:
+        case 0x202F:
+        case 0x205F:
+        case 0x3000:
+        case 0xFEFF:
+            return 1;
+        default:
+            return 0;
+    }
+}
+
 stdFont* stdFont_Load(char *fpath, int a2, int a3)
 {
     stdFont *result; // eax
@@ -195,7 +230,7 @@ unsigned int stdFont_Draw1(stdVBuffer *vbuf, stdFont *font, unsigned int blit_x,
                 v9 = blit_x + v12 * ((int)(v12 + v9 - v8) / v12);
                 goto LABEL_27;
             }
-            if ( _iswspace(v11) )
+            if ( stdFont_IsWhitespace(v11) )
                 break;
             v14 = *v10;
             v15 = &font->charsetHead;
@@ -304,7 +339,7 @@ void stdFont_Draw2(stdVBuffer *a1, stdFont *a2, unsigned int a3, int a4, rdRect 
                     }
                     else
                     {
-                        if ( _iswspace(*v8) )
+                        if ( stdFont_IsWhitespace(*v8) )
                         {
                             v13 = a2->marginX;
                         }
@@ -455,7 +490,7 @@ LABEL_9:
                                     v19 = 8 * font->marginX;
                                 v18 = v19 * ((v19 + v18) / v19);
                             }
-                            else if ( _iswspace(*v16) )
+                            else if ( stdFont_IsWhitespace(*v16) )
                             {
                                 v18 += font->marginX;
                             }
@@ -524,7 +559,7 @@ LABEL_29:
                                     v25 = 8 * font->marginX;
                                 v24 = v25 * ((int)(v25 + v24) / v25);
                             }
-                            else if ( _iswspace(*a6) )
+                            else if ( stdFont_IsWhitespace(*a6) )
                             {
                                 v24 += font->marginX;
                             }
@@ -625,7 +660,7 @@ int stdFont_Draw4(stdVBuffer *a1, stdFont *font, int xPos, int yPos, int a5, int
         {
             if ( i <= 0 )
                 break;
-            if ( _iswspace(*v10) )
+            if ( stdFont_IsWhitespace(*v10) )
             {
                 v9 += font->marginX;
             }
@@ -726,7 +761,7 @@ const wchar_t* stdFont_sub_4352C0(const wchar_t *a1, stdFont *a2, int a3, rdRect
     {
         while ( 1 )
         {
-            if ( _iswspace(v7) || v7 == 8232 || v7 == 8233 )
+            if ( stdFont_IsWhitespace(v7) || v7 == 8232 || v7 == 8233 )
             {
                 if ( v5 )
                 {
@@ -739,7 +774,7 @@ const wchar_t* stdFont_sub_4352C0(const wchar_t *a1, stdFont *a2, int a3, rdRect
                                 break;
                         }
                         v10 = *v5;
-                        if ( _iswspace(*v5) || v10 == 8232 || v10 == 8233 )
+                        if ( stdFont_IsWhitespace(*v5) || v10 == 8232 || v10 == 8233 )
                         {
                             if ( *v5 == '\t' )
                             {
@@ -748,7 +783,7 @@ const wchar_t* stdFont_sub_4352C0(const wchar_t *a1, stdFont *a2, int a3, rdRect
                                     v11 = 16;
                                 v8 += a3 + v11 * ((v8 + v11 + v22) / v11);
                             }
-                            else if ( _iswspace(*v5) )
+                            else if ( stdFont_IsWhitespace(*v5) )
                             {
                                 v8 += a2->marginX;
                             }
@@ -816,7 +851,7 @@ LABEL_31:
                         v17 = 16;
                     v8 += a3 + v17 * ((v8 + v17 + v22) / v17);
                 }
-                else if ( _iswspace(v16) )
+                else if ( stdFont_IsWhitespace(v16) )
                 {
                     v8 += a2->marginX;
                 }
@@ -915,7 +950,7 @@ int stdFont_sub_435810(stdFont *a1, const wchar_t *a2, int a3)
     {
         if ( a3 <= 0 )
             break;
-        if ( _iswspace(i) )
+        if ( stdFont_IsWhitespace(i) )
         {
             v4 += a1->marginX;
         }
@@ -1409,7 +1444,7 @@ int stdFont_Draw4GPU(stdFont *font, int xPos, int yPos, int a5, int a6, int a7, 
         {
             if ( i <= 0 )
                 break;
-            if ( _iswspace(*v10) )
+            if ( stdFont_IsWhitespace(*v10) )
             {
                 v9 += INT_FLOAT_SCALED(font->marginX, scale);
             }
@@ -1507,7 +1542,7 @@ unsigned int stdFont_Draw1GPU(stdFont *font, unsigned int blit_x, int blit_y, in
                 v9 = blit_x + v12 * ((int)(v12 + v9 - v8) / v12);
                 goto LABEL_27;
             }
-            if ( _iswspace(v11) )
+            if ( stdFont_IsWhitespace(v11) )
                 break;
             v14 = *v10;
             v15 = &font->charsetHead;
@@ -1617,7 +1652,7 @@ unsigned int stdFont_Draw1Width(stdFont *font, unsigned int blit_x, int blit_y, 
                 v9 = blit_x + v12 * ((int)(v12 + v9 - v8) / v12);
                 goto LABEL_27;
             }
-            if ( _iswspace(v11) )
+            if ( stdFont_IsWhitespace(v11) )
                 break;
             v14 = *v10;
             v15 = &font->charsetHead;
@@ -1746,7 +1781,7 @@ unsigned int stdFont_DrawMultilineCenteredGPU(stdFont *font, unsigned int blit_x
                 v9 = blit_x + v12 * ((int)(v12 + v9 - blit_x) / v12);
                 goto LABEL_27;
             }
-            if ( _iswspace(v11) )
+            if ( stdFont_IsWhitespace(v11) )
                 break;
             v14 = *v10;
             v15 = &font->charsetHead;
@@ -1873,7 +1908,7 @@ unsigned int stdFont_DrawMultilineCenteredHeight(stdFont *font, unsigned int bli
                 v9 = blit_x + v12 * ((int)(v12 + v9 - blit_x) / v12);
                 goto LABEL_27;
             }
-            if ( _iswspace(v11) )
+            if ( stdFont_IsWhitespace(v11) )
                 break;
             v14 = *v10;
             v15 = &font->charsetHead;

@@ -54,9 +54,7 @@ __int64 __cdecl _allmul(__int64 a, __int64 b) { return a * b; }
 /* ================================================================
    DATA SYMBOLS (globals from excluded source files)
    ================================================================ */
-/* C++ mangled globals */
-int   jkGuiRend_thing_four    = 0;
-int   jkGuiRend_thing_five    = 0;
+/* jkGuiRend_thing_four/five are provided by the real GUI renderer. */
 /* g_app_suspended — in globals.c */
 int   Window_xSize            = 640;
 int   Window_ySize            = 480;
@@ -76,6 +74,8 @@ stdVBuffer* Video_pOverlayMapBuffer = 0;
 
 /* jkPlayer — needs full game systems */
 
+/* Real menu core is compiled for Xbox. */
+#if 0
 /* jkGui — needs display system */
 int  jkGui_Startup(void) STUB0
 int  jkGui_Shutdown(void) STUB0
@@ -139,8 +139,8 @@ void jkGuiMain_Show(void)
         items_ok = jkHudInv_InitItems();
         xbox_debug_Printf("jkGuiMain_Show: jkHudInv_InitItems -> %d\n", items_ok);
 
-        xbox_debug_Print("jkGuiMain_Show: auto-starting 01narshadda.jkl\n");
-        jkMain_SwitchTo5("01narshadda.jkl");
+    xbox_debug_Print("jkGuiMain_Show: auto-starting 01narshaddaa.jkl\n");
+    jkMain_SwitchTo5("01narshaddaa.jkl");
         /* SwitchTo5 sets jkSmack_gameMode=3 which doesn't match any init
          * branch in jkMain_GameplayShow.  Override to 0 = fresh level load
          * so sithMain_Mode1Init gets called. */
@@ -181,6 +181,7 @@ void jkGuiForce_Show(int a, int b) STUBV
 int  jkGuiSingleTally_Startup(void) STUB0
 int  jkGuiSingleTally_Shutdown(void) STUB0
 void jkGuiSingleTally_Show(int a, int b) STUBV
+#endif
 
 /* jkGuiMultiTally — needs display */
 void jkGuiMultiTally_Show(int a, int b) STUBV
@@ -208,12 +209,7 @@ int  jkGuiGameplay_Startup(void) STUB0
 int  jkGuiGameplay_Shutdown(void) STUB0
 int  jkGuiDecision_Startup(void) STUB0
 int  jkGuiDecision_Shutdown(void) STUB0
-int  jkGuiObjectives_Startup(void) STUB0
-int  jkGuiObjectives_Shutdown(void) STUB0
-int  jkGuiSingleplayer_Startup(void) STUB0
-int  jkGuiSingleplayer_Shutdown(void) STUB0
-int  jkGuiSaveLoad_Startup(void) STUB0
-int  jkGuiSaveLoad_Shutdown(void) STUB0
+/* jkGuiObjectives/jkGuiSingleplayer/jkGuiSaveLoad are real. */
 int  jkGuiControlSaveLoad_Startup(void) STUB0
 int  jkGuiControlSaveLoad_Shutdown(void) STUB0
 int  jkGuiControlOptions_Startup(void) STUB0
@@ -352,11 +348,7 @@ void sithMulti_LobbyMessage(void* a) STUBV
 
 /* rd* — now compiled from real source */
 
-/* stdDisplay — needs display */
-int   stdDisplay_DrawAndFlipGdi(void) STUB0
-int   stdDisplay_SetCooperativeLevel(void* a, int b) STUB0
-int   stdDisplay_SetMode(void* a) STUB0
-void* stdDisplay_GetPalette(void) STUBP
+/* stdDisplay is provided by stdDisplay_xbox.c. */
 
 /* stdConsole — needs display */
 int   stdConsole_Startup(void) STUB0
@@ -456,11 +448,35 @@ struct sithThing;
 
 /* sithPuppet_PlayMode — real impl in src/Engine/sithPuppet.c (now in build) */
 
-/* Window functions — match WindowHandler_t signatures */
+/* Window functions — enough of the Win95 message loop for jkGuiRend menus. */
 typedef int (*WindowHandler_t_local)(HWND, UINT, WPARAM, LPARAM, LRESULT*);
-int Window_AddMsgHandler(WindowHandler_t_local h) { (void)h; return 1; }
-int Window_RemoveMsgHandler(WindowHandler_t_local h) { (void)h; return 1; }
-void Window_SetDrawHandlers(int (*a)(unsigned int), int (*b)(unsigned int)) { (void)a; (void)b; }
+typedef int (*WindowDrawHandler_t_local)(unsigned int);
+static WindowHandler_t_local xbox_windowHandler = 0;
+static WindowDrawHandler_t_local xbox_drawAndFlip = 0;
+static WindowDrawHandler_t_local xbox_setCooperativeLevel = 0;
+void jkGuiRend_UpdateController(void);
+void jkMain_GuiAdvance(void);
+int stdDisplay_DDrawGdiSurfaceFlip(void);
+int Window_AddMsgHandler(WindowHandler_t_local h) { xbox_windowHandler = h; return 1; }
+int Window_RemoveMsgHandler(WindowHandler_t_local h) { if (xbox_windowHandler == h) xbox_windowHandler = 0; return 1; }
+void Window_SetDrawHandlers(WindowDrawHandler_t_local a, WindowDrawHandler_t_local b) { xbox_drawAndFlip = a; xbox_setCooperativeLevel = b; }
+void Window_GetDrawHandlers(WindowDrawHandler_t_local *a, WindowDrawHandler_t_local *b)
+{
+    if (a) *a = xbox_drawAndFlip;
+    if (b) *b = xbox_setCooperativeLevel;
+}
+int Window_MessageLoop(void)
+{
+    LRESULT unused = 0;
+    jkGuiRend_UpdateController();
+    jkMain_GuiAdvance();
+    if (xbox_windowHandler)
+        xbox_windowHandler(0, 0x000F, 0, 0, &unused); /* WM_PAINT */
+    else
+        stdDisplay_DDrawGdiSurfaceFlip();
+    return 0;
+}
+int Window_ShowCursorUnwindowed(int a) { (void)a; return 1; }
 int  Windows_GdiHandler(HWND a, UINT b, WPARAM c, HWND d, LRESULT* e) { (void)a;(void)b;(void)c;(void)d;(void)e; return 0; }
 int  Windows_ErrorMsgboxWide(const char* fmt, ...) { (void)fmt; return 0; }
 
@@ -484,8 +500,7 @@ int stdControl_MessageHandler(HWND hWnd, UINT Msg, WPARAM wParam, LPARAM lParam,
  * (HUD popups, screenshot, gamma config, save UI) aren't wired up
  * on Xbox yet.  Pressing those keys does nothing rather than crashing. */
 int  jkDev_PrintUniString(const unsigned short *s)      { (void)s; return 0; }
-unsigned short *jkGuiTitle_quicksave_related_func1(struct stdStrTable *a, char *b)
-{ (void)a; (void)b; return 0; }
+/* jkGuiTitle_quicksave_related_func1 is provided by the real title GUI. */
 
 /* ================================================================
    Stubs for source files we don't pull (multiplayer/DSS/JSON/Quake-console)
@@ -508,6 +523,7 @@ extern "C" {
     void sithMulti_SendQuit(int idx)                                        { (void)idx; }
     void DirectPlay_EnumPlayers(int a)                                      { (void)a; }
     int  stdJSON_IterateKeys(const char* p, void(*cb)(const char*,const char*,void*), void* ctx) { (void)p; (void)cb; (void)ctx; return 0; }
+    int  stdFileUtil_DelFile(char* p)                                       { (void)p; return 1; }
 }
 
 /* C++-mangled stubs (headers without extern "C") */
@@ -519,6 +535,22 @@ void sithDSSThing_SendFireProjectile(struct sithThing* a, struct sithThing* b, s
 int  rdPrimit2_DrawClippedLine(struct rdCanvas* c, int x1, int y1, int x2, int y2, unsigned short col, int mask)
     { (void)c; (void)x1; (void)y1; (void)x2; (void)y2; (void)col; (void)mask; return 0; }
 void jkQuakeConsole_ExecuteCommand(const char* pCmd)                        { (void)pCmd; }
+void jkGuiSetup_Show(void)                                                  { }
+int  jkGuiMap_Show(void)                                                    { return 0; }
+void jkGuiMods_Show(void)                                                   { }
+void jkGuiPlayer_ShowNewPlayer(int a1)                                      { (void)a1; }
+int  jkGuiMultiplayer_Show(void)                                            { return -1; }
+int  jkGuiMultiplayer_Show2(void)                                           { return 0; }
+int  jkCredits_cdOverride                                                   = 0;
+extern "C" const wchar_t *openjkdf2_waReleaseVersion                        = L"Xbox";
+extern "C" const wchar_t *openjkdf2_waReleaseCommitShort                    = L"";
+int  sithGamesave_GetProfilePath(char *out, int outSize, char *name) {
+    if (!out || outSize <= 0) return 0;
+    if (!name) name = "save";
+    _snprintf(out, (size_t)outSize, "D:\\saves\\%s", name);
+    out[outSize - 1] = 0;
+    return 1;
+}
 
 /* rdParticle_* — real impls now in src/Primitives/rdParticle.c */
 
@@ -548,7 +580,7 @@ struct sithThing;
 int stdMci_bIsGOG = 0;
 int Window_isFullscreen = 1;
 extern "C" int Window_isHiDpi = 0;
-struct rdColor24* stdDisplay_masterPalette = 0;
+/* stdDisplay_masterPalette is provided by stdDisplay_xbox.c. */
 
 /* Windows error dialog — no msgbox on Xbox, just no-op */
 void Windows_GameErrorMsgbox(const char* fmt, ...) { (void)fmt; }
@@ -558,11 +590,7 @@ void Window_SetFullscreen(int a) { (void)a; }
 void Window_SetHiDpi(int a)      { (void)a; }
 
 /* stdDisplay — DirectDraw path, not used on Xbox (we use std3D/D3D8 directly) */
-int  stdDisplay_VBufferCopy(struct stdVBuffer* a, struct stdVBuffer* b, unsigned int c, int d, struct rdRect* e, int f)
-    { (void)a; (void)b; (void)c; (void)d; (void)e; (void)f; return 0; }
-int  stdDisplay_DDrawGdiSurfaceFlip(void) { return 0; }
-int  stdDisplay_GammaCorrect3(int v)      { (void)v; return 0; }
-void stdDisplay_ddraw_surface_flip2(void) { }
+/* stdDisplay VBuffer/present helpers are provided by stdDisplay_xbox.c. */
 
 /* stdColor, stdFont, stdBitmap — real impls in src/General/std{Color,Font,Bitmap}.c (now in build) */
 
@@ -572,8 +600,7 @@ void stdDisplay_ddraw_surface_flip2(void) { }
 
 /* stdDisplay_VBufferConvertColorFormat — DDraw colour conversion path,
    not used on Xbox (we render to D3D8 surfaces, not DDraw VBuffers). */
-struct stdVBuffer* stdDisplay_VBufferConvertColorFormat(void* fmt, struct stdVBuffer* vb)
-    { (void)fmt; return vb; }
+/* stdDisplay_VBufferConvertColorFormat is provided by stdDisplay_xbox.c. */
 
 /* __wcsrchr — wide-char strrchr.  XDK CRT does NOT export this symbol,
    so we provide a minimal impl. */
@@ -614,4 +641,4 @@ void jkQuakeConsole_Render(void)                                { }
 int  jkSmack_GetCurrentGuiState(void)                           { return 0; }
 
 /* jkGuiTitle helper used by jkHud */
-char jkGuiTitle_sub_4189A0(char* s)                             { (void)s; return 0; }
+/* jkGuiTitle_sub_4189A0 is provided by the real title GUI. */

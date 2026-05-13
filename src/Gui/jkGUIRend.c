@@ -353,6 +353,11 @@ int32_t jkGuiRend_DisplayAndReturnClicked(jkGuiMenu *menu)
 
 #ifdef STDBITMAP_PARTIAL_LOAD
     for (int i = 0; i < 35; i++) {
+#ifdef TARGET_XBOX
+        if (i == JKGUI_BM_BK_LOADING) {
+            continue;
+        }
+#endif
         stdBitmap_UnloadData(jkGui_stdBitmaps[i]);
     }
 #endif
@@ -569,6 +574,11 @@ void jkGuiRend_Close()
 
 #ifdef STDBITMAP_PARTIAL_LOAD
     for (int i = 0; i < 35; i++) {
+#ifdef TARGET_XBOX
+        if (i == JKGUI_BM_BK_LOADING) {
+            continue;
+        }
+#endif
         stdBitmap_UnloadData(jkGui_stdBitmaps[i]);
     }
 #endif
@@ -1647,7 +1657,9 @@ int jkGuiRend_WindowHandler(HWND hWnd, UINT a2, WPARAM wParam, LPARAM lParam, LR
     int32_t mouseX; // eax
     int32_t mouseY; // ecx
     rdRect Rect; // [esp+10h] [ebp-50h]
+#ifndef TARGET_XBOX
     struct tagPAINTSTRUCT Paint; // [esp+20h] [ebp-40h]
+#endif
 
     if ( !g_app_suspended || jkGuiRend_bIsSurfaceValid )
         return 0;
@@ -1674,6 +1686,7 @@ int jkGuiRend_WindowHandler(HWND hWnd, UINT a2, WPARAM wParam, LPARAM lParam, LR
                 {
                     BOOL redraw = 0;
                     uint32_t timeMs = stdPlatform_GetTimeMsec();
+#ifndef TARGET_XBOX
                     if ( stdDisplay_pCurDevice->video_device[0].windowedMaybe )
                     {
                         jk_GetCursorPos((LPPOINT)&Rect);
@@ -1681,6 +1694,7 @@ int jkGuiRend_WindowHandler(HWND hWnd, UINT a2, WPARAM wParam, LPARAM lParam, LR
                         mouseY = Rect.y;
                     }
                     else
+#endif
                     {
                         mouseX = jkGuiRend_mouseX;
                         mouseY = jkGuiRend_mouseY;
@@ -1772,6 +1786,10 @@ LABEL_47:
 
         case WM_PAINT:
         {
+#ifdef TARGET_XBOX
+            jkGuiRend_Paint(jkGuiRend_activeMenu);
+            return 1;
+#else
             ret = jk_GetUpdateRect(hWnd, (LPRECT)&Rect, 0);
             if ( ret )
                 jk_BeginPaint(hWnd, &Paint);
@@ -1782,15 +1800,20 @@ LABEL_47:
                 return 1;
             }
             return 1;
+#endif
         }
         case WM_SETCURSOR:
         {
+#ifdef TARGET_XBOX
+            return 1;
+#else
             if ( !jkGuiRend_hCursor )
             {
                 jkGuiRend_hCursor = jk_LoadCursorA(stdGdi_GetHInstance(), (LPCSTR)0x91D);
             }
             jk_SetCursor(jkGuiRend_hCursor);
             return 1;
+#endif
         }
     }
     return 0;
@@ -1802,6 +1825,7 @@ void jkGuiRend_UpdateMouse()
     int32_t mouseY; // ecx
     struct tagPOINT Point; // [esp+0h] [ebp-8h]
 
+#ifndef TARGET_XBOX
     if ( stdDisplay_pCurDevice->video_device[0].windowedMaybe )
     {
         jk_GetCursorPos(&Point);
@@ -1809,6 +1833,7 @@ void jkGuiRend_UpdateMouse()
         mouseY = Point.y;
     }
     else
+#endif
     {
         mouseX = jkGuiRend_mouseX;
         mouseY = jkGuiRend_mouseY;
@@ -1845,12 +1870,14 @@ void jkGuiRend_GetMousePos(int32_t *pX, int32_t *pY)
 {
     struct tagPOINT Point; // [esp+0h] [ebp-8h]
 
+#ifndef TARGET_XBOX
     if ( stdDisplay_pCurDevice->video_device[0].windowedMaybe )
     {
         jk_GetCursorPos(&Point);
         *(struct tagPOINT *)pX = Point;
     }
     else
+#endif
     {
         // Added: nullptr checks
         if (pX)
@@ -1867,7 +1894,11 @@ void jkGuiRend_ResetMouseLatestMs()
 
 void jkGuiRend_InvalidateGdi()
 {
+#ifdef TARGET_XBOX
+    stdDisplay_DDrawGdiSurfaceFlip();
+#else
     jk_InvalidateRect(stdGdi_GetHwnd(), 0, 1);
+#endif
 }
 
 int jkGuiRend_SliderEventHandler(jkGuiElement *element, jkGuiMenu *menu, int32_t eventType, int32_t eventParam)
@@ -2626,10 +2657,16 @@ void jkGuiRend_FocusElementDir(jkGuiMenu *pMenu, int32_t dir)
 
     rdRect bcRect = bestCandidate->rect;
     if (dir == FOCUS_RIGHT || dir == FOCUS_DOWN) {
-        bcRect = (rdRect){-10000,-10000,0,0};
+        bcRect.x = -10000;
+        bcRect.y = -10000;
+        bcRect.width = 0;
+        bcRect.height = 0;
     }
     else {
-        bcRect = (rdRect){10000,10000,0,0};
+        bcRect.x = 10000;
+        bcRect.y = 10000;
+        bcRect.width = 0;
+        bcRect.height = 0;
     }
 
     while ( 1 )
@@ -2699,8 +2736,8 @@ void jkGuiRend_FocusElementDir(jkGuiMenu *pMenu, int32_t dir)
         //printf("%u %u\n", abs(rect.y - curFocus.y), abs(bcRect.y - curFocus.y));
         //int bDistCloseX = abs(rect.x - curFocus.x) < abs(bcRect.x - curFocus.x);
         //int bDistCloseY = abs(rect.y - curFocus.y) < abs(bcRect.y - curFocus.y);
-        int32_t distCur = sqrt((rect.x - curFocus.x)*(rect.x - curFocus.x) + (rect.y - curFocus.y)*(rect.y - curFocus.y));
-        int32_t distBc = sqrt((bcRect.x - curFocus.x)*(bcRect.x - curFocus.x) + (bcRect.y - curFocus.y)*(bcRect.y - curFocus.y));
+        int32_t distCur = (int32_t)sqrt((double)((rect.x - curFocus.x)*(rect.x - curFocus.x) + (rect.y - curFocus.y)*(rect.y - curFocus.y)));
+        int32_t distBc = (int32_t)sqrt((double)((bcRect.x - curFocus.x)*(bcRect.x - curFocus.x) + (bcRect.y - curFocus.y)*(bcRect.y - curFocus.y)));
         int32_t bDistCloseX = distCur < distBc;
         int32_t bDistCloseY = bDistCloseX;
         BOOL containsPt = rdRect_ContainsPoint(&focusedElement->rect, rect.x, rect.y) || rdRect_ContainsPoint(&iter->rect, curFocus.x, curFocus.y); // In case elements overlap

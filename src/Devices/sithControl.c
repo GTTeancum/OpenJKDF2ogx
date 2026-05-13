@@ -2356,7 +2356,7 @@ void sithControl_MapDefaultsJoystick() {
     sithControl_MapFunc(INPUT_FUNC_JUMP, KEY_JOY1_B4, 0); // y
 
     sithControl_DefaultHelper(INPUT_FUNC_USEINV, KEY_JOY1_B8, 2); // lstick click
-    sithControl_DefaultHelper(INPUT_FUNC_USESKILL, KEY_JOY1_B9, 2); // rstick click
+    sithControl_DefaultHelper(INPUT_FUNC_CAMERAMODE, KEY_JOY1_B9, 2); // rstick click
 
     sithControl_MapFunc(INPUT_FUNC_NEXTINV, KEY_JOY1_HUP, 0);
     sithControl_MapFunc(INPUT_FUNC_PREVINV, KEY_JOY1_HDOWN, 0);

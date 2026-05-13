@@ -50,7 +50,7 @@ static jkGuiElement jkGuiMain_cutscenesElements[5] = {
 static jkGuiMenu jkGuiMain_cutscenesMenu = {jkGuiMain_cutscenesElements, -1, 0xFFFF, 0xFFFF, 0xF, 0, 0, jkGui_stdBitmaps, jkGui_stdFonts, 0, 0, "thermloop01.wav", "thrmlpu2.wav", 0, 0, 0, 0, 0, 0};
 
 static jkGuiElement jkGuiMain_elements[11] = {
-#ifndef TARGET_NO_MULTIPLAYER_MENUS
+#if !defined(TARGET_NO_MULTIPLAYER_MENUS) || defined(TARGET_XBOX)
     {ELEMENT_TEXTBUTTON, 10, 5, "GUI_SINGLEPLAYER", 3, {0, 160, 640, 60}, 1, 0, 0, 0, 0, 0, {0}, 0},
     {ELEMENT_TEXTBUTTON, 11, 5, "GUI_MULTIPLAYER", 3, {0, 220, 640, 60}, 1, 0, 0, 0, 0, 0, {0}, 0},
 #else
@@ -141,7 +141,7 @@ void jkGuiMain_Show()
 
     jkGui_SetModeMenu(jkGui_stdBitmaps[JKGUI_BM_BK_MAIN]->palette);
     if ( !jkGuiMain_bIdk || (jkGuiMain_bIdk = 0, jkGuiPlayer_ShowNewPlayer(1), !stdComm_dword_8321F8)
-#ifndef TARGET_NO_MULTIPLAYER_MENUS 
+#if !defined(TARGET_NO_MULTIPLAYER_MENUS) && !defined(TARGET_XBOX)
         || jkGuiMultiplayer_Show2() != 1 
 #endif
         )
@@ -164,9 +164,13 @@ void jkGuiMain_Show()
                 case 10:
                     v1 = jkGuiSingleplayer_Show();
                     break;
-#ifndef TARGET_NO_MULTIPLAYER_MENUS
+#if !defined(TARGET_NO_MULTIPLAYER_MENUS) || defined(TARGET_XBOX)
                 case 11:
+#ifdef TARGET_XBOX
+                    v1 = -1;
+#else
                     v1 = jkGuiMultiplayer_Show();
+#endif
                     break;
 #endif
                 case 12:

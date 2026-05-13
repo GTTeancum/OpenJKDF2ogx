@@ -21,11 +21,9 @@ int jkCutscene_sub_421310(char * a0) { return 0; }
 int jkCutscene_sub_421410(void) { return 0; }
 int jkDSS_wrap_SendSaberInfo_alt(void) { return 0; }
 int jkDev_Open(void) { return 0; }
-int jkGuiDialog_YesNoDialog(unsigned short * a0, unsigned short * a1) { return 0; }
-int jkGuiForce_Show(int a0, int a1, int a2, unsigned short * a3, int * a4, int a5) { return 0; }
+/* jkGuiDialog_YesNoDialog, jkGuiForce_Show — real GUI implementations now compiled. */
 int jkGuiMultiTally_Show(int a0) { return 0; }
-int jkGuiSingleTally_Show(void) { return 0; }
-int jkGui_SetModeMenu(void const * a0) { return 0; }
+/* jkGuiSingleTally_Show, jkGui_SetModeMenu — real GUI implementations now compiled. */
 int jkSmack_SmackPlay(char const * a0) { return 0; }
 /* rdMath_PointsCollinear — now in rdMath.c */
 /* rdThing_Draw, NewEntry, SetModel3, SetSprite3, SetParticleCloud — now in rdThing.c */
@@ -40,13 +38,7 @@ int sithGamesave_Write(char * a0, int a1, int a2, unsigned short * a3) { return 
 /* stdBitmap_EnsureData — real impl in src/General/stdBitmap.c (now in build) */
 /* stdConffile — now compiled from src\General\stdConffile.c */
 int stdConsole_Startup(char const * a0, unsigned int a1, int a2) { return 0; }
-int stdDisplay_DrawAndFlipGdi(unsigned int a0) { return 0; }
-int stdDisplay_SetCooperativeLevel(unsigned int a0) { return 0; }
-int stdDisplay_SetMode(unsigned int a0, void const * a1, int a2) { return 0; }
-int stdDisplay_VBufferFill(struct stdVBuffer * a0, int a1, struct rdRect * a2) { return 0; }
-int stdDisplay_VBufferLock(struct stdVBuffer * vbuf) { if (vbuf) vbuf->bSurfaceLocked = 1; return 1; }
-int stdDisplay_VBufferSetColorKey(struct stdVBuffer * vbuf, int key) { if (vbuf) vbuf->transparent_color = (unsigned int)key; return 1; }
-int stdDisplay_ddraw_waitforvblank(void) { return 0; }
+/* stdDisplay_* — real Xbox software-display shim now compiled. */
 #ifndef STDSOUND_XBOX
 int stdMci_CheckStatus(void) { return 0; }
 int stdMci_Play(unsigned char a0, unsigned char a1) { return 0; }
@@ -54,30 +46,7 @@ int stdMci_Startup(void) { return 0; }
 #endif
 /* sithCog_actionCogIdk — defined in src/Cog/sithCog.c (now in build) */
 /* sithCog_pActionCog — defined in src/Cog/sithCog.c (now in build) */
-struct stdVBuffer * stdDisplay_VBufferNew(struct stdVBufferTexFmt * fmt, int a1, int a2, void const * a3) {
-    unsigned int bpp_bytes;
-    unsigned int pixel_sz;
-    unsigned int w;
-    unsigned int h;
-    struct stdVBuffer *vbuf;
-    if (!fmt) return 0;
-    w = (unsigned int)fmt->width;
-    h = (unsigned int)fmt->height;
-    if (w == 0) w = 1;
-    if (h == 0) h = 1;
-    bpp_bytes = fmt->format.is16bit ? 2 : 1;
-    pixel_sz = w * h * bpp_bytes;
-    vbuf = (struct stdVBuffer *)malloc(sizeof(struct stdVBuffer) + pixel_sz);
-    if (!vbuf) return 0;
-    memset(vbuf, 0, sizeof(struct stdVBuffer));
-    vbuf->format = *fmt;
-    vbuf->format.texture_size_in_bytes = pixel_sz;
-    vbuf->format.width_in_bytes = w * bpp_bytes;
-    vbuf->format.width_in_pixels = w;
-    vbuf->surface_lock_alloc = (char*)(vbuf + 1);
-    return vbuf;
-}
-unsigned char * stdDisplay_GetPalette(void) { return 0; }
+/* stdDisplay_VBufferNew/GetPalette — real Xbox software-display shim now compiled. */
 #ifndef STDSOUND_XBOX
 unsigned int stdSound_ParseWav(int a0, unsigned int * a1, int * a2, int * a3, int * a4) { return 0; }
 #endif
@@ -99,16 +68,10 @@ void jkGuiControlSaveLoad_Shutdown(void) { }
 void jkGuiControlSaveLoad_Startup(void) { }
 void jkGuiDecision_Shutdown(void) { }
 void jkGuiDecision_Startup(void) { }
-void jkGuiDialog_ErrorDialog(unsigned short * a0, unsigned short * a1) { }
-void jkGuiDialog_Shutdown(void) { }
-void jkGuiDialog_Startup(void) { }
+/* jkGuiDialog_* — real GUI implementations now compiled. */
 void jkGuiDisplay_Shutdown(void) { }
 void jkGuiDisplay_Startup(void) { }
-void jkGuiEsc_Show(void) { }
-void jkGuiEsc_Shutdown(void) { }
-void jkGuiEsc_Startup(void) { }
-void jkGuiForce_Shutdown(void) { }
-void jkGuiForce_Startup(void) { }
+/* jkGuiEsc_*, jkGuiForce_* — real GUI implementations now compiled. */
 void jkGuiGameplay_Shutdown(void) { }
 void jkGuiGameplay_Startup(void) { }
 void jkGuiGeneral_Shutdown(void) { }
@@ -117,34 +80,22 @@ void jkGuiJoystick_Shutdown(void) { }
 void jkGuiJoystick_Startup(void) { }
 void jkGuiKeyboard_Shutdown(void) { }
 void jkGuiKeyboard_Startup(void) { }
-void jkGuiMain_Shutdown(void) { }
-void jkGuiMain_Startup(void) { }
+/* jkGuiMain_* — real GUI implementations now compiled. */
 void jkGuiMap_Shutdown(void) { }
 void jkGuiMap_Startup(void) { }
 void jkGuiMods_Shutdown(void) { }
 void jkGuiMods_Startup(void) { }
 void jkGuiMouse_Shutdown(void) { }
 void jkGuiMouse_Startup(void) { }
-void jkGuiObjectives_Shutdown(void) { }
-void jkGuiObjectives_Startup(void) { }
+/* jkGuiObjectives_* — real GUI implementations now compiled. */
 void jkGuiPlayer_Shutdown(void) { }
-void jkGuiRend_Shutdown(void) { }
-void jkGuiRend_Startup(void) { }
-void jkGuiSaveLoad_Shutdown(void) { }
-void jkGuiSaveLoad_Startup(void) { }
+/* jkGuiRend_*, jkGuiSaveLoad_* — real GUI implementations now compiled. */
 void jkGuiSetup_Shutdown(void) { }
 void jkGuiSetup_Startup(void) { }
-void jkGuiSingleTally_Shutdown(void) { }
-void jkGuiSingleTally_Startup(void) { }
-void jkGuiSingleplayer_Shutdown(void) { }
-void jkGuiSingleplayer_Startup(void) { }
+/* jkGuiSingleTally_*, jkGuiSingleplayer_* — real GUI implementations now compiled. */
 void jkGuiSound_Shutdown(void) { }
 void jkGuiSound_Startup(void) { }
-void jkGuiTitle_ShowLoading(char * a0, unsigned short * a1) { }
-void jkGuiTitle_Shutdown(void) { }
-void jkGuiTitle_Startup(void) { }
-void jkGui_Shutdown(void) { }
-void jkGui_copies_string(char * a0) { }
+/* jkGuiTitle_*, jkGui_Shutdown/copies_string — real GUI implementations now compiled. */
 void jkQuakeConsole_Shutdown(void) { }
 void jkQuakeConsole_Startup(void) { }
 void jkSmack_Shutdown(void) { }
@@ -173,8 +124,7 @@ void sithDSS_SendSyncPuppet(struct sithThing * a0, int a1, int a2) { }
 /* sithTime_Startup, sithTime_Tick — real impls in src/Gameplay/sithTime.c (now in build) */
 /* std3D_EndScene provided by std3D.c */
 /* stdConffile_Close — now compiled from src\General\stdConffile.c */
-void stdDisplay_VBufferFree(struct stdVBuffer * vbuf) { if (vbuf) free(vbuf); }
-void stdDisplay_VBufferUnlock(struct stdVBuffer * vbuf) { if (vbuf) vbuf->bSurfaceLocked = 0; }
+/* stdDisplay_VBufferFree/Unlock — real Xbox software-display shim now compiled. */
 #ifndef STDSOUND_XBOX
 void stdMci_SetVolume(float a0) { }
 void stdMci_Shutdown(void) { }

@@ -50,9 +50,16 @@ void sithRenderSky_TransformHorizontal(rdProcEntry *pProcEntry, sithSurfaceInfo 
 
     while ( num_vertices )
     {
-#ifdef TARGET_TWL
+#if defined(TARGET_TWL) || defined(TARGET_XBOX)
         rdVector3 proj;
+#ifdef TARGET_XBOX
+        flex_t fov_y_calc = rdCamera_pCurCamera->fovDx / pVertXYZ->y;
+        proj.x = rdCamera_pCurCamera->canvas->half_screen_width + (pVertXYZ->x * fov_y_calc);
+        proj.y = rdCamera_pCurCamera->canvas->half_screen_height - (pVertXYZ->z * fov_y_calc);
+        proj.z = pVertXYZ->y;
+#else
         rdCamera_pCurCamera->fnProjectLstClip(&proj, pVertXYZ, 1);
+#endif
         tmp1 = (proj.x - rdCamera_pCurCamera->canvas->half_screen_width) * sithSector_flt_8553C0;
         tmp2 = (proj.y - rdCamera_pCurCamera->canvas->half_screen_height) * sithSector_flt_8553C0;
 
@@ -137,9 +144,11 @@ void sithRenderSky_TransformVertical(rdProcEntry *pProcEntry, sithSurfaceInfo *p
         rdVector_Add2Acc(pVertUV, &pSurfaceInfo->face.clipIdk);
         rdMatrix_TransformPoint34(&vertex_out, &a1a, &sithCamera_currentCamera->rdCam.view_matrix);
 
-#ifdef TARGET_TWL
+#if defined(TARGET_TWL) || defined(TARGET_XBOX)
         flex_t prev_z = pProcEntry->vertices[i].y;
+#ifdef TARGET_TWL
         vertex_out.y *= 0.15;
+#endif
         pProcEntry->vertices[i].y = vertex_out.y;
         pProcEntry->vertices[i].y = stdMath_Clamp(pProcEntry->vertices[i].y, 0.0f, rdCamera_pCurCamera->pClipFrustum->zFar - 0.1);
         pProcEntry->vertices[i].x /= prev_z;

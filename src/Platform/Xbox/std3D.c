@@ -1093,20 +1093,31 @@ void std3D_DrawRenderList(void)
                             && t->texture->texture_id != 0
                             && g_pfnBindTexture);
 
-            if (t->flags != last_flags) {
-                if (t->flags & 0x800) glDepthFunc(GL_LESS);
-                else                  glDepthFunc(GL_ALWAYS);
+            if (textured) {
+                if (t->flags != last_flags) {
+                    glEnable(GL_BLEND);
+                    glEnable(GL_CULL_FACE);
 
-                if (t->flags & 0x1000) glDepthMask(GL_TRUE);
-                else                   glDepthMask(GL_FALSE);
+                    if (t->flags & 0x800) glDepthFunc(GL_LESS);
+                    else                  glDepthFunc(GL_ALWAYS);
 
-                if (t->flags & 0x10000) glCullFace(GL_BACK);
-                else                    glCullFace(GL_FRONT);
+                    if (t->flags & 0x1000) glDepthMask(GL_TRUE);
+                    else                   glDepthMask(GL_FALSE);
 
-                if (t->flags & 0x600) glBlendFunc(GL_ONE, GL_ONE_MINUS_SRC_ALPHA);
-                else                  glBlendFunc(GL_SRC_ALPHA, GL_ONE_MINUS_SRC_ALPHA);
+                    if (t->flags & 0x10000) glCullFace(GL_BACK);
+                    else                    glCullFace(GL_FRONT);
 
-                last_flags = t->flags;
+                    if (t->flags & 0x600) glBlendFunc(GL_ONE, GL_ONE_MINUS_SRC_ALPHA);
+                    else                  glBlendFunc(GL_SRC_ALPHA, GL_ONE_MINUS_SRC_ALPHA);
+
+                    last_flags = t->flags;
+                }
+            } else if (last_flags != -2) {
+                glDisable(GL_BLEND);
+                glDisable(GL_CULL_FACE);
+                glDepthFunc(GL_LEQUAL);
+                glDepthMask(GL_TRUE);
+                last_flags = -2;
             }
 
             if (textured) {
@@ -1183,14 +1194,14 @@ void std3D_DrawRenderList(void)
                 glTexCoord2f(c->tu, c->tv);
                 V3F_ENGINE_TO_GL(c);
             } else {
-                if (V_COLOR_RGB_NONZERO(a)) glColor4f(V_COLOR_R(a), V_COLOR_G(a), V_COLOR_B(a), V_COLOR_A(a));
-                else                        glColor4f(a->lightLevel, a->lightLevel, a->lightLevel, V_COLOR_A(a));
+                if (V_COLOR_RGB_NONZERO(a)) glColor4f(V_COLOR_R(a), V_COLOR_G(a), V_COLOR_B(a), 1.0f);
+                else                        glColor4f(a->lightLevel, a->lightLevel, a->lightLevel, 1.0f);
                 V3F_ENGINE_TO_GL(a);
-                if (V_COLOR_RGB_NONZERO(b)) glColor4f(V_COLOR_R(b), V_COLOR_G(b), V_COLOR_B(b), V_COLOR_A(b));
-                else                        glColor4f(b->lightLevel, b->lightLevel, b->lightLevel, V_COLOR_A(b));
+                if (V_COLOR_RGB_NONZERO(b)) glColor4f(V_COLOR_R(b), V_COLOR_G(b), V_COLOR_B(b), 1.0f);
+                else                        glColor4f(b->lightLevel, b->lightLevel, b->lightLevel, 1.0f);
                 V3F_ENGINE_TO_GL(b);
-                if (V_COLOR_RGB_NONZERO(c)) glColor4f(V_COLOR_R(c), V_COLOR_G(c), V_COLOR_B(c), V_COLOR_A(c));
-                else                        glColor4f(c->lightLevel, c->lightLevel, c->lightLevel, V_COLOR_A(c));
+                if (V_COLOR_RGB_NONZERO(c)) glColor4f(V_COLOR_R(c), V_COLOR_G(c), V_COLOR_B(c), 1.0f);
+                else                        glColor4f(c->lightLevel, c->lightLevel, c->lightLevel, 1.0f);
                 V3F_ENGINE_TO_GL(c);
             }
 #undef V_COLOR_R
@@ -1783,6 +1794,82 @@ static void xbox_set_ui_state(int enable_blend)
     } else {
         glDisable(GL_BLEND);
     }
+}
+
+void std3D_DrawMenuVBuffer8(stdVBuffer *vbuf, const rdColor24_local *pal)
+{
+    unsigned int w, h, padW, padH, x, y, total;
+    const unsigned char *src;
+    unsigned int texId;
+    float u2, v2;
+    static unsigned int menuTexId = 0;
+
+    if (!g_initialized || !vbuf || !vbuf->surface_lock_alloc)
+        return;
+    if (!pal)
+        pal = g_pCurrentPalette;
+    if (!pal)
+        return;
+
+    w = (unsigned int)vbuf->format.width;
+    h = (unsigned int)vbuf->format.height;
+    if (!w || !h || w > STD3D_TEX_SCRATCH_W || h > STD3D_TEX_SCRATCH_H)
+        return;
+
+    padW = 1;
+    while (padW < w) padW <<= 1;
+    padH = 1;
+    while (padH < h) padH <<= 1;
+    if (padW > STD3D_TEX_SCRATCH_W || padH > STD3D_TEX_SCRATCH_H)
+        return;
+
+    src = (const unsigned char *)vbuf->surface_lock_alloc;
+    total = padW * padH * 4;
+    memset(g_texScratch, 0, total);
+
+    for (y = 0; y < h; ++y)
+    {
+        const unsigned char *row = src + y * vbuf->format.width_in_bytes;
+        for (x = 0; x < w; ++x)
+        {
+            unsigned int idx = row[x];
+            unsigned int o = (y * padW + x) * 4;
+            g_texScratch[o + 0] = pal[idx].r;
+            g_texScratch[o + 1] = pal[idx].g;
+            g_texScratch[o + 2] = pal[idx].b;
+            g_texScratch[o + 3] = 0xFF;
+        }
+    }
+
+    if (!g_pfnBindTexture)
+        return;
+
+    if (!menuTexId)
+        menuTexId = g_nextTexId++;
+    texId = menuTexId;
+    g_pfnBindTexture(GL_TEXTURE_2D, texId);
+    glTexParameterf(GL_TEXTURE_2D, GL_TEXTURE_MIN_FILTER, (GLfloat)GL_NEAREST);
+    glTexParameterf(GL_TEXTURE_2D, GL_TEXTURE_MAG_FILTER, (GLfloat)GL_NEAREST);
+    glTexParameterf(GL_TEXTURE_2D, GL_TEXTURE_WRAP_S, (GLfloat)GL_CLAMP);
+    glTexParameterf(GL_TEXTURE_2D, GL_TEXTURE_WRAP_T, (GLfloat)GL_CLAMP);
+    glTexImage2D(GL_TEXTURE_2D, 0, 4, (GLsizei)padW, (GLsizei)padH, 0,
+                 GL_RGBA, GL_UNSIGNED_BYTE, g_texScratch);
+
+    xbox_set_ui_state(0);
+    glEnable(GL_TEXTURE_2D);
+    g_pfnBindTexture(GL_TEXTURE_2D, texId);
+    glColor4f(1.0f, 1.0f, 1.0f, 1.0f);
+    u2 = (float)w / (float)padW;
+    v2 = (float)h / (float)padH;
+    glBegin(GL_TRIANGLES);
+    glTexCoord2f(0.0f, 0.0f); glVertex3f(0.0f,   0.0f,   0.0f);
+    glTexCoord2f(u2,   0.0f); glVertex3f(640.0f, 0.0f,   0.0f);
+    glTexCoord2f(u2,   v2);   glVertex3f(640.0f, 480.0f, 0.0f);
+    glTexCoord2f(0.0f, 0.0f); glVertex3f(0.0f,   0.0f,   0.0f);
+    glTexCoord2f(u2,   v2);   glVertex3f(640.0f, 480.0f, 0.0f);
+    glTexCoord2f(0.0f, v2);   glVertex3f(0.0f,   480.0f, 0.0f);
+    glEnd();
+    glDisable(GL_TEXTURE_2D);
 }
 
 void std3D_DrawUIBitmapRGBA(void *pBmp_v, int mipIdx, float dstX, float dstY,

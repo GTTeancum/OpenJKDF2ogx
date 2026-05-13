@@ -75,6 +75,9 @@ int sithCamera_Open(rdCanvas *canvas, flex_t aspect)
         sithCamera_cameras[0].rdCam.fov = SITHCAMERA_FOV;
         sithCamera_cameras[1].cameraPerspective = 0x04;
         sithCamera_cameras[1].rdCam.fov = SITHCAMERA_FOV;
+        sithCamera_cameras[1].collisionOffset.x = 0.0;
+        sithCamera_cameras[1].collisionOffset.y = -0.2;
+        sithCamera_cameras[1].collisionOffset.z = 0.06;
         sithCamera_cameras[2].cameraPerspective = 0x08;
         sithCamera_cameras[2].rdCam.fov = SITHCAMERA_FOV;
         sithCamera_cameras[4].cameraPerspective = 0x20;
