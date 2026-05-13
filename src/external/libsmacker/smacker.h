@@ -29,6 +29,20 @@
 /** forward-declaration for an struct */
 typedef struct smk_t* smk;
 
+typedef size_t (*smk_read_callback)(void* ctx, void* buf, size_t size);
+typedef int (*smk_seek_callback)(void* ctx, long offset, int whence);
+typedef long (*smk_tell_callback)(void* ctx);
+typedef int (*smk_close_callback)(void* ctx);
+
+typedef struct smk_io_t
+{
+	void* ctx;
+	smk_read_callback read;
+	smk_seek_callback seek;
+	smk_tell_callback tell;
+	smk_close_callback close;
+} smk_io_t;
+
 /** a few defines as return codes from smk_next() */
 #define SMK_DONE	0x00
 #define SMK_MORE	0x01
@@ -64,6 +78,8 @@ extern "C" {
 smk smk_open_file(const char* filename, uint8_t mode);
 /** open an smk (from a file pointer) */
 smk smk_open_filepointer(FILE* file, uint8_t mode);
+/** open an smk from custom stream callbacks */
+smk smk_open_callbacks(const smk_io_t* io, uint8_t mode);
 /** read an smk (from a memory buffer) */
 smk smk_open_memory(const uint8_t* buffer, uint32_t size);
 

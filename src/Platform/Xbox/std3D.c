@@ -17,6 +17,8 @@
 #include <string.h>           /* memcpy */
 #include <math.h>            /* tan() for projection-matrix setup */
 
+extern int jkCutscene_isRendering;
+
 #ifdef __cplusplus
 extern "C" {
 #endif
@@ -765,20 +767,22 @@ void std3D_Present(void)
     if (!g_initialized) { XDBG("std3D_Present: not initialized\n"); return; }
     g_presentCalls++;
 
-    /* Publish vertex bbox to HUD slots 5/6/7.  Format: "VX  min max". */
-    if (g_bboxValid) {
-        sprintf(buf, "VX %d %d", (int)g_bboxXmin, (int)g_bboxXmax);
-        std3D_DebugLine(5, buf);
-        sprintf(buf, "VY %d %d", (int)g_bboxYmin, (int)g_bboxYmax);
-        std3D_DebugLine(6, buf);
-        sprintf(buf, "VZ %d %d", (int)g_bboxZmin, (int)g_bboxZmax);
-        std3D_DebugLine(7, buf);
-        sprintf(buf, "COL %X", g_firstColor);
-        std3D_DebugLine(15, buf);  /* repurpose SPHEROUT slot — always 0 */
-    } else {
-        std3D_DebugLine(5, "VX NONE");
-        std3D_DebugLine(6, "");
-        std3D_DebugLine(7, "");
+    if (!jkCutscene_isRendering) {
+        /* Publish vertex bbox to HUD slots 5/6/7.  Format: "VX  min max". */
+        if (g_bboxValid) {
+            sprintf(buf, "VX %d %d", (int)g_bboxXmin, (int)g_bboxXmax);
+            std3D_DebugLine(5, buf);
+            sprintf(buf, "VY %d %d", (int)g_bboxYmin, (int)g_bboxYmax);
+            std3D_DebugLine(6, buf);
+            sprintf(buf, "VZ %d %d", (int)g_bboxZmin, (int)g_bboxZmax);
+            std3D_DebugLine(7, buf);
+            sprintf(buf, "COL %X", g_firstColor);
+            std3D_DebugLine(15, buf);  /* repurpose SPHEROUT slot — always 0 */
+        } else {
+            std3D_DebugLine(5, "VX NONE");
+            std3D_DebugLine(6, "");
+            std3D_DebugLine(7, "");
+        }
     }
 
     /* Restore 2D state for HUD draw — engine left projection in
@@ -823,14 +827,16 @@ void std3D_Present(void)
     glDisable(GL_TEXTURE_2D);
 #endif
 
-    /* Live counters into the HUD text. */
-    std3D_DebugLineKV(19, "STARTS",  g_startCalls);
-    std3D_DebugLineKV(20, "CLEARS",  g_clearCalls);
-    std3D_DebugLineKV(21, "ENDS",    g_endCalls);
-    std3D_DebugLineKV(22, "ENDTR",   g_endTransitions);
-    std3D_DebugLineKV(23, "PRESENT", g_presentCalls);
+    if (!jkCutscene_isRendering) {
+        /* Live counters into the HUD text. */
+        std3D_DebugLineKV(19, "STARTS",  g_startCalls);
+        std3D_DebugLineKV(20, "CLEARS",  g_clearCalls);
+        std3D_DebugLineKV(21, "ENDS",    g_endCalls);
+        std3D_DebugLineKV(22, "ENDTR",   g_endTransitions);
+        std3D_DebugLineKV(23, "PRESENT", g_presentCalls);
 
-    std3D_DrawDebugHUD();
+        std3D_DrawDebugHUD();
+    }
 
     { static int _sw=0; if(_sw<3){ XDBG("std3D_Present: FakeSwapBuffers\n"); } _sw++; }
     FakeSwapBuffers();
@@ -1050,33 +1056,6 @@ void std3D_DrawRenderList(void)
         D3DVERTEX  *a  = &GL_tmpVertices[t->v1];
         D3DVERTEX  *b  = &GL_tmpVertices[t->v2];
         D3DVERTEX  *c  = &GL_tmpVertices[t->v3];
-
-        /* SmallTri probe: log every small-mesh-sized triangle (textured
-         * or solid) in view.  No view-z filter — capture good shots
-         * AND bad shots so we can compare.  Only spatial-size filter
-         * (~bolt size) to keep world geometry out. */
-        {
-            float xmin=a->x, xmax=a->x, ymin=a->y, ymax=a->y, zmin=a->z, zmax=a->z;
-            if (b->x < xmin) xmin = b->x; if (b->x > xmax) xmax = b->x;
-            if (c->x < xmin) xmin = c->x; if (c->x > xmax) xmax = c->x;
-            if (b->y < ymin) ymin = b->y; if (b->y > ymax) ymax = b->y;
-            if (c->y < ymin) ymin = c->y; if (c->y > ymax) ymax = c->y;
-            if (b->z < zmin) zmin = b->z; if (b->z > zmax) zmax = b->z;
-            if (c->z < zmin) zmin = c->z; if (c->z > zmax) zmax = c->z;
-            if ((xmax - xmin) < 0.3f && (ymax - ymin) < 0.3f && (zmax - zmin) < 0.3f &&
-                ymin > 0.01f && ymin < 8.0f) {
-                static int _st = 0;
-                if (_st < 800) {
-                    xbox_debug_Printf("SmallTri[%d] tex=%p: A=(%.3f %.3f %.3f) B=(%.3f %.3f %.3f) C=(%.3f %.3f %.3f)\n",
-                        _st, (void*)t->texture,
-                        (double)a->x,(double)a->y,(double)a->z,
-                        (double)b->x,(double)b->y,(double)b->z,
-                        (double)c->x,(double)c->y,(double)c->z);
-                    _st++;
-                }
-            }
-        }
-
 #if STD3D_WIREFRAME
         glBegin(GL_LINES);
         glColor4f(1.0f, 1.0f, 1.0f, 1.0f);
@@ -2114,6 +2093,7 @@ void std3D_GetValidDimension(unsigned int inW, unsigned int inH,
 int std3D_HasAlpha(void)             { return 1; }
 int std3D_HasAlphaFlatStippled(void) { return 0; }
 int std3D_HasModulateAlpha(void)     { return 1; }
+int std3D_IsReady(void)              { return g_initialized; }
 
 /* ----------------------------------------------------------------------
  * std3D global flags / no-op API surface that the engine references.

@@ -8,6 +8,11 @@ uint32_t stdPlatform_GetTimeMsec(void)
     return (uint32_t)GetTickCount();
 }
 
+uint64_t Linux_TimeUs(void)
+{
+    return (uint64_t)GetTickCount() * 1000ULL;
+}
+
 /* Printf — routes to debug output visible in Xbox Neighborhood */
 int stdPlatform_Printf(const char *fmt, ...)
 {

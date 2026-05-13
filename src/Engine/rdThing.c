@@ -157,27 +157,6 @@ int rdThing_SetParticleCloud(rdThing *thing, rdParticle *particle)
 
 int rdThing_Draw(rdThing *thing, rdMatrix34 *m)
 {
-#ifdef TARGET_XBOX
-    /* Bolt-trace at rdThing_Draw entry.  Filter on model3 with small
-     * radius (bolts are 0.091).  De-dup by remembering each unique
-     * model3 pointer we've seen — the player gun renders every frame
-     * and would saturate a simple counter.  Log up to 8 distinct models. */
-    if (thing && thing->type == RD_THINGTYPE_MODEL && thing->model3 &&
-        thing->model3->radius > 0.0f && thing->model3->radius < 0.5f) {
-        static void* _seen[32] = {0};
-        static int _nseen = 0;
-        int already = 0, i;
-        for (i = 0; i < _nseen; i++) {
-            if (_seen[i] == (void*)thing->model3) { already = 1; break; }
-        }
-        if (!already && _nseen < 32) {
-            _seen[_nseen++] = (void*)thing->model3;
-            xbox_debug_Printf("rdThing_Draw[NEW model3=%p]: type=%d radius=%.3f curGeoMode=%d nseen=%d\n",
-                (void*)thing->model3, (int)thing->type, (double)thing->model3->radius,
-                (int)rdroid_curGeometryMode, _nseen);
-        }
-    }
-#endif
 
     if (!rdroid_curGeometryMode)
         return 0;

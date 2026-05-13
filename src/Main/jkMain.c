@@ -74,6 +74,23 @@ char jkMain_motsIdk[128];
 jkEpisodeEntry* jkMain_pEpisodeEnt = NULL;
 jkEpisodeEntry* jkMain_pEpisodeEnt2 = NULL;
 
+#ifdef TARGET_XBOX
+static int jkMain_ResolveVideoPath(const char *fname, char *out)
+{
+    char candidate[128];
+
+    _sprintf(candidate, "video%c%s", '\\', fname);
+    if ( jkRes_FileExists(candidate, out, 128) )
+        return 1;
+
+    _sprintf(candidate, "Resource%cVIDEO%c%s", '\\', '\\', fname);
+    if ( jkRes_FileExists(candidate, out, 128) )
+        return 1;
+
+    return 0;
+}
+#endif
+
 static jkGuiStateFuncs jkMain_aGuiStateFuncs[16] = {
     {0,  0,  0},
     {jkMain_VideoShow, jkMain_VideoTick, jkMain_VideoLeave},
@@ -1252,8 +1269,12 @@ int jkMain_cd_swap_reverify(jkEpisodeEntry *ent)
     if ( jkPlayer_setDisableCutscenes )
         return jkMain_StartNextLevelInEpisode(0, 1);
 
+#ifdef TARGET_XBOX
+    if ( !jkMain_ResolveVideoPath(ent->fileName, v9) ) {
+#else
     _sprintf(v9, "video%c%s", 92, ent->fileName);
     if ( !util_FileExists(v9) ) {
+#endif
         // Added: check file first before asking for CDs
         v4 = jkRes_LoadCD(ent->cdNum);
 
@@ -1261,7 +1282,11 @@ int jkMain_cd_swap_reverify(jkEpisodeEntry *ent)
             return jkMain_StartNextLevelInEpisode(0, 1);
         }
 
+#ifdef TARGET_XBOX
+        if ( !jkMain_ResolveVideoPath(ent->fileName, v9) ) {
+#else
         if ( !util_FileExists(v9) ) {
+#endif
             return jkMain_StartNextLevelInEpisode(0, 1);
         }
     }
@@ -1393,7 +1418,13 @@ void jkMain_VideoShow(int a1, int a2)
     //if (Main_bMotsCompat && !sithNet_isMulti )
     //    sithTime_Pause();
 
+#ifdef TARGET_XBOX
+    stdPlatform_Printf("CutsceneTrace: VideoShow state=%d prev=%d path='%s'\n", a1, a2, jkMain_aLevelJklFname);
+#endif
     result = jkCutscene_sub_421310(jkMain_aLevelJklFname);
+#ifdef TARGET_XBOX
+    stdPlatform_Printf("CutsceneTrace: VideoShow openResult=%d stop=%d next=%d\n", result, jkSmack_stopTick, jkSmack_nextGuiState);
+#endif
     if ( !result )
     {
         Windows_ErrorMsgboxWide("ERR_CANNOT_LOAD_FILE %s", jkMain_aLevelJklFname);
@@ -1578,9 +1609,13 @@ void jkMain_StartupCutscene(char *pCutsceneStr)
     char local_80 [128];
 
     jkPlayer_WriteConfSwap(playerThings + playerThingIdx, 1, pCutsceneStr);
+#ifdef TARGET_XBOX
+    if (jkMain_ResolveVideoPath(pCutsceneStr, local_80)) {
+#else
     _sprintf(local_80,"video%c%s", '\\', pCutsceneStr);
 
     if (util_FileExists(local_80)) {
+#endif
         jkRes_FileExists(local_80, jkMain_motsIdk, 0x80);
     }
 }

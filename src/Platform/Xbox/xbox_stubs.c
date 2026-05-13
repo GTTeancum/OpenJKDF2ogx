@@ -229,10 +229,7 @@ int  jkDev_Shutdown(void) STUB0
 void jkDev_Open(void) STUBV
 void jkDev_Close(void) STUBV
 
-/* jkSmack — needs video playback */
-int  jkSmack_Startup(void) STUB0
-int  jkSmack_Shutdown(void) STUB0
-int  jkSmack_SmackPlay(void* a, void* b, int c) STUB0
+/* jkSmack is compiled for Xbox. */
 
 /* jkCredits — needs display */
 int  jkCredits_Startup(const char* a) { (void)a; return 0; }
@@ -241,13 +238,7 @@ void jkCredits_Show(int a, int b) STUBV
 void jkCredits_Tick(int a) STUBV
 void jkCredits_Skip(int a, int b) STUBV
 
-/* jkCutscene — needs video */
-int  jkCutscene_Startup(const char* a) { (void)a; return 0; }
-int  jkCutscene_Shutdown(void) STUB0
-void jkCutscene_PauseShow(int a, int b) STUBV
-void jkCutscene_sub_421310(int a, int b) STUBV
-void jkCutscene_sub_421410(int a, int b) STUBV
-void jkCutscene_smack_related_loops(int a) STUBV
+/* jkCutscene is compiled for Xbox. */
 
 /* jkDSS — needs networking */
 int  jkDSS_Startup(void) STUB0
@@ -638,7 +629,7 @@ int  jkDev_DebugLog(const char* s)                              { (void)s; retur
 void jkQuakeConsole_Render(void)                                { }
 
 /* jkSmack — Smacker video; stubbed (Xbox lacks DirectShow Smacker codec) */
-int  jkSmack_GetCurrentGuiState(void)                           { return 0; }
+/* jkSmack_GetCurrentGuiState is compiled for Xbox. */
 
 /* jkGuiTitle helper used by jkHud */
 /* jkGuiTitle_sub_4189A0 is provided by the real title GUI. */

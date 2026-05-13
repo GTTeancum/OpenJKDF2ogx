@@ -38,6 +38,34 @@ static IDirectSound *g_pDS    = NULL;
 
 float stdSound_fMenuVolume = 1.0f;
 
+typedef struct XboxPCMStream
+{
+    IDirectSoundBuffer *pDS;
+    DWORD bufferBytes;
+    DWORD writePos;
+    DWORD queuedBytes;
+    DWORD prefillBytes;
+    DWORD blockAlign;
+    DWORD bytesPerSec;
+    DWORD lastPlayPos;
+    uint64_t totalSubmittedBytes;
+    uint64_t totalPlayedBytes;
+    int playPosValid;
+    int started;
+    int bStereo;
+    unsigned int sampleRate;
+    unsigned short bitsPerSample;
+    float volume;
+    unsigned int writeCalls;
+    unsigned int fullWrites;
+    unsigned int partialWrites;
+    unsigned int lowWaterMarks;
+    unsigned int droppedWrites;
+    unsigned int silenceWrites;
+} XboxPCMStream;
+
+static XboxPCMStream g_pcmStream;
+
 IDirectSound *stdSound_XboxGetDirectSound(void)
 {
     return g_pDS;
@@ -136,6 +164,382 @@ static LONG xbox_VolToDS(float v)
     return (LONG)(2000.0f * (float)log10((double)v));
 }
 
+static DWORD xbox_StreamDistance(DWORD from, DWORD to, DWORD size)
+{
+    return (to >= from) ? (to - from) : (size - from + to);
+}
+
+static void xbox_StreamUpdateQueued(void)
+{
+    DWORD play = 0;
+    DWORD write = 0;
+    DWORD played;
+
+    if (!g_pcmStream.pDS || !g_pcmStream.started)
+        return;
+
+    if (FAILED(IDirectSoundBuffer_GetCurrentPosition(g_pcmStream.pDS, &play, &write)))
+        return;
+
+    if (!g_pcmStream.playPosValid)
+    {
+        g_pcmStream.lastPlayPos = play;
+        g_pcmStream.playPosValid = 1;
+        return;
+    }
+
+    played = xbox_StreamDistance(g_pcmStream.lastPlayPos, play, g_pcmStream.bufferBytes);
+    g_pcmStream.lastPlayPos = play;
+
+    if (played >= g_pcmStream.queuedBytes)
+    {
+        g_pcmStream.totalPlayedBytes += g_pcmStream.queuedBytes;
+        g_pcmStream.queuedBytes = 0;
+    }
+    else
+    {
+        g_pcmStream.totalPlayedBytes += played;
+        g_pcmStream.queuedBytes -= played;
+    }
+}
+
+static int xbox_StreamWriteSilence(DWORD offset, DWORD bytes)
+{
+    void *p1 = NULL;
+    void *p2 = NULL;
+    DWORD s1 = 0;
+    DWORD s2 = 0;
+
+    if (!g_pcmStream.pDS || !bytes)
+        return 0;
+
+    if (FAILED(IDirectSoundBuffer_Lock(g_pcmStream.pDS, offset, bytes, &p1, &s1, &p2, &s2, 0)))
+        return 0;
+
+    if (p1 && s1) memset(p1, 0, s1);
+    if (p2 && s2) memset(p2, 0, s2);
+    IDirectSoundBuffer_Unlock(g_pcmStream.pDS, p1, s1, p2, s2);
+    return 1;
+}
+
+void stdSound_XboxStreamClose(void)
+{
+    if (g_pcmStream.pDS)
+    {
+        IDirectSoundBuffer_Stop(g_pcmStream.pDS);
+        IDirectSoundBuffer_Release(g_pcmStream.pDS);
+    }
+    memset(&g_pcmStream, 0, sizeof(g_pcmStream));
+}
+
+int stdSound_XboxStreamOpen(int bStereo, unsigned int sampleRate,
+                            unsigned short bitsPerSample, unsigned int bufferBytes,
+                            float volume)
+{
+    DSBUFFERDESC desc;
+    WAVEFORMATEX wfx;
+    HRESULT hr;
+    DWORD blockAlign;
+
+    stdSound_XboxStreamClose();
+
+    if (!g_pDS || !sampleRate || !bitsPerSample)
+        return 0;
+
+    blockAlign = (DWORD)((bStereo ? 2 : 1) * (bitsPerSample / 8));
+    if (!blockAlign)
+        return 0;
+
+    if (bufferBytes < 0x4000)
+        bufferBytes = 0x4000;
+    bufferBytes -= bufferBytes % blockAlign;
+
+    memset(&wfx, 0, sizeof(wfx));
+    wfx.wFormatTag      = WAVE_FORMAT_PCM;
+    wfx.nChannels       = (WORD)(bStereo ? 2 : 1);
+    wfx.nSamplesPerSec  = sampleRate;
+    wfx.wBitsPerSample  = bitsPerSample;
+    wfx.nBlockAlign     = (WORD)blockAlign;
+    wfx.nAvgBytesPerSec = sampleRate * blockAlign;
+
+    memset(&desc, 0, sizeof(desc));
+    desc.dwSize        = sizeof(desc);
+    desc.dwFlags       = DSBCAPS_CTRLVOLUME | DSBCAPS_CTRLFREQUENCY;
+    desc.dwBufferBytes = bufferBytes;
+    desc.lpwfxFormat   = &wfx;
+
+    hr = IDirectSound_CreateSoundBuffer(g_pDS, &desc, &g_pcmStream.pDS, NULL);
+    if (FAILED(hr))
+    {
+        XDBGF("stdSound_XboxStreamOpen: CreateSoundBuffer failed 0x%X\n", hr);
+        memset(&g_pcmStream, 0, sizeof(g_pcmStream));
+        return 0;
+    }
+
+    g_pcmStream.bufferBytes   = bufferBytes;
+    g_pcmStream.writePos      = 0;
+    g_pcmStream.queuedBytes   = 0;
+    g_pcmStream.blockAlign    = blockAlign;
+    g_pcmStream.bytesPerSec   = sampleRate * blockAlign;
+    g_pcmStream.prefillBytes  = g_pcmStream.bytesPerSec / 25;
+    g_pcmStream.prefillBytes -= g_pcmStream.prefillBytes % blockAlign;
+    if (g_pcmStream.prefillBytes < blockAlign * 4)
+        g_pcmStream.prefillBytes = blockAlign * 4;
+    if (g_pcmStream.prefillBytes > bufferBytes / 2)
+        g_pcmStream.prefillBytes = bufferBytes / 2;
+    g_pcmStream.started       = 0;
+    g_pcmStream.bStereo       = bStereo;
+    g_pcmStream.sampleRate    = sampleRate;
+    g_pcmStream.bitsPerSample = bitsPerSample;
+    g_pcmStream.volume        = volume;
+
+    xbox_StreamWriteSilence(0, bufferBytes);
+    IDirectSoundBuffer_SetCurrentPosition(g_pcmStream.pDS, 0);
+    IDirectSoundBuffer_SetVolume(g_pcmStream.pDS, xbox_VolToDS(volume * stdSound_fMenuVolume));
+    XDBGF("stdSound_XboxStreamOpen[v7-audioclock]: ch=%u rate=%u bits=%u buf=%lu prefill=%lu\n",
+          (unsigned)wfx.nChannels, sampleRate, (unsigned)bitsPerSample,
+          (unsigned long)bufferBytes, (unsigned long)g_pcmStream.prefillBytes);
+    return 1;
+}
+
+int stdSound_XboxStreamWrite(const void *data, unsigned int bytes)
+{
+    const unsigned char *src = (const unsigned char *)data;
+    void *p1 = NULL;
+    void *p2 = NULL;
+    DWORD s1 = 0;
+    DWORD s2 = 0;
+    DWORD writable;
+    DWORD requested;
+
+    if (!g_pcmStream.pDS || !src || !bytes)
+        return 0;
+
+    bytes -= bytes % g_pcmStream.blockAlign;
+    if (!bytes)
+        return 0;
+    requested = bytes;
+    g_pcmStream.writeCalls++;
+
+    xbox_StreamUpdateQueued();
+    if (g_pcmStream.started && g_pcmStream.queuedBytes < g_pcmStream.prefillBytes / 2)
+    {
+        g_pcmStream.lowWaterMarks++;
+        if (g_pcmStream.lowWaterMarks <= 8 || (g_pcmStream.lowWaterMarks % 120) == 0)
+        {
+            XDBGF("stdSound_XboxStreamWrite: low queued=%lu write=%u\n",
+                  (unsigned long)g_pcmStream.queuedBytes, g_pcmStream.writeCalls);
+        }
+    }
+
+    if (g_pcmStream.queuedBytes >= g_pcmStream.bufferBytes - g_pcmStream.blockAlign)
+        writable = 0;
+    else
+        writable = g_pcmStream.bufferBytes - g_pcmStream.queuedBytes - g_pcmStream.blockAlign;
+    if (bytes > writable)
+        bytes = writable - (writable % g_pcmStream.blockAlign);
+    if (!bytes)
+    {
+        g_pcmStream.fullWrites++;
+        if (g_pcmStream.fullWrites <= 8 || (g_pcmStream.fullWrites % 120) == 0)
+        {
+            XDBGF("stdSound_XboxStreamWrite: full queued=%lu req=%lu full=%u\n",
+                  (unsigned long)g_pcmStream.queuedBytes, (unsigned long)requested,
+                  g_pcmStream.fullWrites);
+        }
+        return 0;
+    }
+    if (bytes < requested)
+    {
+        g_pcmStream.partialWrites++;
+        if (g_pcmStream.partialWrites <= 8 || (g_pcmStream.partialWrites % 120) == 0)
+        {
+            XDBGF("stdSound_XboxStreamWrite: partial wrote=%lu req=%lu queued=%lu partial=%u\n",
+                  (unsigned long)bytes, (unsigned long)requested,
+                  (unsigned long)g_pcmStream.queuedBytes, g_pcmStream.partialWrites);
+        }
+    }
+
+    if (FAILED(IDirectSoundBuffer_Lock(g_pcmStream.pDS, g_pcmStream.writePos, bytes,
+                                       &p1, &s1, &p2, &s2, 0)))
+        return 0;
+
+    if (p1 && s1) memcpy(p1, src, s1);
+    if (p2 && s2) memcpy(p2, src + s1, s2);
+    IDirectSoundBuffer_Unlock(g_pcmStream.pDS, p1, s1, p2, s2);
+
+    g_pcmStream.writePos = (g_pcmStream.writePos + bytes) % g_pcmStream.bufferBytes;
+    g_pcmStream.queuedBytes += bytes;
+    g_pcmStream.totalSubmittedBytes += bytes;
+    if (g_pcmStream.queuedBytes > g_pcmStream.bufferBytes)
+        g_pcmStream.queuedBytes = g_pcmStream.bufferBytes;
+
+    if (!g_pcmStream.started && g_pcmStream.queuedBytes >= g_pcmStream.prefillBytes)
+    {
+        IDirectSoundBuffer_SetCurrentPosition(g_pcmStream.pDS, 0);
+        IDirectSoundBuffer_SetVolume(g_pcmStream.pDS, xbox_VolToDS(g_pcmStream.volume * stdSound_fMenuVolume));
+        g_pcmStream.started = SUCCEEDED(IDirectSoundBuffer_Play(g_pcmStream.pDS, 0, 0, DSBPLAY_LOOPING)) ? 1 : 0;
+        g_pcmStream.lastPlayPos = 0;
+        g_pcmStream.playPosValid = g_pcmStream.started;
+        XDBGF("stdSound_XboxStreamWrite: start queued=%lu ok=%d\n",
+              (unsigned long)g_pcmStream.queuedBytes, g_pcmStream.started);
+    }
+
+    return (int)bytes;
+}
+
+int stdSound_XboxStreamWriteMaxLatency(const void *data, unsigned int bytes, unsigned int maxQueuedBytes)
+{
+    const unsigned char *src = (const unsigned char *)data;
+    DWORD writable;
+    DWORD room;
+    int written;
+
+    if (!g_pcmStream.pDS || !src || !bytes)
+        return 0;
+
+    bytes -= bytes % g_pcmStream.blockAlign;
+    maxQueuedBytes -= maxQueuedBytes % g_pcmStream.blockAlign;
+    if (!bytes || !maxQueuedBytes)
+        return 0;
+
+    if (maxQueuedBytes > g_pcmStream.bufferBytes - g_pcmStream.blockAlign)
+        maxQueuedBytes = g_pcmStream.bufferBytes - g_pcmStream.blockAlign;
+
+    xbox_StreamUpdateQueued();
+
+    if (g_pcmStream.queuedBytes >= maxQueuedBytes)
+    {
+        return 0;
+    }
+
+    room = maxQueuedBytes - g_pcmStream.queuedBytes;
+    if (bytes > room)
+    {
+        DWORD drop = bytes - room;
+        drop -= drop % g_pcmStream.blockAlign;
+        if (drop)
+        {
+            bytes -= drop;
+            g_pcmStream.droppedWrites++;
+            if (g_pcmStream.droppedWrites <= 8 || (g_pcmStream.droppedWrites % 120) == 0)
+            {
+                XDBGF("stdSound_XboxStreamWriteMaxLatency: defer-tail keep=%lu write=%lu queued=%lu max=%lu defers=%u\n",
+                      (unsigned long)drop, (unsigned long)bytes,
+                      (unsigned long)g_pcmStream.queuedBytes, (unsigned long)maxQueuedBytes,
+                      g_pcmStream.droppedWrites);
+            }
+        }
+    }
+
+    if (g_pcmStream.queuedBytes >= g_pcmStream.bufferBytes - g_pcmStream.blockAlign)
+        writable = 0;
+    else
+        writable = g_pcmStream.bufferBytes - g_pcmStream.queuedBytes - g_pcmStream.blockAlign;
+    if (bytes > writable)
+        bytes = writable - (writable % g_pcmStream.blockAlign);
+    if (!bytes)
+        return 0;
+
+    written = stdSound_XboxStreamWrite(src, bytes);
+    return written;
+}
+
+int stdSound_XboxStreamMaintainSilence(unsigned int maxQueuedBytes)
+{
+    void *p1 = NULL;
+    void *p2 = NULL;
+    DWORD s1 = 0;
+    DWORD s2 = 0;
+    DWORD bytes;
+    DWORD writable;
+
+    if (!g_pcmStream.pDS || !g_pcmStream.started || !maxQueuedBytes)
+        return 0;
+
+    maxQueuedBytes -= maxQueuedBytes % g_pcmStream.blockAlign;
+    if (!maxQueuedBytes)
+        return 0;
+
+    if (maxQueuedBytes > g_pcmStream.bufferBytes - g_pcmStream.blockAlign)
+        maxQueuedBytes = g_pcmStream.bufferBytes - g_pcmStream.blockAlign;
+
+    xbox_StreamUpdateQueued();
+    if (g_pcmStream.queuedBytes >= maxQueuedBytes)
+        return 0;
+
+    bytes = maxQueuedBytes - g_pcmStream.queuedBytes;
+    bytes -= bytes % g_pcmStream.blockAlign;
+    if (!bytes)
+        return 0;
+
+    if (g_pcmStream.queuedBytes >= g_pcmStream.bufferBytes - g_pcmStream.blockAlign)
+        writable = 0;
+    else
+        writable = g_pcmStream.bufferBytes - g_pcmStream.queuedBytes - g_pcmStream.blockAlign;
+    if (bytes > writable)
+        bytes = writable - (writable % g_pcmStream.blockAlign);
+    if (!bytes)
+        return 0;
+
+    if (FAILED(IDirectSoundBuffer_Lock(g_pcmStream.pDS, g_pcmStream.writePos, bytes,
+                                       &p1, &s1, &p2, &s2, 0)))
+        return 0;
+
+    if (p1 && s1) memset(p1, 0, s1);
+    if (p2 && s2) memset(p2, 0, s2);
+    IDirectSoundBuffer_Unlock(g_pcmStream.pDS, p1, s1, p2, s2);
+
+    g_pcmStream.writePos = (g_pcmStream.writePos + bytes) % g_pcmStream.bufferBytes;
+    g_pcmStream.queuedBytes += bytes;
+    g_pcmStream.totalSubmittedBytes += bytes;
+    if (g_pcmStream.queuedBytes > g_pcmStream.bufferBytes)
+        g_pcmStream.queuedBytes = g_pcmStream.bufferBytes;
+
+    g_pcmStream.silenceWrites++;
+    if (g_pcmStream.silenceWrites <= 8 || (g_pcmStream.silenceWrites % 120) == 0)
+    {
+        XDBGF("stdSound_XboxStreamMaintainSilence: wrote=%lu queued=%lu max=%lu sil=%u\n",
+              (unsigned long)bytes, (unsigned long)g_pcmStream.queuedBytes,
+              (unsigned long)maxQueuedBytes, g_pcmStream.silenceWrites);
+    }
+
+    return (int)bytes;
+}
+
+uint64_t stdSound_XboxStreamGetPlayedUs(void)
+{
+    if (!g_pcmStream.pDS || !g_pcmStream.bytesPerSec)
+        return 0;
+
+    xbox_StreamUpdateQueued();
+    return (uint64_t)((g_pcmStream.totalPlayedBytes * 1000000ULL) / g_pcmStream.bytesPerSec);
+}
+
+int stdSound_XboxStreamPause(int pause)
+{
+    if (!g_pcmStream.pDS)
+        return 0;
+
+    if (pause)
+    {
+        xbox_StreamUpdateQueued();
+        IDirectSoundBuffer_Stop(g_pcmStream.pDS);
+        g_pcmStream.started = 0;
+        g_pcmStream.playPosValid = 0;
+        return 1;
+    }
+
+    if (g_pcmStream.queuedBytes >= g_pcmStream.blockAlign)
+    {
+        g_pcmStream.started = SUCCEEDED(IDirectSoundBuffer_Play(g_pcmStream.pDS, 0, 0, DSBPLAY_LOOPING)) ? 1 : 0;
+        g_pcmStream.playPosValid = 0;
+        return g_pcmStream.started;
+    }
+
+    return 1;
+}
+
 static void xbox_DS3DToXbox(float *x, float *y, float *z, const rdVector3 *in)
 {
     *x = in->x * 0.1f;
@@ -160,6 +564,7 @@ int stdSound_Startup(void)
 void stdSound_Shutdown(void)
 {
     int i;
+    stdSound_XboxStreamClose();
     for (i = 0; i < g_dsCount; i++)
     {
         if (g_dsTable[i].pDS)
@@ -235,6 +640,8 @@ int stdSound_BufferUnlock(stdSound_buffer_t *sound, void *buffer, int bufferRead
     DWORD lockSz = 0;
     (void)buffer;
     if (!sound || !sound->data) return 0;
+    if (bufferReadLen <= 0 || bufferReadLen > sound->bufferBytes)
+        bufferReadLen = sound->bufferBytes;
     e = xbox_DSFind(sound);
     if (!e || !e->pDS) return 0;
     if (FAILED(IDirectSoundBuffer_Lock(e->pDS, 0, (DWORD)bufferReadLen, &pLock, &lockSz, NULL, NULL, 0))) return 0;
@@ -451,5 +858,50 @@ int stdSound_IsPlaying(stdSound_buffer_t *a1, rdVector3 *pos)
     return (status & DSBSTATUS_PLAYING) ? 1 : 0;
 }
 
-int stdSound_BufferQueueAfterAnother(stdSound_buffer_t *a, stdSound_buffer_t *b) { (void)a; (void)b; return 0; }
+int stdSound_BufferQueueAfterAnother(stdSound_buffer_t *a, stdSound_buffer_t *b)
+{
+    enum { XBOX_STREAM_QUEUE_DEPTH = 64 };
+    static stdSound_buffer_t *anchor = NULL;
+    static stdSound_buffer_t *current = NULL;
+    static stdSound_buffer_t *queue[XBOX_STREAM_QUEUE_DEPTH];
+    static int head = 0;
+    static int tail = 0;
+
+    if (!a)
+        return 0;
+
+    if (anchor != a)
+    {
+        anchor = a;
+        current = NULL;
+        head = 0;
+        tail = 0;
+        memset(queue, 0, sizeof(queue));
+    }
+
+    if (b)
+    {
+        int nextTail = (tail + 1) % XBOX_STREAM_QUEUE_DEPTH;
+        if (nextTail != head)
+        {
+            queue[tail] = b;
+            tail = nextTail;
+        }
+    }
+
+    if (current && stdSound_IsPlaying(current, NULL))
+        return 1;
+
+    current = NULL;
+    if (head != tail)
+    {
+        current = queue[head];
+        queue[head] = NULL;
+        head = (head + 1) % XBOX_STREAM_QUEUE_DEPTH;
+        if (current)
+            stdSound_BufferPlay(current, 0);
+    }
+
+    return 1;
+}
 void stdSound_SetMenuSoundFormat(void) { }

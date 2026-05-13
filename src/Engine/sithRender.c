@@ -3353,8 +3353,6 @@ int sithRender_RenderThing(sithThing *pThing)
     // Added: Ensure the clipping frustum doesn't get mutated
     //rdClipFrustum* pFullCameraFrustum = rdCamera_pCurCamera->pClipFrustum;
 
-    { static int _rt=0; if(_rt<3){ XDBGF("RenderThing: enter flags=0x%x captured=%d controlType=%d hierarchyNodeMatrices=%p\n", pThing->thingflags, !!(pThing->thingflags & SITH_TF_CAPTURED), pThing->controlType, (void*)pThing->rdthing.hierarchyNodeMatrices); _rt++; } }
-
     if (!(pThing->thingflags & SITH_TF_INCAMFOV) && !(g_debugmodeFlags & DEBUGFLAG_NOCLIP)) // Added: don't send sighted stuff in noclip
     {
         if (pThing->thingflags & SITH_TF_CAPTURED) {
@@ -3371,26 +3369,6 @@ int sithRender_RenderThing(sithThing *pThing)
     pThing->lastRenderedTickIdx = jkPlayer_currentTickIdx;
     pThing->lookOrientation.scale = pThing->position;
 
-#ifdef TARGET_XBOX
-    /* Sync probe: log projectile's physics position and matrix scale
-     * RIGHT BEFORE rdThing_Draw, so we can match against the std3D
-     * BoltTri probe (which sees the post-view-transform vertex coords).
-     * If pos.z != lookOrientation.scale.z, sithRender is feeding wrong
-     * data.  If they match but view-space Z is still inflated downstream,
-     * the bug is in the matrix multiply path. */
-    if (pThing->type == 3) {
-        static int _bs = 0;
-        if (_bs < 400) {  /* lots of room — fight-through-crowd may need many shots */
-            xbox_debug_Printf("BoltSrc[%d]: thing=%p pos=(%.3f %.3f %.3f) loScale=(%.3f %.3f %.3f) loLvec=(%.3f %.3f %.3f) loUvec=(%.3f %.3f %.3f)\n",
-                _bs, (void*)pThing,
-                (double)pThing->position.x, (double)pThing->position.y, (double)pThing->position.z,
-                (double)pThing->lookOrientation.scale.x, (double)pThing->lookOrientation.scale.y, (double)pThing->lookOrientation.scale.z,
-                (double)pThing->lookOrientation.lvec.x, (double)pThing->lookOrientation.lvec.y, (double)pThing->lookOrientation.lvec.z,
-                (double)pThing->lookOrientation.uvec.x, (double)pThing->lookOrientation.uvec.y, (double)pThing->lookOrientation.uvec.z);
-            _bs++;
-        }
-    }
-#endif
 
 #ifdef TARGET_TWL
     int skip_this_thing = 0;
@@ -3410,10 +3388,7 @@ int sithRender_RenderThing(sithThing *pThing)
         rdCamera_pCurCamera->pClipFrustum = pThing->sector->clipFrustum;
     }
 #endif
-
-    { static int _rd=0; if(_rd<3){ XDBGF("RenderThing: calling rdThing_Draw type=%d model3=%p geoMode=%d\n", pThing->rdthing.type, (void*)pThing->rdthing.model3, (int)pThing->rdthing.curGeoMode); _rd++; } }
     ret = rdThing_Draw(&pThing->rdthing, &pThing->lookOrientation);
-    { static int _re=0; if(_re<3){ XDBGF("RenderThing: rdThing_Draw returned %d\n", ret); _re++; } }
     rdVector_Zero3(&pThing->lookOrientation.scale);
     if (sithRender_weaponRenderHandle && (pThing->thingflags & SITH_TF_RENDERWEAPON)) {
         sithRender_weaponRenderHandle(pThing);

@@ -133,7 +133,6 @@ void __cdecl main(void)
      *    Pass empty string for default behaviour (no episode override).
      * -------------------------------------------------------------- */
     Main_Startup("");
-    jkPlayer_setDisableCutscenes = 1;
 
     /* Preserve the pre-menu Xbox gameplay init path: the old jkGuiMain_Show
      * stub loaded JK1/static.jkl/items.dat before jumping into a level.  Keep
@@ -166,9 +165,7 @@ void __cdecl main(void)
         XDBG("main: sithControl_InputInit done\n");
     }
 
-    /* Skip video intros — go straight to main menu state */
-    jkSmack_nextGuiState = 3; /* JK_GAMEMODE_MAIN */
-    jkSmack_stopTick = 1;
+    /* Let Main_Startup's normal jkSmack state transition play cutscenes. */
     g_app_suspended = 1;
 
     if (g_app_suspended) { XDBG("main: g_app_suspended=1 OK\n"); }

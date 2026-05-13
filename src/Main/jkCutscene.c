@@ -6,9 +6,11 @@
 #include "Win95/Video.h"
 #include "Win95/stdDisplay.h"
 #include "Win95/stdMci.h"
+#include "Win95/std.h"
 #include "World/jkPlayer.h"
 #include "Main/jkMain.h"
 #include "Main/Main.h"
+#include "Main/jkRes.h"
 #include "Main/jkStrings.h"
 #include "Main/smack.h"
 #include "Gui/jkGUI.h"
@@ -18,6 +20,10 @@
 #include "General/stdString.h"
 #include "stdPlatform.h"
 #include "Platform/std3D.h"
+#include <stdlib.h>
+#ifdef TARGET_XBOX
+#include "platform_xbox.h"
+#endif
 
 #ifdef __cplusplus
 extern "C" {
@@ -29,6 +35,115 @@ extern "C" {
 #endif
 
 #include "../jk.h"
+
+#ifdef TARGET_XBOX
+uint64_t Linux_TimeUs(void);
+void jk_ShowCursor(int a);
+void jk_SetCursor(HCURSOR hCursor);
+static int jkCutscene_xboxFrameReady = 0;
+static HANDLE jkCutscene_xboxPad = NULL;
+static WORD jkCutscene_xboxPrevButtons = 0;
+static BYTE jkCutscene_xboxPrevAnalog[8] = {0};
+static int jkCutscene_XboxPollInput(void);
+
+typedef struct jkCutsceneSmkStream
+{
+    stdFile_t fd;
+} jkCutsceneSmkStream;
+
+static size_t jkCutscene_SmkStreamRead(void* ctx, void* buf, size_t size)
+{
+    jkCutsceneSmkStream* stream = (jkCutsceneSmkStream*)ctx;
+    return jkRes_FileRead(stream->fd, buf, size);
+}
+
+static int jkCutscene_SmkStreamSeek(void* ctx, long offset, int whence)
+{
+    jkCutsceneSmkStream* stream = (jkCutsceneSmkStream*)ctx;
+    int result = jkRes_FSeek(stream->fd, (int)offset, whence);
+    jkResFile* resFile = &jkRes_aFiles[stream->fd - 1];
+
+    if (resFile->useLowLevel)
+        return result == 0 ? 0 : -1;
+
+    return result ? 0 : -1;
+}
+
+static long jkCutscene_SmkStreamTell(void* ctx)
+{
+    jkCutsceneSmkStream* stream = (jkCutsceneSmkStream*)ctx;
+    return jkRes_FTell(stream->fd);
+}
+
+static int jkCutscene_SmkStreamClose(void* ctx)
+{
+    jkCutsceneSmkStream* stream = (jkCutsceneSmkStream*)ctx;
+    if (stream)
+    {
+        if (stream->fd)
+            jkRes_FileClose(stream->fd);
+        free(stream);
+    }
+    return 0;
+}
+
+static smk jkCutscene_OpenSmkStream(const char *fpath)
+{
+    stdFile_t fd;
+    jkCutsceneSmkStream* stream;
+    smk_io_t io;
+    smk opened;
+
+    fd = jkRes_FileOpen(fpath, "rb");
+    if (!fd)
+    {
+        stdPlatform_Printf("CutsceneTrace: SMK stream open failed path='%s'\n", fpath);
+        return NULL;
+    }
+
+    stream = (jkCutsceneSmkStream*)malloc(sizeof(jkCutsceneSmkStream));
+    if (!stream)
+    {
+        stdPlatform_Printf("CutsceneTrace: SMK stream malloc failed path='%s'\n", fpath);
+        jkRes_FileClose(fd);
+        return NULL;
+    }
+
+    stream->fd = fd;
+    io.ctx = stream;
+    io.read = jkCutscene_SmkStreamRead;
+    io.seek = jkCutscene_SmkStreamSeek;
+    io.tell = jkCutscene_SmkStreamTell;
+    io.close = jkCutscene_SmkStreamClose;
+
+    opened = smk_open_callbacks(&io, SMK_MODE_DISK);
+    if (!opened)
+        stdPlatform_Printf("CutsceneTrace: SMK stream decode open failed path='%s'\n", fpath);
+    else
+        stdPlatform_Printf("CutsceneTrace: SMK stream open path='%s' size=%d\n", fpath, jkRes_FileSize(fd));
+
+    return opened;
+}
+
+static smk jkCutscene_OpenSmkVideoStream(const char *fpath)
+{
+    const char *relativePath;
+    smk opened;
+
+    opened = jkCutscene_OpenSmkStream(fpath);
+    if (opened)
+        return opened;
+
+    relativePath = fpath;
+    if (!_strnicmp(relativePath, "resource\\", 9) || !_strnicmp(relativePath, "resource/", 9))
+        relativePath += 9;
+
+    if (relativePath != fpath)
+        return jkCutscene_OpenSmkStream(relativePath);
+
+    return NULL;
+}
+#endif
 
 #ifdef LINUX
 #include "external/fcaseopen/fcaseopen.h"
@@ -60,8 +175,28 @@ static flex64_t last_audioUs = 0;
 static flex64_t extraUs = 0;
 extern int openjkdf2_bIsKVM;
 
+#ifdef TARGET_XBOX
+int stdSound_XboxStreamOpen(int bStereo, unsigned int sampleRate,
+                            unsigned short bitsPerSample, unsigned int bufferBytes,
+                            float volume);
+int stdSound_XboxStreamWrite(const void *data, unsigned int bytes);
+int stdSound_XboxStreamWriteMaxLatency(const void *data, unsigned int bytes, unsigned int maxQueuedBytes);
+int stdSound_XboxStreamMaintainSilence(unsigned int maxQueuedBytes);
+uint64_t stdSound_XboxStreamGetPlayedUs(void);
+int stdSound_XboxStreamPause(int pause);
+void stdSound_XboxStreamClose(void);
+#endif
+
 // Smush
-#ifdef TARGET_TWL
+#ifdef TARGET_XBOX
+#define AUDIO_BUFS_DEPTH (0x4000)
+#define AUDIO_QUEUE_DEPTH (128)
+#define AUDIO_MAXIMUM_ALLOWED_SLOP_BYTES (0x400)
+#define XBOX_CUTSCENE_AUDIO_STREAM_BYTES (0x8000)
+#define XBOX_CUTSCENE_AUDIO_MAX_QUEUED (0x3000)
+#define XBOX_CUTSCENE_AUDIO_SILENCE_FLOOR (0x1800)
+#define XBOX_CUTSCENE_VIDEO_LEAD_US (20000)
+#elif defined(TARGET_TWL)
 #define AUDIO_BUFS_DEPTH (0x8000)
 #define AUDIO_QUEUE_DEPTH (128)
 #define AUDIO_MAXIMUM_ALLOWED_SLOP_BYTES (0x800)
@@ -82,6 +217,79 @@ static const uint8_t* jkCutscene_audio_queue[AUDIO_QUEUE_DEPTH] = {0};
 static size_t jkCutscene_audio_queue_lens[AUDIO_QUEUE_DEPTH] = {0};
 static int32_t jkCutscene_audio_queue_read_idx = 0;
 static int32_t jkCutscene_audio_queue_write_idx = 0;
+#ifdef TARGET_XBOX
+static uint32_t jkCutscene_xboxLastAudioFrame = 0xFFFFFFFFu;
+#endif
+
+#ifdef TARGET_XBOX
+static int jkCutscene_XboxButtonPressed(const XINPUT_GAMEPAD *pad, int analogIndex)
+{
+    int cur = pad->bAnalogButtons[analogIndex] > 32;
+    int prev = jkCutscene_xboxPrevAnalog[analogIndex] > 32;
+    return cur && !prev;
+}
+
+static int jkCutscene_XboxPollInput(void)
+{
+    XINPUT_STATE state;
+    XINPUT_GAMEPAD *pad;
+    WORD buttons;
+    WORD changed;
+    int skip;
+    int pause;
+    int i;
+
+    if (!jkCutscene_xboxPad)
+        jkCutscene_xboxPad = XInputOpen(XDEVICE_TYPE_GAMEPAD, XDEVICE_PORT0, XDEVICE_NO_SLOT, NULL);
+
+    if (!jkCutscene_xboxPad || XInputGetState(jkCutscene_xboxPad, &state) != ERROR_SUCCESS)
+        return 0;
+
+    pad = &state.Gamepad;
+    buttons = pad->wButtons;
+    changed = buttons ^ jkCutscene_xboxPrevButtons;
+
+    skip = ((changed & XINPUT_GAMEPAD_START) && (buttons & XINPUT_GAMEPAD_START)) ||
+           ((changed & XINPUT_GAMEPAD_BACK) && (buttons & XINPUT_GAMEPAD_BACK)) ||
+           jkCutscene_XboxButtonPressed(pad, 0) ||
+           jkCutscene_XboxButtonPressed(pad, 1);
+
+    pause = jkCutscene_XboxButtonPressed(pad, 2);
+    if (pause)
+    {
+        jkCutscene_55AA54 = !jkCutscene_55AA54;
+        if (jkCutscene_55AA54)
+        {
+#ifdef TARGET_XBOX
+            stdSound_XboxStreamPause(1);
+#else
+            if (jkCutscene_audio[0])
+                stdSound_BufferStop(jkCutscene_audio[0]);
+#endif
+            last_displayFrame -= Linux_TimeUs();
+            last_audioUs -= Linux_TimeUs();
+        }
+        else
+        {
+#ifdef TARGET_XBOX
+            stdSound_XboxStreamPause(0);
+#else
+            if (jkCutscene_audio[0])
+                stdSound_BufferPlay(jkCutscene_audio[0], 0);
+#endif
+            last_displayFrame += Linux_TimeUs();
+            last_audioUs += Linux_TimeUs();
+        }
+        jkCutscene_PauseShow(0);
+    }
+
+    jkCutscene_xboxPrevButtons = buttons;
+    for (i = 0; i < 8; i++)
+        jkCutscene_xboxPrevAnalog[i] = pad->bAnalogButtons[i];
+
+    return skip ? jkCutscene_sub_421410() : 0;
+}
+#endif
 
 void smush_audio_callback(const uint8_t* data, size_t len)
 {
@@ -150,9 +358,15 @@ void jkCutscene_CleanReset()
         stdDisplay_VBufferFree(jkCutscene_frameBuf);
         jkCutscene_frameBuf = NULL;
     }
+#ifdef TARGET_XBOX
+    stdSound_XboxStreamClose();
+#endif
 #endif
 
     jkCutscene_pSmush = NULL;
+#ifdef TARGET_XBOX
+    stdSound_XboxStreamClose();
+#endif
     memset(&jkCutscene_smk, 0, sizeof(jkCutscene_smk));
     jkCutscene_bSmkValid = 0;
     jkCutscene_smk_usf = 0;
@@ -186,6 +400,9 @@ void jkCutscene_CleanReset()
     memset(jkCutscene_audio_queue_lens, 0, sizeof(jkCutscene_audio_queue_lens));
     jkCutscene_audio_queue_read_idx = 0;
     jkCutscene_audio_queue_write_idx = 0;
+#ifdef TARGET_XBOX
+    jkCutscene_xboxLastAudioFrame = 0xFFFFFFFFu;
+#endif
 }
 
 // MOTS altered
@@ -246,6 +463,10 @@ int jkCutscene_sub_421310(char* fpath)
 {
     // STUB
     if (!fpath) return 1;
+
+#ifdef TARGET_XBOX
+    stdPlatform_Printf("CutsceneTrace: CutsceneOpen request='%s' disable=%d\n", fpath, jkPlayer_setDisableCutscenes);
+#endif
 
 #if defined(ARCH_WASM)
     printf("vid skip %s\n", fpath);
@@ -308,7 +529,15 @@ int jkCutscene_sub_421310(char* fpath)
     if (!jkCutscene_pSmush)
     {
         jkCutscene_bSmkValid = 0;
+#ifdef TARGET_XBOX
+        {
+            jkCutscene_smk = jkCutscene_OpenSmkVideoStream(tmp);
+            if (!jkCutscene_smk)
+                stdPlatform_Printf("CutsceneTrace: SMK stream failed path='%s'\n", tmp);
+        }
+#else
         jkCutscene_smk = smk_open_file(tmp, SMK_MODE_DISK);
+#endif
 
 #ifdef TARGET_TWL
         pHS->suggestHeap(HEAP_ANY);
@@ -323,6 +552,9 @@ int jkCutscene_sub_421310(char* fpath)
 
         jkCutscene_audio_queue_read_idx = 0;
         jkCutscene_audio_queue_write_idx = 0;
+#ifdef TARGET_XBOX
+        jkCutscene_xboxLastAudioFrame = 0xFFFFFFFFu;
+#endif
 
         for (int32_t i = 0; i < AUDIO_QUEUE_DEPTH; i++) {
             if (jkCutscene_audio_queue[i]) {
@@ -357,6 +589,7 @@ int jkCutscene_sub_421310(char* fpath)
         //printf("%x %x %x %x %x %x %x\n", a_r[0], a_r[1], a_r[2], a_r[3], a_r[4], a_r[5], a_r[6]);
         
         stdVBufferTexFmt texFmt;
+        memset(&texFmt, 0, sizeof(texFmt));
         texFmt.width = jkCutscene_smk_w;
         texFmt.height = jkCutscene_smk_h;
         texFmt.format.bpp = 8;
@@ -379,6 +612,11 @@ int jkCutscene_sub_421310(char* fpath)
             stdSound_BufferUnlock(jkCutscene_audio[i], stream, len);
             stdSound_BufferReset(jkCutscene_audio[i]);
         }
+#ifdef TARGET_XBOX
+        stdSound_XboxStreamOpen(a_c[0] == 2, a_r[0], a_d[0],
+                                XBOX_CUTSCENE_AUDIO_STREAM_BYTES,
+                                jkGuiSound_cutsceneVolume);
+#endif
 
         // Keep half of AUDIO_BUFS_DEPTH empty to allow time adjustments
         flex64_t audio_depth_us = ((flex64_t)(AUDIO_BUFS_DEPTH / 4) / 22050.0) * 1000000.0;
@@ -403,6 +641,9 @@ int jkCutscene_sub_421310(char* fpath)
 
         jkCutscene_audio_queue_read_idx = 0;
         jkCutscene_audio_queue_write_idx = 0;
+#ifdef TARGET_XBOX
+        jkCutscene_xboxLastAudioFrame = 0xFFFFFFFFu;
+#endif
 
         for (int32_t i = 0; i < AUDIO_QUEUE_DEPTH; i++) {
             if (jkCutscene_audio_queue[i]) {
@@ -425,6 +666,7 @@ int jkCutscene_sub_421310(char* fpath)
         stdPlatform_Printf("Opened file %s as Smush\nWidth: %lu\nHeight: %lu\nFrames: %lu\nFPS: %f\n", tmp, jkCutscene_smk_w, jkCutscene_smk_h, jkCutscene_smk_frames, 1000000.0 / jkCutscene_smk_usf);
 
         stdVBufferTexFmt texFmt;
+        memset(&texFmt, 0, sizeof(texFmt));
         texFmt.width = jkCutscene_smk_w;
         texFmt.height = jkCutscene_smk_h;
         texFmt.format.bpp = 8;
@@ -447,6 +689,11 @@ int jkCutscene_sub_421310(char* fpath)
             stdSound_BufferUnlock(jkCutscene_audio[i], stream, len);
             stdSound_BufferReset(jkCutscene_audio[i]);
         }
+#ifdef TARGET_XBOX
+        stdSound_XboxStreamOpen(1, 22050, 16,
+                                XBOX_CUTSCENE_AUDIO_STREAM_BYTES,
+                                jkGuiSound_cutsceneVolume);
+#endif
 
         jkGui_SetModeMenu(smush_get_palette(jkCutscene_pSmush));
     }
@@ -469,6 +716,9 @@ int jkCutscene_sub_421310(char* fpath)
     stdDisplay_VBufferFill(Video_pMenuBuffer, 0, &jkCutscene_rect1);
 #endif
 	stdDisplay_VBufferUnlock(Video_pMenuBuffer);
+#ifdef TARGET_XBOX
+    stdDisplay_DDrawGdiSurfaceFlip();
+#endif
 	
 	Window_AddMsgHandler(jkCutscene_Handler);
 	jkCutscene_isRendering = 1;
@@ -533,6 +783,9 @@ int jkCutscene_sub_421410()
     jkCutscene_currentAudioBuf = NULL;
     jkCutscene_currentAudioWritten = 0;
     jkCutscene_currentAudioBufSize = 0;
+#ifdef TARGET_XBOX
+    stdSound_XboxStreamClose();
+#endif
 #endif
 
     last_displayFrame = 0;
@@ -554,6 +807,11 @@ int jkCutscene_smack_related_loops()
     smack_finished = 0;
     if ( !jkCutscene_isRendering )
         return 1;
+#ifdef TARGET_XBOX
+    if (jkCutscene_XboxPollInput())
+        return 1;
+    jkCutscene_xboxFrameReady = 0;
+#endif
     if ( !jkCutscene_55AA54 && g_app_suspended )
     {
 #if !defined(SDL2_RENDER) && !defined(TARGET_TWL)
@@ -651,11 +909,21 @@ int jkCutscene_smack_related_loops()
             stdDisplay_DDrawGdiSurfaceFlip();
             return smack_finished;
         }
+#ifdef TARGET_XBOX
+        if (jkCutscene_xboxFrameReady)
+            stdDisplay_DDrawGdiSurfaceFlip();
+        return smack_finished;
+#endif
     }
-#if defined(SDL2_RENDER) || defined(TARGET_TWL)
+#if defined(SDL2_RENDER) || defined(TARGET_TWL) || defined(TARGET_XBOX)
     else
     {
+#ifdef TARGET_XBOX
+        if (jkCutscene_xboxFrameReady || jkCutscene_55AA54)
+            stdDisplay_DDrawGdiSurfaceFlip();
+#else
         stdDisplay_DDrawGdiSurfaceFlip();
+#endif
     }
 #endif
     return smack_finished;
@@ -729,16 +997,24 @@ int jkCutscene_Handler(HWND a1, UINT a2, WPARAM a3, LPARAM a4, LRESULT *a5)
 #if defined(SDL2_RENDER) || defined(TARGET_TWL)
                 if (jkCutscene_55AA54)
                 {
+#ifdef TARGET_XBOX
+                    stdSound_XboxStreamPause(1);
+#else
                     if (jkCutscene_audio[0])
                         stdSound_BufferStop(jkCutscene_audio[0]);
+#endif
 
                     last_displayFrame -= Linux_TimeUs();
                     last_audioUs -= Linux_TimeUs();
                 }
                 else
                 {
+#ifdef TARGET_XBOX
+                    stdSound_XboxStreamPause(0);
+#else
                     if (jkCutscene_audio[0])
                         stdSound_BufferPlay(jkCutscene_audio[0], 0);
+#endif
 
                     last_displayFrame += Linux_TimeUs();
                     last_audioUs += Linux_TimeUs();
@@ -751,11 +1027,17 @@ int jkCutscene_Handler(HWND a1, UINT a2, WPARAM a3, LPARAM a4, LRESULT *a5)
     return 0;
 }
 
-#if defined(SDL2_RENDER) || defined(TARGET_TWL)
+#if defined(SDL2_RENDER) || defined(TARGET_TWL) || defined(TARGET_XBOX)
 void jkCutscene_smacker_process_audio()
 {
     uint32_t frame = 0;
     smk_info_all(jkCutscene_smk, &frame, NULL, NULL);
+
+#ifdef TARGET_XBOX
+    if (frame == jkCutscene_xboxLastAudioFrame)
+        return;
+    jkCutscene_xboxLastAudioFrame = frame;
+#endif
 
     uint32_t* subtitle_idx = (uint32_t*)smk_get_audio(jkCutscene_smk, 1);
     size_t s = smk_get_audio_size(jkCutscene_smk, 1);
@@ -774,6 +1056,49 @@ void jkCutscene_smacker_process_audio()
 }
 
 void jkCutscene_smacker_smusher_audio_queue() {
+#ifdef TARGET_XBOX
+    int written;
+
+    if (jkCutscene_audio_queue_read_idx == jkCutscene_audio_queue_write_idx && !jkCutscene_audio_len) {
+        stdSound_XboxStreamMaintainSilence(XBOX_CUTSCENE_AUDIO_SILENCE_FLOOR);
+        return;
+    }
+
+    while (jkCutscene_audio_queue_read_idx != jkCutscene_audio_queue_write_idx || jkCutscene_audio_len) {
+        if (jkCutscene_audio_len <= 0) {
+            if (jkCutscene_audio_buf) {
+                free((void*)jkCutscene_audio_buf);
+                jkCutscene_audio_buf = NULL;
+            }
+            jkCutscene_audio_buf = jkCutscene_audio_queue[jkCutscene_audio_queue_read_idx];
+            jkCutscene_audio_len = jkCutscene_audio_queue_lens[jkCutscene_audio_queue_read_idx];
+            jkCutscene_audio_pos = jkCutscene_audio_buf;
+
+            if (jkCutscene_audio_buf) {
+                jkCutscene_audio_queue[jkCutscene_audio_queue_read_idx] = NULL;
+                jkCutscene_audio_queue_lens[jkCutscene_audio_queue_read_idx++] = 0;
+                jkCutscene_audio_queue_read_idx = jkCutscene_audio_queue_read_idx % AUDIO_QUEUE_DEPTH;
+            }
+            else {
+                return;
+            }
+        }
+
+        if (!jkCutscene_audio_pos || !jkCutscene_audio_len)
+            return;
+
+        written = stdSound_XboxStreamWriteMaxLatency(jkCutscene_audio_pos,
+                                                     jkCutscene_audio_len,
+                                                     XBOX_CUTSCENE_AUDIO_MAX_QUEUED);
+        if (written <= 0)
+            return;
+
+        jkCutscene_audio_pos += written;
+        jkCutscene_audio_len -= written;
+        last_audioUs = Linux_TimeUs();
+    }
+    return;
+#endif
     if (jkCutscene_audio_queue_read_idx != jkCutscene_audio_queue_write_idx || jkCutscene_audio_len || jkCutscene_currentAudioWritten < jkCutscene_currentAudioBufSize) {
         
         // If we ran through the queued samples, fetch new samples
@@ -852,7 +1177,7 @@ void jkCutscene_smacker_smusher_audio_queue() {
 
         if (jkCutscene_currentAudioWritten >= jkCutscene_currentAudioBufSize) {
             //stdPlatform_Printf("Play!\n");
-            stdSound_BufferUnlock(jkCutscene_currentAudio, stream, len);
+            stdSound_BufferUnlock(jkCutscene_currentAudio, stream, jkCutscene_currentAudioBufSize);
             /*if (!stdSound_IsPlaying(jkCutscene_audio[0], NULL)) {
                 stdSound_BufferReset(jkCutscene_audio[0]);
             }*/
@@ -871,11 +1196,27 @@ void jkCutscene_smacker_smusher_audio_queue() {
 
 int jkCutscene_smacker_process()
 {
+#ifdef TARGET_XBOX
+    uint32_t xboxFrame = 0;
+    uint64_t xboxAudioUs = 0;
+    uint64_t xboxFrameUs = 0;
+#endif
+
     if ( !jkCutscene_isRendering )
         return 0;
     if (!std3D_IsReady()) {
         return 0;
     }
+
+#ifdef TARGET_XBOX
+    jkCutscene_smacker_smusher_audio_queue();
+    smk_info_all(jkCutscene_smk, &xboxFrame, NULL, NULL);
+    xboxAudioUs = stdSound_XboxStreamGetPlayedUs();
+    xboxFrameUs = (uint64_t)((flex64_t)xboxFrame * jkCutscene_smk_usf);
+
+    if (xboxFrame && xboxAudioUs + XBOX_CUTSCENE_VIDEO_LEAD_US < xboxFrameUs)
+        return 0;
+#endif
 
     flex64_t cur_displayFrame = (flex64_t)Linux_TimeUs();
 
@@ -883,6 +1224,7 @@ int jkCutscene_smacker_process()
     flex64_t delta = cur_displayFrame - last_displayFrame;
 
 
+#ifndef TARGET_XBOX
     jkCutscene_smacker_smusher_audio_queue();
 
     if (delta <= usPerFrame) return 0;
@@ -892,8 +1234,14 @@ int jkCutscene_smacker_process()
         extraUs += (delta - usPerFrame);
 
     last_displayFrame = cur_displayFrame;
+#else
+    (void)cur_displayFrame;
+    (void)delta;
+    last_displayFrame = (flex64_t)xboxAudioUs;
+#endif
 
     // If the CPU is lagging, try and catch up by skipping video frames
+#ifndef TARGET_XBOX
     while (extraUs > usPerFrame) {
         //stdPlatform_Printf("Lagging behind?\n");
         /*if (smk_is_keyframe(jkCutscene_smk)) {
@@ -917,13 +1265,22 @@ int jkCutscene_smacker_process()
             printf("smk_next failed?\n");
             while(1);
         }
+#ifdef TARGET_XBOX
+        jkCutscene_smacker_process_audio();
+        jkCutscene_smacker_smusher_audio_queue();
+#endif
         extraUs -= usPerFrame;
     }
+#endif
     smk_enable_video(jkCutscene_smk, 1);
 
     // Get the video to catch up, if it misses frames
+#ifndef TARGET_XBOX
     last_displayFrame -= extraUs;
     extraUs = 0.0;
+#else
+    extraUs = 0.0;
+#endif
 
     jkCutscene_smacker_process_audio();
 
@@ -951,6 +1308,9 @@ int jkCutscene_smacker_process()
     stdDisplay_VBufferCopy(Video_pMenuBuffer, &Video_otherBuf, jkCutscene_rect1.x, jkCutscene_rect1.y, &jkCutscene_rect1, 0);
     stdDisplay_VBufferUnlock(Video_pMenuBuffer);
 #endif
+#ifdef TARGET_XBOX
+    jkCutscene_xboxFrameReady = 1;
+#endif
 
 #ifdef TARGET_TWL
     //pHS->suggestHeap(HEAP_FAST);
@@ -968,6 +1328,10 @@ int jkCutscene_smacker_process()
         printf("smk_next failed?\n");
         while(1);
     }
+#ifdef TARGET_XBOX
+    jkCutscene_smacker_process_audio();
+    jkCutscene_smacker_smusher_audio_queue();
+#endif
 
     return 0;
 }
@@ -1022,6 +1386,9 @@ int jkCutscene_smusher_process()
     stdDisplay_VBufferFill(Video_pMenuBuffer, 0, &jkCutscene_rect1);
     stdDisplay_VBufferCopy(Video_pMenuBuffer, &Video_otherBuf, jkCutscene_rect1.x, jkCutscene_rect1.y, &jkCutscene_rect1, 0);
     stdDisplay_VBufferUnlock(Video_pMenuBuffer);
+#ifdef TARGET_XBOX
+    jkCutscene_xboxFrameReady = 1;
+#endif
     
     smush_frame(jkCutscene_pSmush);
     smush_audio_flush(jkCutscene_pSmush);

@@ -4,6 +4,7 @@
 #include "endian.h"
 
 #include <stdio.h>
+#include <stdarg.h>
 
 extern int _smush_debug_prints;
 
@@ -143,9 +144,36 @@ typedef struct smush_ctx
 #define SMUSH_MAGIC_STOR (0x53544F52)
 #define SMUSH_MAGIC_TRES (0x54524553)
 
-#define smush_error(...) { printf(__VA_ARGS__); }
-#define smush_warn(...) { printf(__VA_ARGS__); }
-#define smush_debug(...) { if (_smush_debug_prints) printf(__VA_ARGS__); }
+#ifdef __cplusplus
+extern "C" {
+#endif
+
+static void smush_error(const char* fmt, ...)
+{
+    va_list args;
+    va_start(args, fmt);
+    vprintf(fmt, args);
+    va_end(args);
+}
+
+static void smush_warn(const char* fmt, ...)
+{
+    va_list args;
+    va_start(args, fmt);
+    vprintf(fmt, args);
+    va_end(args);
+}
+
+static void smush_debug(const char* fmt, ...)
+{
+    if (_smush_debug_prints)
+    {
+        va_list args;
+        va_start(args, fmt);
+        vprintf(fmt, args);
+        va_end(args);
+    }
+}
 
 smush_ctx* smush_from_fpath(const char* fpath);
 void smush_set_debug(smush_ctx* ctx, int val);
@@ -170,5 +198,9 @@ void smush_proc_frme(smush_ctx* ctx, uint32_t seek_pos, uint32_t total_size, int
 
 void smush_print(smush_ctx* ctx);
 void smush_print_frme(smush_ctx* ctx, uint32_t seek_pos, uint32_t total_size);
+
+#ifdef __cplusplus
+}
+#endif
 
 #endif // _LIBSMUSHER_SMUSH_H

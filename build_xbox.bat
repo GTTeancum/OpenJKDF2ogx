@@ -46,6 +46,7 @@ REM Include order: project sources → XDK 5558 (Xbox-correct D3D8Types.h with
 REM D3DPT_TRIANGLELIST=5 etc.) → XDK 5849 fallback (for headers 5558 lacks
 REM like stdint.h, winsock2.h).
 set CFLAGS=%CFLAGS% /I"%~dp0src" /I"%~dp0src\Platform\Xbox" /I"%~dp03rdparty" /I"%XDK_ROOT%\include" /I"C:\XDK\xbox\include"
+set CFLAGS=%CFLAGS% /I"%~dp0src\external\libsmacker" /I"%~dp0src\external\libsmusher\src"
 set CFLAGS=%CFLAGS% /DTARGET_XBOX=1 /DSDL2_RENDER=1 /DSTDSOUND_XBOX=1 /D_XBOX=1
 set CFLAGS=%CFLAGS% /DPLATFORM_NOSOCKETS=1 /DQOL_IMPROVEMENTS=1
 set CFLAGS=%CFLAGS% /DTARGET_NO_MULTIPLAYER_MENUS=1 /DLINUX_TMP=1
@@ -79,6 +80,9 @@ for %%F in (
     src\Platform\Xbox\xbox_debug.c
     src\Platform\Xbox\crt_aliases.c
     src\Platform\Xbox\quake_stubs.c
+    src\external\libsmacker\smk_bitstream.c
+    src\external\libsmacker\smk_hufftree.c
+    src\external\libsmacker\smacker.c
 ) do (
     set "SRC=%%F"
     for %%N in (%%~nF) do set "OBJ=%OBJDIR%\%%N.obj"
@@ -101,9 +105,13 @@ echo ═════════════════════════
 for %%F in (
     src\globals.c
     src\main_globals.c
+    src\external\libsmusher\src\codec48.c
+    src\external\libsmusher\src\smush.c
     src\Main\jkMain.c
     src\Main\jkRes.c
     src\Main\Main.c
+    src\Main\jkSmack.c
+    src\Main\jkCutscene.c
     src\Main\jkGob.c
     src\Main\jkControl.c
     src\General\Darray.c

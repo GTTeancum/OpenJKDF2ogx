@@ -15,16 +15,16 @@
 int jkCredits_Show(void) { return 0; }
 int jkCredits_Skip(void) { return 0; }
 int jkCredits_Tick(void) { return 0; }
-int jkCutscene_PauseShow(int a0) { return 0; }
-int jkCutscene_smack_related_loops(void) { return 0; }
-int jkCutscene_sub_421310(char * a0) { return 0; }
-int jkCutscene_sub_421410(void) { return 0; }
 int jkDSS_wrap_SendSaberInfo_alt(void) { return 0; }
 int jkDev_Open(void) { return 0; }
 /* jkGuiDialog_YesNoDialog, jkGuiForce_Show — real GUI implementations now compiled. */
 int jkGuiMultiTally_Show(int a0) { return 0; }
+#ifdef __cplusplus
+extern "C" int stdComm_EarlyInit(void) { return 0; }
+#else
+int stdComm_EarlyInit(void) { return 0; }
+#endif
 /* jkGuiSingleTally_Show, jkGui_SetModeMenu — real GUI implementations now compiled. */
-int jkSmack_SmackPlay(char const * a0) { return 0; }
 /* rdMath_PointsCollinear — now in rdMath.c */
 /* rdThing_Draw, NewEntry, SetModel3, SetSprite3, SetParticleCloud — now in rdThing.c */
 /* rdThing_Draw dispatches to these — rdSprite/rdParticle/rdPolyLine now compiled */
@@ -55,10 +55,11 @@ void Video_Shutdown(void) { }
 void Windows_Shutdown(void) { }
 void Windows_Startup(void) { }
 /* jkCog_Shutdown — defined in src/Cog/jkCog.c (now in build) */
+flex_t jkGuiSound_cutsceneVolume = 1.0f;
+void jk_SetCursor(HCURSOR hCursor) { (void)hCursor; }
+void jk_ShowCursor(int a) { (void)a; }
 void jkCredits_Shutdown(void) { }
 void jkCredits_Startup(char * a0) { }
-void jkCutscene_Shutdown(void) { }
-void jkCutscene_Startup(char * a0) { }
 void jkDSS_Shutdown(void) { }
 void jkDev_Shutdown(void) { }
 void jkDev_Startup(void) { }
@@ -98,8 +99,7 @@ void jkGuiSound_Startup(void) { }
 /* jkGuiTitle_*, jkGui_Shutdown/copies_string — real GUI implementations now compiled. */
 void jkQuakeConsole_Shutdown(void) { }
 void jkQuakeConsole_Startup(void) { }
-void jkSmack_Shutdown(void) { }
-void jkSmack_Startup(void) { }
+/* jkCutscene_* and jkSmack_* are real implementations now. */
 /* rdMath_CalcSurfaceNormal, ClampVector, ClampVectorRange — now in rdMath.c */
 /* rdPrimit3_ClearFrameCounters/ClipFace/ClipFaceRGB/ClipFaceRGBLevel/NoClipFace/NoClipFaceRGB — now in rdPrimit3.c */
 void rdPrimit2_DrawCircle(struct rdCanvas *a0, int a1, int a2, float a3, float a4, unsigned short a5, int a6) { }

@@ -14,6 +14,7 @@ extern "C" int  std3D_StartScene(void);
 extern "C" int  std3D_EndScene(void);
 extern "C" void std3D_Present(void);
 extern int jkGame_isDDraw;
+extern int jkCutscene_isRendering;
 
 uint32_t Video_menuTexId = 0;
 uint32_t Video_overlayTexId = 0;
@@ -149,13 +150,19 @@ int stdDisplay_DDrawGdiSurfaceFlip()
     if (!stdDisplay_xboxModeSet && !Video_menuBuffer.surface_lock_alloc)
         return 0;
 
-    if (jkGame_isDDraw)
+    if (jkGame_isDDraw && !jkCutscene_isRendering)
         return 1;
+
+    if (jkCutscene_isRendering)
+        std3D_StartScene();
 
     std3D_DrawMenuVBuffer8(&Video_menuBuffer, stdDisplay_masterPalette);
     std3D_EndScene();
     std3D_Present();
-    std3D_StartScene();
+
+    if (!jkCutscene_isRendering)
+        std3D_StartScene();
+
     return 1;
 }
 

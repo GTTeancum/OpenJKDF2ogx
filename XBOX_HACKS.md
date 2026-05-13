@@ -13,6 +13,23 @@ history is useful.
 
 # Known Bugs
 
+## Cutscene volume needs a separate mixer setting
+
+**Status:** Open.
+**Severity:** Audio balance. SMK cutscenes now play in sync on Xbox, but
+their decoded PCM is roughly 30% quieter than in-game sound effects and
+music when routed through the Xbox streaming buffer.
+
+**Desired fix:** Add a separate cutscene volume setting or scalar instead
+of baking compensation into the stream code. Cutscenes should be tunable
+independently from normal in-game SFX so intro/dialogue playback can be
+balanced without making weapons, ambience, or menu sounds too loud.
+
+**Where to look:** `src/Main/jkCutscene.c` where `jkGuiSound_cutsceneVolume`
+is passed into `stdSound_XboxStreamOpen`, and
+`src/Platform/Xbox/stdSound_xbox.c` where the streaming buffer applies
+the DirectSound volume.
+
 ## HUD / BM overlay bitmaps render blurry — [FIXED]
 
 **Status:** FIXED — `src/Platform/Xbox/std3D.c:xbox_upload_bitmap_mip` now

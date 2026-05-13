@@ -52,7 +52,7 @@ struct smk_t
 		struct
 		{
 			/* on-disk mode */
-			FILE* fp;
+			smk_io_t io;
 			uint32_t* chunk_offset;
 		} file;
 
@@ -130,19 +130,46 @@ struct smk_t
 
 union smk_read_t
 {
-	FILE* file;
+	smk_io_t io;
 	uint8_t* ram;
 };
 
+static size_t smk_stdio_read(void* ctx, void* buf, size_t size)
+{
+	return fread(buf, 1, size, (FILE*)ctx);
+}
+
+static int smk_stdio_seek(void* ctx, long offset, int whence)
+{
+	return fseek((FILE*)ctx, offset, whence);
+}
+
+static long smk_stdio_tell(void* ctx)
+{
+	return ftell((FILE*)ctx);
+}
+
+static int smk_stdio_close(void* ctx)
+{
+	return fclose((FILE*)ctx);
+}
+
 /* An fread wrapper: consumes N bytes, or returns -1
 	on failure (when size doesn't match expected) */
-static char smk_read_file(void* buf, const size_t size, FILE* fp)
+static char smk_read_file(void* buf, const size_t size, const smk_io_t* io)
 {
-	/* don't bother checking buf or fp, fread does it for us */
-	size_t bytesRead = fread(buf,1,size,fp);
+	size_t bytesRead;
+
+	if (!io || !io->read)
+	{
+		fprintf(stderr, "libsmacker::smk_read_file(buf,%lu,io) - ERROR: missing read callback\n", (uint32_t)size);
+		return -1;
+	}
+
+	bytesRead = io->read(io->ctx, buf, size);
 	if (bytesRead != size)
 	{
-		fprintf(stderr, "libsmacker::smk_read_file(buf,%lu,fp) - ERROR: int16_t read, %lu bytes returned\n\tReason: %s\n", (uint32_t)size, (uint32_t)bytesRead, strerror(errno));
+		fprintf(stderr, "libsmacker::smk_read_file(buf,%lu,io) - ERROR: int16_t read, %lu bytes returned\n\tReason: %s\n", (uint32_t)size, (uint32_t)bytesRead, strerror(errno));
 		return -1;
 	}
 	return 0;
@@ -170,7 +197,7 @@ static char smk_read_memory(void* buf, const uint32_t size, uint8_t** p, uint32_
 { \
 	if (m) \
 	{ \
-		r = (smk_read_file(ret,n,fp.file)); \
+		r = (smk_read_file(ret,n,&fp.io)); \
 	} \
 	else \
 	{ \
@@ -407,8 +434,8 @@ static smk smk_open_generic(const uint8_t m, union smk_read_t fp, uint32_t size,
 		smk_malloc(s->source.file.chunk_offset,(s->f + s->ring_frame) * sizeof(uint32_t));
 		for (temp_u = 0; temp_u < (s->f + s->ring_frame); temp_u ++)
 		{
-			s->source.file.chunk_offset[temp_u] = ftell(fp.file);
-			if (fseek(fp.file,s->chunk_size[temp_u],SEEK_CUR))
+			s->source.file.chunk_offset[temp_u] = (uint32_t)fp.io.tell(fp.io.ctx);
+			if (fp.io.seek(fp.io.ctx,s->chunk_size[temp_u],SEEK_CUR))
 			{
 				fprintf(stderr,"libsmacker::smk_open - ERROR: fseek to frame %lu not OK.\n",temp_u);
 				perror ("\tError reported was");
@@ -456,26 +483,63 @@ smk smk_open_filepointer(FILE* file, const uint8_t mode)
 
 	smk_assert(file);
 
-	/* Copy file ptr to internal union */
-	fp.file = file;
+	fp.io.ctx = file;
+	fp.io.read = smk_stdio_read;
+	fp.io.seek = smk_stdio_seek;
+	fp.io.tell = smk_stdio_tell;
+	fp.io.close = smk_stdio_close;
 
 	if (!(s = smk_open_generic(1,fp,0,mode)))
 	{
 		fprintf(stderr,"libsmacker::smk_open_filepointer(file,%u) - ERROR: Fatal error in smk_open_generic, returning NULL.\n",mode);
-		fclose(fp.file);
+		fp.io.close(fp.io.ctx);
 		goto error;
 	}
 
 	if (mode == SMK_MODE_MEMORY)
 	{
-		fclose(fp.file);
+		fp.io.close(fp.io.ctx);
 	}
 	else
 	{
-		s->source.file.fp = fp.file;
+		s->source.file.io = fp.io;
 	}
 
 	/* fall through, return s or null */
+error:
+	return s;
+}
+
+smk smk_open_callbacks(const smk_io_t* io, const uint8_t mode)
+{
+	smk s = NULL;
+	union smk_read_t fp;
+
+	smk_assert(io);
+	smk_assert(io->read);
+	smk_assert(io->seek);
+	smk_assert(io->tell);
+
+	fp.io = *io;
+
+	if (!(s = smk_open_generic(1,fp,0,mode)))
+	{
+		fprintf(stderr,"libsmacker::smk_open_callbacks(io,%u) - ERROR: Fatal error in smk_open_generic, returning NULL.\n",mode);
+		if (fp.io.close)
+			fp.io.close(fp.io.ctx);
+		goto error;
+	}
+
+	if (mode == SMK_MODE_MEMORY)
+	{
+		if (fp.io.close)
+			fp.io.close(fp.io.ctx);
+	}
+	else
+	{
+		s->source.file.io = fp.io;
+	}
+
 error:
 	return s;
 }
@@ -530,9 +594,9 @@ void smk_close(smk s)
 	if (s->mode == SMK_MODE_DISK)
 	{
 		/* disk-mode */
-		if (s->source.file.fp)
+		if (s->source.file.io.ctx && s->source.file.io.close)
 		{
-			fclose(s->source.file.fp);
+			s->source.file.io.close(s->source.file.io.ctx);
 		}
 		smk_free(s->source.file.chunk_offset);
 	}
@@ -1314,7 +1378,7 @@ static char smk_render(smk s)
 	if (s->mode == SMK_MODE_DISK)
 	{
 		/* Skip to frame in file */
-		if (fseek(s->source.file.fp,s->source.file.chunk_offset[s->cur_frame],SEEK_SET))
+		if (s->source.file.io.seek(s->source.file.io.ctx,s->source.file.chunk_offset[s->cur_frame],SEEK_SET))
 		{
 			fprintf(stderr,"libsmacker::smk_render(s) - ERROR: fseek to frame %lu (offset %lu) failed.\n",s->cur_frame,s->source.file.chunk_offset[s->cur_frame]);
 			perror ("\tError reported was");
@@ -1325,7 +1389,7 @@ static char smk_render(smk s)
 		smk_malloc(buffer, i);
 
 		/* Read into buffer */
-		if ( smk_read_file(buffer,s->chunk_size[s->cur_frame],s->source.file.fp) < 0)
+		if ( smk_read_file(buffer,s->chunk_size[s->cur_frame],&s->source.file.io) < 0)
 		{
 			fprintf(stderr,"libsmacker::smk_render(s) - ERROR: frame %lu (offset %lu): smk_read had errors.\n",s->cur_frame,s->source.file.chunk_offset[s->cur_frame]);
 			goto error;

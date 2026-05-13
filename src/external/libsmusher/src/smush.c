@@ -15,13 +15,13 @@ smush_ctx* smush_from_fpath(const char* fpath)
 
     memset(ctx, 0, sizeof(*ctx));
 
-    ctx->framebuffer = malloc(640*480*sizeof(uint8_t));
+    ctx->framebuffer = (uint8_t*)malloc(640*480*sizeof(uint8_t));
     if (!ctx->framebuffer) {
         free(ctx);
         return NULL;
     }
     memset(ctx->framebuffer, 0, 640*480*sizeof(uint8_t));
-    ctx->framebuffer_stor = malloc(640*480*sizeof(uint8_t));
+    ctx->framebuffer_stor = (uint8_t*)malloc(640*480*sizeof(uint8_t));
     if (!ctx->framebuffer_stor) {
         free(ctx);
         free(ctx->framebuffer);
@@ -270,7 +270,7 @@ void smush_proc_fobj(smush_ctx* ctx, uint32_t seek_pos, uint32_t total_size)
     ctx->codec_w = getle16(fobj.width);
     ctx->codec_h = getle16(fobj.height);
 
-    uint8_t* data = malloc(total_size);
+    uint8_t* data = (uint8_t*)malloc(total_size);
     if (!data) return;
     memset(data, 0, total_size);
 
@@ -768,7 +768,7 @@ void smush_print_frme(smush_ctx* ctx, uint32_t seek_pos, uint32_t total_size)
     printf("      Unk3: 0x%x\n", getle16(fobj.unk3));
     printf("      Unk4: 0x%x\n", getle16(fobj.unk4));
 
-    uint8_t* data = malloc(total_size - 0xE);
+    uint8_t* data = (uint8_t*)malloc(total_size - 0xE);
     if (!data) return;
 
     fread(data, total_size - 0xE, 1, ctx->f);

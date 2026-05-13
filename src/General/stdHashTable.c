@@ -81,26 +81,13 @@ stdHashTable* stdHashTable_New(int maxEntries)
     int actualNumBuckets = 1999;
     signed int v7;
 
-#ifdef TARGET_XBOX
-    XDBGF("stdHashTable_New: enter maxEntries=%d std_pHS=%p\n",
-          maxEntries, (void*)std_pHS);
-#endif
 
     hashtable = (stdHashTable *)std_pHS->alloc(sizeof(stdHashTable));
     if (!hashtable) {
-#ifdef TARGET_XBOX
-        XDBG("stdHashTable_New: hashtable alloc failed\n");
-#endif
         return NULL;
     }
-#ifdef TARGET_XBOX
-    XDBGF("stdHashTable_New: hashtable=%p\n", (void*)hashtable);
-#endif
 
     _memset(hashtable, 0, sizeof(*hashtable));
-#ifdef TARGET_XBOX
-    XDBG("stdHashTable_New: hashtable memset ok\n");
-#endif
 
     // Basically every usage of stdHashTable_New assumes maxEntries is
     // exactly what it says, the maximum anticipated number of entries.
@@ -154,21 +141,10 @@ loop_escape:
     }
 
     hashtable->numBuckets = actualNumBuckets;
-#ifdef TARGET_XBOX
-    XDBGF("stdHashTable_New: numBuckets=%d sizeof(tHashLink)=%u allocSize=%u\n",
-          actualNumBuckets, (unsigned)sizeof(tHashLink),
-          (unsigned)(sizeof(tHashLink) * actualNumBuckets));
-#endif
     hashtable->buckets = (tHashLink *)std_pHS->alloc(sizeof(tHashLink) * actualNumBuckets);
-#ifdef TARGET_XBOX
-    XDBGF("stdHashTable_New: buckets=%p\n", (void*)hashtable->buckets);
-#endif
     if ( hashtable->buckets )
     {
       _memset(hashtable->buckets, 0, sizeof(tHashLink) * hashtable->numBuckets);
-#ifdef TARGET_XBOX
-      XDBG("stdHashTable_New: buckets memset ok\n");
-#endif
       hashtable->keyHashToIndex = stdHashTable_HashStringToIdx;
     }
     else {
