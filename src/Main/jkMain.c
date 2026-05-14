@@ -89,6 +89,42 @@ static int jkMain_ResolveVideoPath(const char *fname, char *out)
 
     return 0;
 }
+
+static int jkMain_IsMultiplayerEpisodeType(jkEpisodeTypeFlags_t type)
+{
+    /* Match the normal host menu's multiplayer episode load mask. */
+    return (type & (JK_EPISODE_DEATHMATCH | JK_EPISODE_4_UNK | JK_EPISODE_SPECIAL_CTF)) != 0;
+}
+
+static int jkMain_MultiplayerFlagsForEpisodeType(jkEpisodeTypeFlags_t type)
+{
+    if ( type & JK_EPISODE_SPECIAL_CTF )
+        return MULTIMODEFLAG_TEAMS | MULTIMODEFLAG_2 | MULTIMODEFLAG_100;
+
+    return 0;
+}
+
+static int jkMain_CreateLocalMultiplayerHost(const char *pGobPath, const char *pEpisodeName, jkEpisodeTypeFlags_t type)
+{
+    int multiModeFlags;
+    HRESULT result;
+
+    if ( sithNet_isMulti && sithNet_isServer )
+        return 1;
+
+    multiModeFlags = jkMain_MultiplayerFlagsForEpisodeType(type);
+    sithNet_scorelimit = 0;
+    sithNet_multiplayer_timelimit = 0;
+    result = sithMulti_CreatePlayer(L"OpenJKDF2 Xbox", L"", pGobPath, pEpisodeName, 4, 0, multiModeFlags, 180, 0);
+    if ( result )
+    {
+        XDBG("Xbox MP debug: sithMulti_CreatePlayer failed\n");
+        return 0;
+    }
+
+    XDBG("Xbox MP debug: upstream local host path enabled\n");
+    return 1;
+}
 #endif
 
 static jkGuiStateFuncs jkMain_aGuiStateFuncs[16] = {
@@ -984,6 +1020,15 @@ int jkMain_sub_403470(char *a1)
     _strncpy(jkMain_aLevelJklFname, a1, 0x7Fu);
     result = 0;
     jkMain_aLevelJklFname[127] = 0;
+#ifdef TARGET_XBOX
+    if ( jkMain_IsMultiplayerEpisodeType(jkGui_episodeLoad.type) )
+    {
+        if ( !jkMain_CreateLocalMultiplayerHost(jkRes_episodeGobName, a1, jkGui_episodeLoad.type) )
+            return 0;
+        jkSmack_gameMode = 2;
+    }
+    else
+#endif
     jkSmack_gameMode = 0;
     if ( jkGuiRend_thing_five )
         jkGuiRend_thing_four = 1;
@@ -1042,6 +1087,13 @@ int jkMain_loadFile2(char *pGobPath, char *pEpisodeName)
     jkEpisode_idk4(&jkEpisode_mLoad, pEpisodeName);
     if ( v2 )
     {
+#ifdef TARGET_XBOX
+        if ( jkMain_IsMultiplayerEpisodeType(jkEpisode_mLoad.type) )
+        {
+            if ( !jkMain_CreateLocalMultiplayerHost(pGobPath, pEpisodeName, jkEpisode_mLoad.type) )
+                return 0;
+        }
+#endif
         result = 1;
         jkPlayer_bLoadingSomething = 1;
         if ( jkGuiRend_thing_five )
@@ -1081,6 +1133,14 @@ int jkMain_LoadLevelSingleplayer(char *pGobPath, char *pEpisodeName)
     jkEpisode_idk4(&jkEpisode_mLoad, pEpisodeName);
     if ( v2 )
     {
+#ifdef TARGET_XBOX
+        if ( jkMain_IsMultiplayerEpisodeType(jkEpisode_mLoad.type) )
+        {
+            if ( !jkMain_CreateLocalMultiplayerHost(pGobPath, pEpisodeName, jkEpisode_mLoad.type) )
+                return 0;
+            jkSmack_gameMode = 2;
+        }
+#endif
         result = 1;
         jkPlayer_bLoadingSomething = 1;
         if ( jkGuiRend_thing_five )

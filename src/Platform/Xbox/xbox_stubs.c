@@ -264,7 +264,6 @@ void smack_Shutdown(void) STUBV
 /* Additional stubs needed by Main.c */
 void jkGuiNetHost_LoadSettings(void) STUBV
 void jkGuiNetHost_SaveSettings(void) STUBV
-int  sithMulti_CreatePlayer(void* a) STUB0
 void sithTime_idk_record(void) STUBV
 /* stdString_CharToWchar / stdString_SafeWStrCopy — now in stdString.c */
 
@@ -368,8 +367,7 @@ void  Windows_GdiHandler(void) STUBV
 void  Windows_ErrorMsgboxWide(void* a, void* b) STUBV
 
 /* DirectPlay — needs networking */
-void  DirectPlay_SetSessionFlagidk(int a) STUBV
-void  DirectPlay_SetSessionDesc(void* a) STUBV
+/* DirectPlay no-network backend is compiled from stdComm_none.c. */
 
 /* Window_AddMsgHandler / Window_RemoveMsgHandler / Window_SetDrawHandlers —
  * defined further down with proper WindowHandler_t-shaped signature. */
@@ -508,21 +506,14 @@ struct rdCanvas;
 
 /* C-linkage stubs (headers wrapped in extern "C") */
 extern "C" {
-    int  sithMulti_ServerLeft(int a, struct sithEventInfo* b)               { (void)a; (void)b; return 0; }
-    unsigned int sithMulti_IterPlayersnothingidk(int net_id)                { (void)net_id; return 0; }
-    int  sithMulti_SendPing(int sendtoId)                                   { (void)sendtoId; return 0; }
-    void sithMulti_SendQuit(int idx)                                        { (void)idx; }
-    void DirectPlay_EnumPlayers(int a)                                      { (void)a; }
+    /* sithMulti and DirectPlay no-network symbols are compiled from real sources. */
     int  stdJSON_IterateKeys(const char* p, void(*cb)(const char*,const char*,void*), void* ctx) { (void)p; (void)cb; (void)ctx; return 0; }
     int  stdFileUtil_DelFile(char* p)                                       { (void)p; return 1; }
 }
 
 /* C++-mangled stubs (headers without extern "C") */
-void sithDSSThing_SendTakeItem(struct sithThing* pItem, struct sithThing* pActor, int mpFlags)
-    { (void)pItem; (void)pActor; (void)mpFlags; }
-void sithDSSThing_SendFireProjectile(struct sithThing* a, struct sithThing* b, struct rdVector3* c,
-    struct rdVector3* d, struct sithSound* e, short f, float g, short h, float i, int j, int k, int l, int m)
-    { (void)a; (void)b; (void)c; (void)d; (void)e; (void)f; (void)g; (void)h; (void)i; (void)j; (void)k; (void)l; (void)m; }
+/* sithDSSThing_SendTakeItem is compiled from src/Dss/sithDSSThing.c. */
+/* sithDSSThing_SendFireProjectile is compiled from src/Dss/sithDSSThing.c. */
 int  rdPrimit2_DrawClippedLine(struct rdCanvas* c, int x1, int y1, int x2, int y2, unsigned short col, int mask)
     { (void)c; (void)x1; (void)y1; (void)x2; (void)y2; (void)col; (void)mask; return 0; }
 void jkQuakeConsole_ExecuteCommand(const char* pCmd)                        { (void)pCmd; }

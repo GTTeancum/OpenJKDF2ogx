@@ -139,20 +139,12 @@ void __cdecl RtlUnwind(void) { }
    These are only needed if std3D.c is NOT in the build (stub mode). */
 
 /* sithMulti — networking, stubbed */
-int  sithMulti_Startup(void) { return 0; }
-int  sithMulti_Shutdown(void) { return 0; }
-void sithMulti_LobbyMessage(void* a) { (void)a; }
-void sithMulti_SendWelcome(void) { }
-int  sithMulti_FreeThing(void* a) { (void)a; return 0; }
-int  sithMulti_GetSpawnIdx(void) { return 0; }
-void sithMulti_HandleDeath(void* a, void* b) { (void)a; (void)b; }
-void sithMulti_HandleTimeLimit(void) { }
+/* sithMulti is compiled from src/Dss/sithMulti.c. */
 
 /* jkStrings — real impls in src/Main/jkStrings.c (now in build) */
 
 /* stdComm — communications, stubbed */
-int  stdComm_Startup(void) { return 1; }
-int  stdComm_Shutdown(void) { return 1; }
+/* stdComm is compiled from src/Win95/stdComm.c with the no-network backend. */
 
 /* stdHttp — networking, stubbed */
 int  stdHttp_Startup(void) { return 1; }
@@ -181,8 +173,7 @@ void stdUpdater_StartupCvars(void) { }
 /* stdFileUtil — real implementation in stdFile_xbox.c */
 
 /* DirectPlay — stubbed */
-void DirectPlay_SetSessionFlagidk(int a) { (void)a; }
-void DirectPlay_SetSessionDesc(void* a) { (void)a; }
+/* DirectPlay no-network backend is compiled from stdComm_none.c. */
 
 /* Misc globals (C linkage) */
 int jkGuiNetHost_bIsDedicated = 0;
@@ -190,4 +181,3 @@ int jkGuiNetHost_bIsDedicated = 0;
 /* CRT */
 int __cdecl __strnicmp(const char* a, const char* b, size_t n) { return _strnicmp(a, b, n); }
 double __cdecl _atof(const char* s) { return atof(s); }
-

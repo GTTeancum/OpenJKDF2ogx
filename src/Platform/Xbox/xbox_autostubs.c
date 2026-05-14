@@ -19,19 +19,14 @@ int jkDSS_wrap_SendSaberInfo_alt(void) { return 0; }
 int jkDev_Open(void) { return 0; }
 /* jkGuiDialog_YesNoDialog, jkGuiForce_Show — real GUI implementations now compiled. */
 int jkGuiMultiTally_Show(int a0) { return 0; }
-#ifdef __cplusplus
-extern "C" int stdComm_EarlyInit(void) { return 0; }
-#else
-int stdComm_EarlyInit(void) { return 0; }
-#endif
+/* stdComm_EarlyInit is compiled from src/Win95/stdComm.c. */
 /* jkGuiSingleTally_Show, jkGui_SetModeMenu — real GUI implementations now compiled. */
 /* rdMath_PointsCollinear — now in rdMath.c */
 /* rdThing_Draw, NewEntry, SetModel3, SetSprite3, SetParticleCloud — now in rdThing.c */
 /* rdThing_Draw dispatches to these — rdSprite/rdParticle/rdPolyLine now compiled */
 /* sithActor_ActorActorCollide, sithActor_LoadParams, sithActor_sub_4ED1D0 —
  * real impls in src/World/sithActor.c (now in build) */
-int sithComm_Startup(void) { return 0; }
-int sithComm_Sync(void) { return 0; }
+/* sithComm is compiled from src/Devices/sithComm.c. */
 int sithGamesave_Flush(void) { return 0; }
 int sithGamesave_Load(char * a0, int a1, int a2) { return 0; }
 int sithGamesave_Write(char * a0, int a1, int a2, unsigned short * a3) { return 0; }
@@ -109,18 +104,8 @@ void rdRaster_Startup(void) { }
 /* sithActor_MoveJointsForEyePYR, _Remove, _RemoveCorpse,
  * _SetMaxHeathForDifficulty, _Tick — real impls in src/World/sithActor.c
  * (now in build) */
-void sithComm_Shutdown(void) { }
-void sithDSSThing_SendDeath(struct sithThing * a0, struct sithThing * a1, char a2, int a3, int a4) { }
-void sithDSSThing_SendFullDesc(struct sithThing * a0, int a1, int a2) { }
-void sithDSSThing_SendPlaySound(struct sithThing * a0, struct rdVector3 * a1, struct sithSound * a2, float a3, float a4, int a5, int a6, int a7, int a8) { }
-void sithDSSThing_SendPos(struct sithThing * a0, int a1, int a2) { }
-void sithDSSThing_SendSyncThing(struct sithThing * a0, int a1, int a2) { }
-void sithDSS_SendAIStatus(struct sithActor * a0, int a1, int a2) { }
-void sithDSS_SendSectorFlags(struct sithSector * a0, int a1, int a2) { }
-void sithDSS_SendSectorStatus(struct sithSector * a0, int a1, int a2) { }
-void sithDSS_SendSurface(struct rdSurface * a0, int a1, int a2) { }
-void sithDSS_SendSurfaceStatus(struct sithSurface * a0, int a1, int a2) { }
-void sithDSS_SendSyncPuppet(struct sithThing * a0, int a1, int a2) { }
+/* sithDSSThing send helpers are compiled from src/Dss/sithDSSThing.c. */
+/* sithDSS state-sync helpers are compiled from src/Dss/sithDSS.c. */
 /* sithTime_Startup, sithTime_Tick — real impls in src/Gameplay/sithTime.c (now in build) */
 /* std3D_EndScene provided by std3D.c */
 /* stdConffile_Close — now compiled from src\General\stdConffile.c */
@@ -137,9 +122,7 @@ void stdMci_Stop(void) { }
  * These are safe to stub for "see the level and move around" testing.
  * ====================================================================== */
 
-/* COG parser & execution — real impls in src/Cog/sithCogParse.c,
- * src/Cog/sithCogExec.c, src/Cog/sithCogFunction*.c (now in build). */
-int sithDSSCog_SendSendTrigger(sithCog *,int,int,int,int,int,int,float,float,float,float,int) { return 0; }
+/* COG parser, execution, and DSS cog sync are real implementations now. */
 
 /* Events */
 
@@ -202,27 +185,11 @@ void  __cdecl jkDSS_SendSetSaberInfoMots(sithThing*, int)             { }
  * real impls now in build (src/Gameplay, src/World, src/AI, src/Engine). */
 
 /* sithDSSThing — multiplayer state-sync */
-void  __cdecl sithDSSThing_SendCreateThing(sithThing*, sithThing*, sithThing*, sithSector*,
-                                            rdVector3*, rdVector3*, int, int)  { }
-void  __cdecl sithDSSThing_SendDamage(sithThing*, sithThing*, float, short, int, int) { }
-void  __cdecl sithDSSThing_SendDestroyThing(int, int)                 { }
-void  __cdecl sithDSSThing_SendMOTSNew1(sithThing*, sithThing*, sithThing*, sithSector*,
-                                         rdVector3*, rdVector3*, int, int) { }
-void  __cdecl sithDSSThing_SendPathMove(sithThing*, short, float, int, int, int) { }
-struct rdKeyframe;
-void  __cdecl sithDSSThing_SendPlayKey(sithThing*, rdKeyframe*, int, short, int, int, int) { }
-void  __cdecl sithDSSThing_SendPlayKeyMode(sithThing*, short, int, int, int) { }
-void  __cdecl sithDSSThing_SendPlaySoundMode(sithThing*, short, int, float) { }
-void  __cdecl sithDSSThing_SendSetThingModel(sithThing*, int)         { }
-void  __cdecl sithDSSThing_SendStopKey(sithThing*, int, float, int, int) { }
-struct sithPlayingSound;
-void  __cdecl sithDSSThing_SendStopSound(sithPlayingSound*, float, int, int) { }
-void  __cdecl sithDSSThing_SendSyncThingAttachment(sithThing*, int, int, int) { }
+/* sithDSSThing state-sync helpers are compiled from src/Dss/sithDSSThing.c. */
 
 /* sithMulti — multiplayer; C-linked because sithCog references _sithMulti_SendChat */
 extern "C" {
-int sithMulti_SendChat(unsigned short*)                               { return 0; }
-int sithMulti_SyncScores(void)                                        { return 0; }
+/* sithMulti chat and score sync are compiled from src/Dss/sithMulti.c. */
 }
 
 /* sithEvent, sithItem, sithPuppet, stdStrTable — real impls in src/Gameplay,

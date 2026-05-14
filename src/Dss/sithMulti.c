@@ -22,12 +22,34 @@
 #include "AI/sithAI.h"
 #include "Devices/sithComm.h"
 #include "stdPlatform.h"
+#include <stdarg.h>
 
-#define sithMulti_infoPrintf(fmt, ...) stdPlatform_Printf(fmt, ##__VA_ARGS__)
-#define sithMulti_verbosePrintf(fmt, ...) if (Main_bVerboseNetworking) \
-    { \
-        stdPlatform_Printf(fmt, ##__VA_ARGS__);  \
-    } \
+static void sithMulti_infoPrintf(const char *fmt, ...)
+{
+    char buf[512];
+    va_list args;
+
+    va_start(args, fmt);
+    _vsnprintf(buf, sizeof(buf) - 1, fmt, args);
+    va_end(args);
+    buf[sizeof(buf) - 1] = 0;
+    stdPlatform_Printf("%s", buf);
+}
+
+static void sithMulti_verbosePrintf(const char *fmt, ...)
+{
+    char buf[512];
+    va_list args;
+
+    if ( !Main_bVerboseNetworking )
+        return;
+
+    va_start(args, fmt);
+    _vsnprintf(buf, sizeof(buf) - 1, fmt, args);
+    va_end(args);
+    buf[sizeof(buf) - 1] = 0;
+    stdPlatform_Printf("%s", buf);
+}
     ;
 
 static wchar_t sithMulti_chatWStrTmp[256]; // Added

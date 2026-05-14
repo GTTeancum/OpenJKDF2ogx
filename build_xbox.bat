@@ -124,6 +124,7 @@ for %%F in (
     src\jk.c
     src\wprintf.c
     src\Win95\std.c
+    src\Win95\stdComm.c
     src\General\stdString.c
     src\General\stdStrTable.c
     src\General\stdHashTable.c
@@ -216,6 +217,11 @@ for %%F in (
     src\World\sithTrackThing.c
     src\World\sithWeapon.c
     src\World\jkPlayer.c
+    src\Devices\sithComm.c
+    src\Dss\sithDSS.c
+    src\Dss\sithDSSCog.c
+    src\Dss\sithMulti.c
+    src\Dss\sithDSSThing.c
     src\Gameplay\jkSaber.c
     src\Main\jkAI.c
     src\Main\jkEpisode.c
@@ -248,6 +254,7 @@ for %%F in (
     src\Platform\Xbox\stdMci_xbox.c
     src\Platform\Xbox\stdPlatform_xbox.c
     src\Platform\Xbox\Window_xbox.c
+    src\Platform\Networking\None\stdComm_none.c
     src\Platform\Xbox\xbox_stubs.c
     src\Platform\Xbox\xbox_autostubs.c
     src\Platform\Xbox\stdGob_xbox.c
