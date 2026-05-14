@@ -915,3 +915,32 @@ void stdFileUtil_DisposeFind(stdFileSearch *s)
         FindClose((HANDLE)(intptr_t)s->field_88);
     free(s);
 }
+
+BOOL stdFileUtil_MkDir(LPCSTR lpPathName)
+{
+    char xlat[260];
+    const char *clean;
+
+    if (!lpPathName || !lpPathName[0])
+        return FALSE;
+
+    xbox_TranslatePath(lpPathName, xlat, sizeof(xlat));
+    clean = xbox_StripNtPrefix(xlat);
+    if (CreateDirectoryA(clean, NULL))
+        return TRUE;
+
+    return GetLastError() == ERROR_ALREADY_EXISTS;
+}
+
+int stdFileUtil_DelFile(char *lpFileName)
+{
+    char xlat[260];
+    const char *clean;
+
+    if (!lpFileName || !lpFileName[0])
+        return 0;
+
+    xbox_TranslatePath(lpFileName, xlat, sizeof(xlat));
+    clean = xbox_StripNtPrefix(xlat);
+    return DeleteFileA(clean) ? 1 : 0;
+}

@@ -21,6 +21,10 @@
 
 #include "jk.h"
 
+#ifdef TARGET_XBOX
+#include <time.h>
+#endif
+
 static int32_t jkGuiSaveLoad_listIdk[2] = {0xd, 0xe};
 
 static jkGuiElement jkGuiSaveLoad_aElements[15] = {
@@ -42,6 +46,73 @@ static jkGuiElement jkGuiSaveLoad_aElements[15] = {
 };
 
 jkGuiMenu jkGuiSaveLoad_menu = {jkGuiSaveLoad_aElements, -1, 0xFFFF, 0xFFFF, 0xF, 0, 0, jkGui_stdBitmaps, jkGui_stdFonts, 0, 0, "thermloop01.wav", "thrmlpu2.wav", 0, 0, 0, 0, 0, 0};
+
+#ifdef TARGET_XBOX
+static void jkGuiSaveLoad_XboxGetLevelLabel(char *out, int outSize)
+{
+    const char *src;
+    char *dot;
+    char *slash;
+
+    if (!out || outSize <= 0)
+        return;
+
+    src = "level";
+    if (sithWorld_pCurrentWorld && sithWorld_pCurrentWorld->map_jkl_fname[0])
+        src = sithWorld_pCurrentWorld->map_jkl_fname;
+
+    slash = (char *)strrchr(src, '\\');
+    if (!slash)
+        slash = (char *)strrchr(src, '/');
+    if (slash)
+        src = slash + 1;
+
+    _snprintf(out, outSize - 1, "%s", src);
+    out[outSize - 1] = 0;
+
+    dot = strrchr(out, '.');
+    if (dot)
+        *dot = 0;
+}
+
+static void jkGuiSaveLoad_XboxGenerateSaveName(wchar_t *out, int outSize)
+{
+    char level[64];
+    wchar_t wlevel[64];
+    time_t now;
+    struct tm *tmNow;
+    int year, month, day, hour, minute;
+
+    if (!out || outSize <= 0)
+        return;
+
+    jkGuiSaveLoad_XboxGetLevelLabel(level, sizeof(level));
+    stdString_CharToWchar(wlevel, level, 63);
+    wlevel[63] = 0;
+
+    time(&now);
+    tmNow = localtime(&now);
+    if (tmNow)
+    {
+        year = tmNow->tm_year + 1900;
+        month = tmNow->tm_mon + 1;
+        day = tmNow->tm_mday;
+        hour = tmNow->tm_hour;
+        minute = tmNow->tm_min;
+    }
+    else
+    {
+        year = 2000;
+        month = 1;
+        day = 1;
+        hour = 0;
+        minute = 0;
+    }
+
+    jk_snwprintf(out, outSize, L"%s %04d-%02d-%02d %02d:%02d", wlevel, year, month, day, hour, minute);
+    out[outSize - 1] = 0;
+}
+#endif
 
 int jkGuiSaveLoad_ListClick(jkGuiElement *element, jkGuiMenu *menu, int32_t mouseX, int32_t mouseY, BOOL redraw)
 {
@@ -70,7 +141,11 @@ void jkGuiSaveLoad_PopulateInfo(int bRedraw)
     flex_t playerHealth_; // [esp+18h] [ebp-8h]
     flex_t shieldsAmt_; // [esp+1Ch] [ebp-4h]
 
-    if ( jkGuiSaveLoad_bIsSaveMenu && jkGuiSaveLoad_menu.focusedElement == &jkGuiSaveLoad_aElements[2] )
+    if ( jkGuiSaveLoad_bIsSaveMenu && jkGuiSaveLoad_menu.focusedElement == &jkGuiSaveLoad_aElements[2]
+#ifdef TARGET_XBOX
+      || jkGuiSaveLoad_bIsSaveMenu
+#endif
+      )
     {
         saveName = jkGuiTitle_quicksave_related_func1(&jkCog_strings, sithWorld_pCurrentWorld->map_jkl_fname);
         v1 = sithWorld_pCurrentWorld->episodeName;
@@ -303,6 +378,14 @@ int jkGuiSaveLoad_Show(int bIsSave)
     jkGuiSaveLoad_aElements[4].selectedTextEntry = 0;
     jkGuiSaveLoad_aElements[1].bIsVisible = bIsSave;
     jkGuiSaveLoad_aElements[2].bIsVisible = bIsSave;
+#ifdef TARGET_XBOX
+    if ( bIsSave )
+    {
+        jkGuiSaveLoad_aElements[1].bIsVisible = 0;
+        jkGuiSaveLoad_aElements[2].bIsVisible = 0;
+        jkGuiSaveLoad_XboxGenerateSaveName(jkGuiSaveLoad_word_559830, 0x100);
+    }
+#endif
     jkGuiSaveLoad_aElements[2].clickHandlerFunc = jkGuiSaveLoad_PopulateInfoInit;
     jkGuiSaveLoad_aElements[13].bIsVisible = jkGuiSaveLoad_numEntries > 0;
     if ( bIsSave || (jkGuiSaveLoad_aElements[11].bIsVisible = 0, jkGuiSaveLoad_numEntries > 0) )
@@ -314,7 +397,16 @@ int jkGuiSaveLoad_Show(int bIsSave)
     jkGuiRend_MenuSetReturnKeyShortcutElement(&jkGuiSaveLoad_menu, &jkGuiSaveLoad_aElements[11]);
     jkGuiRend_MenuSetEscapeKeyShortcutElement(&jkGuiSaveLoad_menu, &jkGuiSaveLoad_aElements[12]);
     jkGuiSaveLoad_menu.focusedElement = &jkGuiSaveLoad_aElements[2];
+#ifdef TARGET_XBOX
+    if ( bIsSave )
+        jkGuiSaveLoad_menu.focusedElement = &jkGuiSaveLoad_aElements[11];
+#endif
     jkGuiSaveLoad_PopulateInfo(0);
+#ifdef TARGET_XBOX
+    if ( bIsSave )
+        jkGuiSaveLoad_XboxGenerateSaveName(jkGuiSaveLoad_word_559830, 0x100);
+    else
+#endif
     _wcsncpy(jkGuiSaveLoad_word_559830, &jkGuiSaveLoad_word_559C54[8], 0xFFu);
     jkGuiSaveLoad_word_559830[255] = 0;
     while ( 1 )
@@ -402,7 +494,13 @@ LABEL_24:
             _sprintf(v30, JKSAVE_FORMATSTR, i);
             pHS->free(v15);
 LABEL_44:
+#ifdef TARGET_XBOX
+            jkGuiSaveLoad_XboxGenerateSaveName(jkGuiSaveLoad_word_559830, 0x100);
+#endif
             v28 = jkGuiSaveLoad_aElements[2].wstr;
+#ifdef TARGET_XBOX
+            v28 = jkGuiSaveLoad_word_559830;
+#endif
             v22 = jkGuiTitle_quicksave_related_func1(&jkCog_strings, sithWorld_pCurrentWorld->map_jkl_fname);
             jk_snwprintf(v31, 0x100u, L"%s~%s", v22, v28);
             sithGamesave_Write(v30, 1, 1, v31);

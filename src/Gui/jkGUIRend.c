@@ -15,6 +15,7 @@
 #include "General/stdString.h"
 #include "Primitives/rdRect.h"
 #include "Gui/jkGUI.h"
+#include "Gui/jkGUIEsc.h"
 #include "stdPlatform.h"
 #include "jk.h"
 #include "types.h"
@@ -60,6 +61,24 @@ static jkGuiElementHandlers jkGuiRend_elementHandlers[8] =
     {jkGuiRend_SliderEventHandler, jkGuiRend_SliderDraw, NULL},
     {NULL, NULL, NULL},
 };
+
+static void jkGuiRend_FreeLoadedSoundSlot(int32_t idx)
+{
+    if (idx < 0 || idx >= 4)
+        return;
+
+    if (jkGuiRend_DsoundHandles[idx])
+    {
+        stdSound_BufferRelease(jkGuiRend_DsoundHandles[idx]);
+        jkGuiRend_DsoundHandles[idx] = NULL;
+    }
+
+    if (jkGuiRend_LoadedSounds[idx])
+    {
+        std_pHS->free(jkGuiRend_LoadedSounds[idx]);
+        jkGuiRend_LoadedSounds[idx] = NULL;
+    }
+}
 
 void jkGuiRend_CopyVBuffer(jkGuiMenu *menu, rdRect *rect)
 {
@@ -605,35 +624,42 @@ void jkGuiRend_PlayWav(char *fpath)
     int32_t bufferMaxSize, samplesPerSec, bStereo, bitsPerSample, seekOffset;
 
     if ( !fpath )
+    {
+        stdPlatform_Printf("GuiSnd: PlayWav null path\n");
         return;
+    }
+
+    stdPlatform_Printf("GuiSnd: PlayWav request='%s'\n", fpath);
 
     for (int32_t i = 0; i < 4; i++)
     {
         if ( jkGuiRend_LoadedSounds[i] && !__strcmpi(jkGuiRend_LoadedSounds[i], fpath) )
         {
+            int played;
+            stdPlatform_Printf("GuiSnd: cache hit slot=%d handle=%p\n", i, jkGuiRend_DsoundHandles[i]);
             stdSound_BufferReset(jkGuiRend_DsoundHandles[i]);
             
             // Added
             stdSound_BufferSetVolume(jkGuiRend_DsoundHandles[i], 1.0f);
             
-            stdSound_BufferPlay(jkGuiRend_DsoundHandles[i], 0);
-            return;
+            played = stdSound_BufferPlay(jkGuiRend_DsoundHandles[i], 0);
+            stdPlatform_Printf("GuiSnd: cache play result=%d path='%s'\n", played, fpath);
+            if (played)
+                return;
+
+            stdPlatform_Printf("GuiSnd: cache dead, reloading path='%s'\n", fpath);
+            jkGuiRend_FreeLoadedSoundSlot(i);
+            break;
         }
     }
 
     stdSound_buffer_t* newHandle = sithSound_InitFromPath(fpath);
+    stdPlatform_Printf("GuiSnd: load result handle=%p path='%s'\n", newHandle, fpath);
 
     if ( newHandle )
     {
-        if ( jkGuiRend_DsoundHandles[3]) {
-            stdSound_BufferRelease(jkGuiRend_DsoundHandles[3]);
-            jkGuiRend_DsoundHandles[3] = NULL;
-        }
-            
-        if ( jkGuiRend_LoadedSounds[3] ) {
-            std_pHS->free(jkGuiRend_LoadedSounds[3]);
-            jkGuiRend_LoadedSounds[3] = NULL;
-        }
+        int played;
+        jkGuiRend_FreeLoadedSoundSlot(3);
 
         for (int32_t i = 3; i >= 1; i--)
         {
@@ -650,7 +676,11 @@ void jkGuiRend_PlayWav(char *fpath)
         stdSound_BufferSetVolume(newHandle, 1.0f);
             
 
-        stdSound_BufferPlay(newHandle, 0);
+        played = stdSound_BufferPlay(newHandle, 0);
+        stdPlatform_Printf("GuiSnd: fresh play result=%d path='%s'\n", played, fpath);
+        if (!played) {
+            stdPlatform_Printf("jkGuiRend_PlayWav: failed to play `%s`\n", fpath);
+        }
     }
     else {
         stdPlatform_Printf("Failed to open path: `%s`!\n", fpath);
@@ -838,8 +868,13 @@ void jkGuiRend_UpdateAndDrawClickable(jkGuiElement *clickable, jkGuiMenu *menu, 
 {
     rdVector2i mousePos;
 
+#ifdef TARGET_XBOX
+    if ( !g_app_suspended )
+        return;
+#else
     if ( !g_app_suspended || jkGuiRend_bIsSurfaceValid )
         return;
+#endif
 
     // Added
     if (!clickable) return;
@@ -869,7 +904,7 @@ void jkGuiRend_UpdateAndDrawClickable(jkGuiElement *clickable, jkGuiMenu *menu, 
             menu->lastMouseOverClickable = 0;
         drawFunc(clickable, menu, jkGuiRend_menuBuffer, forceRedraw);
         menu->lastMouseOverClickable = lastSave;
-#if !defined(SDL2_RENDER)
+#if !defined(SDL2_RENDER) || defined(TARGET_XBOX)
         if ( forceRedraw )
             jkGuiRend_FlipAndDraw(menu, drawRect);
 #endif
@@ -877,7 +912,7 @@ void jkGuiRend_UpdateAndDrawClickable(jkGuiElement *clickable, jkGuiMenu *menu, 
     else if ( forceRedraw )
     {
         jkGuiRend_CopyVBuffer(menu, drawRect);
-#if !defined(SDL2_RENDER)
+#if !defined(SDL2_RENDER) || defined(TARGET_XBOX)
         if ( forceRedraw )
             jkGuiRend_FlipAndDraw(menu, drawRect);
 #endif
@@ -913,7 +948,20 @@ int32_t jkGuiRend_InvokeClicked(jkGuiElement *clickable, jkGuiMenu *menu, int32_
 
     // Added: !clickable
     if (!clickable || !clickable->bIsVisible || clickable->enableHover )
+    {
+        stdPlatform_Printf("GuiSnd: InvokeClicked ignored elem=%p visible=%d hover=%d\n",
+            clickable,
+            clickable ? clickable->bIsVisible : -1,
+            clickable ? clickable->enableHover : -1);
         return 0;
+    }
+
+    stdPlatform_Printf("GuiSnd: InvokeClicked elem=%p type=%d id=%d redraw=%d clickSound='%s'\n",
+        clickable,
+        clickable->type,
+        clickable->hoverId,
+        redraw,
+        menu && menu->soundClick ? menu->soundClick : "(null)");
 
     handler = clickable->clickHandlerFunc;
     if ( !handler )
@@ -929,6 +977,11 @@ int32_t jkGuiRend_InvokeClicked(jkGuiElement *clickable, jkGuiMenu *menu, int32_
 
 int jkGuiRend_PlayClickSound(jkGuiElement *element, jkGuiMenu *menu, int32_t a, int32_t b, BOOL c)
 {
+    stdPlatform_Printf("GuiSnd: PlayClickSound elem=%p id=%d redraw=%d path='%s'\n",
+        element,
+        element ? element->hoverId : -1,
+        c,
+        menu && menu->soundClick ? menu->soundClick : "(null)");
     jkGuiRend_PlayWav(menu->soundClick);
     return element->hoverId;
 }
@@ -1122,6 +1175,14 @@ void jkGuiRend_ClickableMouseover(jkGuiMenu *menu, jkGuiElement *element)
     jkGuiElement *lastMouseOverClickable; // eax
 
     lastMouseOverClickable = menu->lastMouseOverClickable;
+    stdPlatform_Printf("GuiSnd: Mouseover menu=%p last=%p next=%p nextType=%d nextVisible=%d nextHover=%d hoverSound='%s'\n",
+        menu,
+        lastMouseOverClickable,
+        element,
+        element ? element->type : -1,
+        element ? element->bIsVisible : -1,
+        element ? element->enableHover : -1,
+        menu && menu->soundHover ? menu->soundHover : "(null)");
     if ( lastMouseOverClickable != element && (!element || element->bIsVisible) )
     {
         menu->lastMouseOverClickable = element;
@@ -1132,8 +1193,20 @@ void jkGuiRend_ClickableMouseover(jkGuiMenu *menu, jkGuiElement *element)
         jkGuiRend_UpdateDrawMenu(menu);
         if ( menu->lastMouseOverClickable && jkGuiRend_ElementHasHoverSound(menu->lastMouseOverClickable) )
         {
+            stdPlatform_Printf("GuiSnd: hover eligible elem=%p type=%d id=%d\n",
+                menu->lastMouseOverClickable,
+                menu->lastMouseOverClickable->type,
+                menu->lastMouseOverClickable->hoverId);
             jkGuiRend_PlayWav(menu->soundHover);
         }
+        else
+        {
+            stdPlatform_Printf("GuiSnd: hover not eligible elem=%p\n", menu->lastMouseOverClickable);
+        }
+    }
+    else
+    {
+        stdPlatform_Printf("GuiSnd: Mouseover ignored sameOrHidden\n");
     }
 }
 
@@ -1331,6 +1404,11 @@ void jkGuiRend_sub_510C60(jkGuiElement *element)
 
 int jkGuiRend_ClickSound(jkGuiElement *element, jkGuiMenu *menu, int32_t mouseX, int32_t mouseY, BOOL redraw)
 {
+    stdPlatform_Printf("GuiSnd: ClickSound elem=%p id=%d redraw=%d path='%s'\n",
+        element,
+        element ? element->hoverId : -1,
+        redraw,
+        menu && menu->soundClick ? menu->soundClick : "(null)");
     if ( !redraw )
         return 0;
     jkGuiRend_PlayWav(menu->soundClick);
@@ -2566,6 +2644,10 @@ void jkGuiRend_FocusElementDir(jkGuiMenu *pMenu, int32_t dir)
 {
     int32_t idx = 0;
     if (!pMenu) {
+        return;
+    }
+
+    if (jkGuiEsc_HandleControllerFocus(pMenu, dir)) {
         return;
     }
 

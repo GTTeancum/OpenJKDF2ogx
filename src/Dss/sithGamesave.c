@@ -45,6 +45,9 @@ void sithGamesave_Setidk(sithSaveHandler_t a1, sithSaveHandler_t a2, sithSaveHan
 
 int sithGamesave_GetProfilePath(char *out, int outSize, char *a3)
 {
+#ifdef TARGET_XBOX
+    return stdString_snprintf(out, outSize, "player%c%s", LEC_PATH_SEPARATOR_CHR, a3);
+#else
     char a1[32]; // [esp+0h] [ebp-20h] BYREF
 
     stdString_WcharToChar(a1, jkPlayer_playerShortName, 31);
@@ -53,12 +56,18 @@ int sithGamesave_GetProfilePath(char *out, int outSize, char *a3)
         out, outSize, "player%c%s%c%s",
         LEC_PATH_SEPARATOR_CHR, a1, LEC_PATH_SEPARATOR_CHR, a3
     );
+#endif
 }
 
 // write
 
 int sithGamesave_Load(char *saveFname, int debugNextCheckpoint, int a3)
 {
+#ifdef TARGET_XBOX
+    char fpath[128]; // [esp+20h] [ebp-80h] BYREF
+
+    sithGamesave_GetProfilePath(fpath, 128, saveFname);
+#else
     char playerName[32]; // [esp+0h] [ebp-A0h] BYREF
     char fpath[128]; // [esp+20h] [ebp-80h] BYREF
 
@@ -68,6 +77,7 @@ int sithGamesave_Load(char *saveFname, int debugNextCheckpoint, int a3)
         fpath, 128, "player%c%s%c%s",
         LEC_PATH_SEPARATOR_CHR, playerName, LEC_PATH_SEPARATOR_CHR, saveFname
     );
+#endif
 
     if (stdConffile_OpenReadBytesBypass(fpath))
     {
@@ -417,6 +427,11 @@ int sithGamesave_Write(char *saveFname, int a2, int a3, wchar_t *saveName)
         v13[255] = 0;
     }
     sithGamesave_dword_835914 = a3;
+#ifdef TARGET_XBOX
+    stdString_snprintf(PathName, 128, "player");
+    stdFileUtil_MkDir(PathName);
+    sithGamesave_GetProfilePath(PathName, 128, saveFname);
+#else
     stdString_WcharToChar(tmp_playerName, jkPlayer_playerShortName, 31);
     tmp_playerName[31] = 0;
     stdString_snprintf(
@@ -432,6 +447,7 @@ int sithGamesave_Write(char *saveFname, int a2, int a3, wchar_t *saveName)
         LEC_PATH_SEPARATOR_CHR, tmp_playerName, LEC_PATH_SEPARATOR_CHR,
         saveFname
     );
+#endif
     if ( a2 || !stdConffile_OpenReadBypass(PathName) )
     {
         _memset(&sithGamesave_headerTmp, 0, sizeof(sithGamesave_headerTmp));

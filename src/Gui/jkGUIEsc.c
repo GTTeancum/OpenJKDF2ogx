@@ -62,6 +62,74 @@ static jkGuiElement jkGuiEsc_aElements[10] = {
 
 static jkGuiMenu jkGuiEsc_menu = { jkGuiEsc_aElements, -1, 0x0FFFF, 0x0FFFF, 0x0F, 0, 0, jkGui_stdBitmaps, jkGui_stdFonts, 0, 0, "thermloop01.wav", "thrmlpu2.wav", 0, 0, 0, 0, 0, 0 };
 
+int jkGuiEsc_HandleControllerFocus(jkGuiMenu *menu, int32_t dir)
+{
+    static const int order[] = {
+        JKGUIESC_ELMT_OBJECTIVES,
+        JKGUIESC_ELMT_MAP,
+        JKGUIESC_ELMT_JEDIPOWERS,
+        JKGUIESC_ELMT_RETURNTOGAME,
+        JKGUIESC_ELMT_RESTART,
+        JKGUIESC_ELMT_LOAD,
+        JKGUIESC_ELMT_SAVE,
+        JKGUIESC_ELMT_SETUP,
+        JKGUIESC_ELMT_ABORT
+    };
+    int curOrderIdx = -1;
+    int step = 0;
+
+    if (menu != &jkGuiEsc_menu) {
+        return 0;
+    }
+    stdPlatform_Printf("GuiEscFocus: dir=%d cur=%p curId=%d\n",
+        dir,
+        menu->lastMouseOverClickable,
+        menu->lastMouseOverClickable ? menu->lastMouseOverClickable->hoverId : -999);
+    if (dir == FOCUS_DOWN) {
+        step = 1;
+    }
+    else if (dir == FOCUS_UP) {
+        step = -1;
+    }
+    else {
+        return 0;
+    }
+
+    jkGuiElement *cur = menu->lastMouseOverClickable;
+    if (cur && !cur->bIsVisible) {
+        cur = NULL;
+    }
+
+    for (int i = 0; i < (int)(sizeof(order) / sizeof(order[0])); i++) {
+        if (cur == &jkGuiEsc_aElements[order[i]]) {
+            curOrderIdx = i;
+            break;
+        }
+    }
+
+    if (curOrderIdx < 0) {
+        curOrderIdx = step > 0 ? -1 : (int)(sizeof(order) / sizeof(order[0]));
+    }
+
+    for (int i = curOrderIdx + step; i >= 0 && i < (int)(sizeof(order) / sizeof(order[0])); i += step) {
+        jkGuiElement *next = &jkGuiEsc_aElements[order[i]];
+        if (next->bIsVisible) {
+            stdPlatform_Printf("GuiEscFocus: next orderIdx=%d elemIdx=%d elem=%p id=%d visible=%d\n",
+                i,
+                order[i],
+                next,
+                next->hoverId,
+                next->bIsVisible);
+            menu->focusedElement = NULL;
+            jkGuiRend_ClickableMouseover(menu, next);
+            return 1;
+        }
+    }
+
+    stdPlatform_Printf("GuiEscFocus: no visible next step=%d curIdx=%d\n", step, curOrderIdx);
+    return 1;
+}
+
 void jkGuiEsc_Startup()
 {
     jkGui_InitMenu(&jkGuiEsc_menu, jkGui_stdBitmaps[JKGUI_BM_BK_ESC]);

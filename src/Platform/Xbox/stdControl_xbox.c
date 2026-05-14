@@ -101,6 +101,8 @@ static unsigned int  g_keyTime[XBOX_NUM_KEYS];
  * frames-held. */
 static unsigned int  g_keyPress[XBOX_NUM_KEYS];
 
+void stdControl_ReadControls(void);
+
 void stdControl_SetKeydown(int keyNum, int bDown, unsigned int readTime)
 {
     if (keyNum < 0 || keyNum >= XBOX_NUM_KEYS) return;
@@ -190,10 +192,9 @@ int  stdControl_Close(void)    { return 1; }
 void stdControl_Flush(void)
 {
     memset(g_axisValues, 0, sizeof(g_axisValues));
-    memset(g_prevAnalog, 0, sizeof(g_prevAnalog));
     memset(g_keyDown,    0, sizeof(g_keyDown));
     memset(g_keyPress,   0, sizeof(g_keyPress));
-    g_prevButtons = 0;
+    stdControl_ReadControls();
 }
 
 void stdControl_ReadControls(void)

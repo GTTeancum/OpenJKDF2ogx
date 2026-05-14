@@ -30,6 +30,7 @@ typedef struct
     IDirectSoundBuffer *pDS;
     int                 bPlaying;
     int                 bLooping;
+    int                 b3D;
 } XboxDSEntry;
 
 static XboxDSEntry  g_dsTable[MAX_DS_BUFFERS];
@@ -155,6 +156,70 @@ static void xbox_DSFree(stdSound_buffer_t *p)
             return;
         }
     }
+}
+
+static int xbox_DSCreateBuffer(stdSound_buffer_t *sound, XboxDSEntry *e, int want3D)
+{
+    DSBUFFERDESC desc;
+    WAVEFORMATEX wfx;
+    HRESULT hr;
+    void *pLock = NULL;
+    DWORD lockSz = 0;
+    int use3D;
+
+    if (!sound || !e || !g_pDS)
+        return 0;
+
+    use3D = want3D && !sound->bStereo;
+
+    if (e->pDS)
+    {
+        IDirectSoundBuffer_Stop(e->pDS);
+        IDirectSoundBuffer_Release(e->pDS);
+        e->pDS = NULL;
+    }
+
+    memset(&wfx, 0, sizeof(wfx));
+    wfx.wFormatTag      = WAVE_FORMAT_PCM;
+    wfx.nChannels       = (WORD)(sound->bStereo ? 2 : 1);
+    wfx.nSamplesPerSec  = sound->nSamplesPerSec;
+    wfx.wBitsPerSample  = (WORD)sound->bitsPerSample;
+    wfx.nBlockAlign     = (WORD)(wfx.nChannels * wfx.wBitsPerSample / 8);
+    wfx.nAvgBytesPerSec = wfx.nSamplesPerSec * wfx.nBlockAlign;
+
+    memset(&desc, 0, sizeof(desc));
+    desc.dwSize        = sizeof(desc);
+    desc.dwFlags       = DSBCAPS_CTRLVOLUME | DSBCAPS_CTRLFREQUENCY;
+    if (use3D)
+        desc.dwFlags |= DSBCAPS_CTRL3D;
+    desc.dwBufferBytes = (DWORD)sound->bufferBytes;
+    desc.lpwfxFormat   = &wfx;
+
+    hr = IDirectSound_CreateSoundBuffer(g_pDS, &desc, &e->pDS, NULL);
+    if (FAILED(hr))
+    {
+        XDBGF("stdSound_XboxCreateBuffer: failed 0x%X stereo=%d rate=%u bits=%u bytes=%d 3d=%d\n",
+              hr, sound->bStereo, sound->nSamplesPerSec, sound->bitsPerSample,
+              sound->bufferBytes, use3D);
+        e->pDS = NULL;
+        e->b3D = 0;
+        return 0;
+    }
+
+    e->b3D = use3D;
+    e->bPlaying = 0;
+    e->bLooping = 0;
+
+    if (sound->data && sound->bufferBytes > 0)
+    {
+        if (SUCCEEDED(IDirectSoundBuffer_Lock(e->pDS, 0, (DWORD)sound->bufferBytes, &pLock, &lockSz, NULL, NULL, 0)))
+        {
+            memcpy(pLock, sound->data, lockSz);
+            IDirectSoundBuffer_Unlock(e->pDS, pLock, lockSz, NULL, 0);
+        }
+    }
+
+    return 1;
 }
 
 static LONG xbox_VolToDS(float v)
@@ -595,10 +660,7 @@ stdSound_buffer_t *stdSound_BufferCreate(int bStereo, unsigned int nSamplesPerSe
 
 void *stdSound_BufferSetData(stdSound_buffer_t *sound, int bufferBytes, int *bufferMaxSize)
 {
-    DSBUFFERDESC    desc;
-    WAVEFORMATEX    wfx;
     XboxDSEntry    *e;
-    HRESULT         hr;
 
     if (!sound) return NULL;
     if (sound->data) free(sound->data);
@@ -610,26 +672,7 @@ void *stdSound_BufferSetData(stdSound_buffer_t *sound, int bufferBytes, int *buf
     e = xbox_DSAlloc(sound);
     if (!e) return sound->data;
 
-    if (e->pDS) { IDirectSoundBuffer_Release(e->pDS); e->pDS = NULL; }
-
-    memset(&wfx, 0, sizeof(wfx));
-    wfx.wFormatTag      = WAVE_FORMAT_PCM;
-    wfx.nChannels       = (WORD)(sound->bStereo ? 2 : 1);
-    wfx.nSamplesPerSec  = sound->nSamplesPerSec;
-    wfx.wBitsPerSample  = (WORD)sound->bitsPerSample;
-    wfx.nBlockAlign     = (WORD)(wfx.nChannels * wfx.wBitsPerSample / 8);
-    wfx.nAvgBytesPerSec = wfx.nSamplesPerSec * wfx.nBlockAlign;
-
-    memset(&desc, 0, sizeof(desc));
-    desc.dwSize        = sizeof(desc);
-    desc.dwFlags       = DSBCAPS_CTRLVOLUME | DSBCAPS_CTRLFREQUENCY;
-    if (!sound->bStereo)
-        desc.dwFlags |= DSBCAPS_CTRL3D;
-    desc.dwBufferBytes = (DWORD)bufferBytes;
-    desc.lpwfxFormat   = &wfx;
-
-    hr = IDirectSound_CreateSoundBuffer(g_pDS, &desc, &e->pDS, NULL);
-    if (FAILED(hr)) { XDBGF("stdSound_BufferSetData: CreateSoundBuffer failed 0x%X\n", hr); e->pDS = NULL; }
+    xbox_DSCreateBuffer(sound, e, 0);
     return sound->data;
 }
 
@@ -706,7 +749,6 @@ stdSound_buffer_t *stdSound_BufferDuplicate(stdSound_buffer_t *sound)
 {
     stdSound_buffer_t *copy;
     XboxDSEntry *src, *dst;
-    HRESULT hr;
     if (!sound) return NULL;
     copy = (stdSound_buffer_t*)malloc(sizeof(stdSound_buffer_t));
     if (!copy) return NULL;
@@ -716,35 +758,7 @@ stdSound_buffer_t *stdSound_BufferDuplicate(stdSound_buffer_t *sound)
     dst = xbox_DSAlloc(copy);
     src = xbox_DSFind(sound);
     if (dst && src && src->pDS && g_pDS && sound->bufferBytes > 0)
-    {
-        DSBUFFERDESC desc;
-        WAVEFORMATEX wfx;
-        void *pLock = NULL;
-        DWORD lockSz = 0;
-        memset(&wfx, 0, sizeof(wfx));
-        wfx.wFormatTag      = WAVE_FORMAT_PCM;
-        wfx.nChannels       = (WORD)(sound->bStereo ? 2 : 1);
-        wfx.nSamplesPerSec  = sound->nSamplesPerSec;
-        wfx.wBitsPerSample  = (WORD)sound->bitsPerSample;
-        wfx.nBlockAlign     = (WORD)(wfx.nChannels * wfx.wBitsPerSample / 8);
-        wfx.nAvgBytesPerSec = wfx.nSamplesPerSec * wfx.nBlockAlign;
-        memset(&desc, 0, sizeof(desc));
-        desc.dwSize        = sizeof(desc);
-        desc.dwFlags       = DSBCAPS_CTRLVOLUME | DSBCAPS_CTRLFREQUENCY;
-        if (!sound->bStereo)
-            desc.dwFlags |= DSBCAPS_CTRL3D;
-        desc.dwBufferBytes = (DWORD)sound->bufferBytes;
-        desc.lpwfxFormat   = &wfx;
-        hr = IDirectSound_CreateSoundBuffer(g_pDS, &desc, &dst->pDS, NULL);
-        if (SUCCEEDED(hr) && sound->data)
-        {
-            if (SUCCEEDED(IDirectSoundBuffer_Lock(dst->pDS, 0, (DWORD)sound->bufferBytes, &pLock, &lockSz, NULL, NULL, 0)))
-            {
-                memcpy(pLock, sound->data, lockSz);
-                IDirectSoundBuffer_Unlock(dst->pDS, pLock, lockSz, NULL, 0);
-            }
-        }
-    }
+        xbox_DSCreateBuffer(copy, dst, src->b3D);
     return copy;
 }
 
@@ -780,6 +794,8 @@ stdSound_3dBuffer_t *stdSound_BufferQueryInterface(stdSound_buffer_t *a1)
 
     e = xbox_DSFind(a1);
     if (!e || !e->pDS)
+        return NULL;
+    if (!e->b3D && !xbox_DSCreateBuffer(a1, e, 1))
         return NULL;
 
     buf3d = (stdXbox3DBuffer*)malloc(sizeof(stdXbox3DBuffer));

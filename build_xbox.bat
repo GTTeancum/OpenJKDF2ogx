@@ -220,6 +220,7 @@ for %%F in (
     src\Devices\sithComm.c
     src\Dss\sithDSS.c
     src\Dss\sithDSSCog.c
+    src\Dss\sithGamesave.c
     src\Dss\sithMulti.c
     src\Dss\sithDSSThing.c
     src\Gameplay\jkSaber.c

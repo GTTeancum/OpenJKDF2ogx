@@ -508,7 +508,7 @@ struct rdCanvas;
 extern "C" {
     /* sithMulti and DirectPlay no-network symbols are compiled from real sources. */
     int  stdJSON_IterateKeys(const char* p, void(*cb)(const char*,const char*,void*), void* ctx) { (void)p; (void)cb; (void)ctx; return 0; }
-    int  stdFileUtil_DelFile(char* p)                                       { (void)p; return 1; }
+    /* stdFileUtil_DelFile is implemented by stdFile_xbox.c. */
 }
 
 /* C++-mangled stubs (headers without extern "C") */
@@ -526,13 +526,7 @@ int  jkGuiMultiplayer_Show2(void)                                           { re
 int  jkCredits_cdOverride                                                   = 0;
 extern "C" const wchar_t *openjkdf2_waReleaseVersion                        = L"Xbox";
 extern "C" const wchar_t *openjkdf2_waReleaseCommitShort                    = L"";
-int  sithGamesave_GetProfilePath(char *out, int outSize, char *name) {
-    if (!out || outSize <= 0) return 0;
-    if (!name) name = "save";
-    _snprintf(out, (size_t)outSize, "D:\\saves\\%s", name);
-    out[outSize - 1] = 0;
-    return 1;
-}
+/* sithGamesave_GetProfilePath is implemented by sithGamesave.c. */
 
 /* rdParticle_* — real impls now in src/Primitives/rdParticle.c */
 
@@ -604,8 +598,7 @@ extern "C" {
     int  std3D_Screenshot(void) { return 0; }
 }
 
-/* stdFileUtil_MkDir — directory creation (config save). C linkage. */
-extern "C" int stdFileUtil_MkDir(const char* p) { (void)p; return 1; }
+/* stdFileUtil_MkDir is implemented by stdFile_xbox.c. */
 
 /* jkDev — dev tools / debug overlay; stubbed (no dev console on Xbox yet) */
 void jkDev_BlitLogToScreen(void)                                { }

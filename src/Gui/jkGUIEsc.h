@@ -13,5 +13,6 @@
 void jkGuiEsc_Startup();
 void jkGuiEsc_Shutdown();
 void jkGuiEsc_Show();
+int jkGuiEsc_HandleControllerFocus(jkGuiMenu *menu, int32_t dir);
 
 #endif // _JKGUIESC_H
