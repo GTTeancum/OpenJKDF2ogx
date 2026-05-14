@@ -1065,6 +1065,7 @@ int jkMain_LoadLevelSingleplayer(char *pGobPath, char *pEpisodeName)
 
     _strncpy(jkMain_aLevelJklFname, pEpisodeName, 0x7Fu);
     jkMain_aLevelJklFname[127] = 0;
+    sithInventory_549FA0 = 1;
     jkSmack_gameMode = 0;
     jkRes_LoadGob(pGobPath);
     if ( jkEpisode_mLoad.paEntries )

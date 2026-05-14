@@ -134,18 +134,9 @@ void __cdecl main(void)
      * -------------------------------------------------------------- */
     Main_Startup("");
 
-    /* Preserve the pre-menu Xbox gameplay init path: the old jkGuiMain_Show
-     * stub loaded JK1/static.jkl/items.dat before jumping into a level.  Keep
-     * that real engine initialization, but let the real menu choose the level. */
+    /* Match the upstream startup flow: the title GUI state loads static.jkl
+     * and items.dat after the intro FMV, before the main menu is shown. */
     jkPlayer_hudScale = 1.0f;
-    jkGuiTitle_WorldLoadCallback(93.0f);
-    jkRes_LoadGob("JK1");
-    jkGuiTitle_WorldLoadCallback(96.0f);
-    sithMain_Load("static.jkl");
-    jkGuiTitle_WorldLoadCallback(98.0f);
-    jkHudInv_InitItems();
-    jkGuiTitle_WorldLoadCallback(100.0f);
-    jkGuiTitle_LoadingStaticFinalizeMenu();
 
     /* Initialize XInput — must be after Main_Startup (XDK subsystems up) */
     stdControl_Startup();
