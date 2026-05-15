@@ -32,6 +32,10 @@
 #include "General/stdJSON.h"
 #include "Platform/std3D.h"
 #include "Main/sithCvar.h"
+#ifdef TARGET_XBOX
+#include "Platform/Xbox/xbox_debug.h"
+#include "Platform/Xbox/xbox_splitscreen.h"
+#endif
 
 // DSi has *plenty* of time to read the text.
 #ifdef TARGET_TWL
@@ -936,6 +940,31 @@ void jkPlayer_DrawPov()
         
         //printf("pov in\n");
         //jkPlayer_checkPov = 1;
+#ifdef TARGET_XBOX
+        if (xboxSplitScreen_IsEnabled())
+        {
+            static int s_xboxPovDbgCount = 0;
+            if (s_xboxPovDbgCount < 16)
+            {
+                rdModel3 *povModel = playerThings[playerThingIdx].povModel.model3;
+                XDBGF("PovDbg: slot=%d curW=%d model=%p radius=%.4f eye=(%.4f,%.4f,%.4f) trans=(%.4f,%.4f,%.4f) scale=(%.4f,%.4f,%.4f)\n",
+                      playerThingIdx,
+                      sithInventory_GetCurWeapon(playerThings[playerThingIdx].actorThing),
+                      (void*)povModel,
+                      povModel ? (double)povModel->radius : 0.0,
+                      (double)playerThings[playerThingIdx].actorThing->actorParams.eyeOffset.x,
+                      (double)playerThings[playerThingIdx].actorThing->actorParams.eyeOffset.y,
+                      (double)playerThings[playerThingIdx].actorThing->actorParams.eyeOffset.z,
+                      (double)trans.x,
+                      (double)trans.y,
+                      (double)trans.z,
+                      (double)viewMat.scale.x,
+                      (double)viewMat.scale.y,
+                      (double)viewMat.scale.z);
+                s_xboxPovDbgCount++;
+            }
+        }
+#endif
         rdThing_Draw(&playerThings[playerThingIdx].povModel, &viewMat);
         //jkPlayer_checkPov = 0;
         //printf("pov done\n");

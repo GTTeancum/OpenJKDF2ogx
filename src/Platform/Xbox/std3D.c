@@ -118,6 +118,34 @@ void * __stdcall wglGetProcAddress(const char *s);
 #define GL_LINEAR              0x2601
 #define GL_CLAMP               0x2900
 #define GL_REPEAT              0x2901
+
+static int g_xboxViewportX = 0;
+static int g_xboxViewportY = 0;
+static int g_xboxViewportW = 640;
+static int g_xboxViewportH = 480;
+
+static void std3D_XboxApplyViewport(void)
+{
+    glViewport(g_xboxViewportX, g_xboxViewportY, g_xboxViewportW, g_xboxViewportH);
+}
+
+extern "C" void std3D_XboxSetViewport(int x, int y, int w, int h)
+{
+    if (w <= 0) w = 640;
+    if (h <= 0) h = 480;
+
+    g_xboxViewportX = x;
+    g_xboxViewportY = y;
+    g_xboxViewportW = w;
+    g_xboxViewportH = h;
+    std3D_XboxApplyViewport();
+}
+
+extern "C" void std3D_XboxResetViewport(void)
+{
+    std3D_XboxSetViewport(0, 0, 640, 480);
+}
+
 #define GL_ONE                 1
 #define GL_TRUE                1
 #define GL_FALSE               0
@@ -715,6 +743,7 @@ int std3D_StartScene(void)
      * for state.  HUD does NOT draw here — see std3D_Present. */
     if (!g_sceneOpen)
     {
+        std3D_XboxResetViewport();
         glClear(GL_COLOR_BUFFER_BIT | GL_DEPTH_BUFFER_BIT | GL_STENCIL_BUFFER_BIT);
         g_clearCalls++;
         g_sceneOpen     = 1;
@@ -1008,13 +1037,12 @@ void std3D_DrawRenderList(void)
         float cam_znear = 1.0f/64.0f, cam_zfar = 128.0f;
         float tan_h, tan_v, half_w, half_h;
         xbox_get_camera_params(&cam_fov, &cam_aspect, &cam_znear, &cam_zfar);
-
         tan_h  = (float)tan((double)cam_fov * (3.14159265358979 / 360.0));
         tan_v  = tan_h * cam_aspect;
         half_w = cam_znear * tan_h;
         half_h = cam_znear * tan_v;
 
-        glViewport(0, 0, 640, 480);
+        std3D_XboxApplyViewport();
         glMatrixMode(GL_PROJECTION);
         glLoadIdentity();
         glFrustum(-half_w, half_w, -half_h, half_h, cam_znear, cam_zfar);
@@ -1128,11 +1156,15 @@ void std3D_DrawRenderList(void)
                     if (t->flags & 0x600) glBlendFunc(GL_ONE, GL_ONE_MINUS_SRC_ALPHA);
                     else                  glBlendFunc(GL_SRC_ALPHA, GL_ONE_MINUS_SRC_ALPHA);
 
+                    if (t->flags & 0x200) glDisable(GL_ALPHA_TEST);
+                    else                  glEnable(GL_ALPHA_TEST);
+
                     last_flags = t->flags;
                 }
             } else if (last_flags != -2) {
                 glDisable(GL_BLEND);
                 glDisable(GL_CULL_FACE);
+                glDisable(GL_ALPHA_TEST);
                 glDepthFunc(GL_LEQUAL);
                 glDepthMask(GL_TRUE);
                 last_flags = -2;
@@ -1847,7 +1879,7 @@ void std3D_PurgeBitmapRefs(void *pBmp)
  * the 2D setup defensively. Cheap (a few state pokes). */
 static void xbox_set_ui_state(int enable_blend)
 {
-    glViewport(0, 0, 640, 480);
+    std3D_XboxApplyViewport();
     glMatrixMode(GL_PROJECTION);
     glLoadIdentity();
     glOrtho(0.0, 640.0, 480.0, 0.0, -99999.0, 99999.0);

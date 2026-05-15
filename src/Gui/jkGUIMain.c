@@ -87,6 +87,13 @@ static jkGuiElement jkGuiMain_elements[11] = {
 
 static jkGuiMenu jkGuiMain_menu = {jkGuiMain_elements, -1, 0xFFFF, 0xFFFF, 0xF, 0, 0, jkGui_stdBitmaps, jkGui_stdFonts, 0, 0, "thermloop01.wav", "thrmlpu2.wav", 0, 0, 0, 0, 0, 0};
 
+#ifdef TARGET_XBOX
+static int jkGuiMain_XboxStartLocalMultiplayerTest(void)
+{
+    return jkMain_loadFile2("JK1MP", "m10.jkl") ? 1 : -1;
+}
+#endif
+
 // MOTS altered
 void jkGuiMain_Show()
 {
@@ -181,7 +188,11 @@ void jkGuiMain_Show()
                     break;
 #if !defined(TARGET_NO_MULTIPLAYER_MENUS) || defined(TARGET_XBOX)
                 case 11:
+#ifdef TARGET_XBOX
+                    v1 = jkGuiMain_XboxStartLocalMultiplayerTest();
+#else
                     v1 = jkGuiMultiplayer_Show();
+#endif
                     break;
 #endif
                 case 12:

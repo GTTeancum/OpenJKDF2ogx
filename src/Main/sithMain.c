@@ -2,6 +2,7 @@
 
 #ifdef TARGET_XBOX
 #include "xbox_debug.h"
+#include "Platform/Xbox/xbox_splitscreen.h"
 #endif
 #include "Main/jkGame.h"
 #include "Main/Main.h"
@@ -350,17 +351,32 @@ int sithMain_Tick()
 #ifdef TARGET_XBOX
                 { static int _ts4=0; if(_ts4<1){ XDBG("sithTick: ReadControls\n"); _ts4++; } }
 #endif
+                #ifdef TARGET_XBOX
+                if (xboxSplitScreen_IsEnabled())
+                    xboxSplitScreen_BeginControlFrame();
+                else
+                #endif
                 sithControl_ReadControls();
                 if ( g_sithMode != 2 )
                 {
 #ifdef TARGET_XBOX
                     { static int _ts5=0; if(_ts5<1){ XDBG("sithTick: ControlTick\n"); _ts5++; } }
 #endif
+                    #ifdef TARGET_XBOX
+                    if (xboxSplitScreen_IsEnabled())
+                        xboxSplitScreen_TickControls(sithTime_deltaSeconds, sithTime_deltaMs);
+                    else
+                    #endif
                     sithControl_Tick(sithTime_deltaSeconds, sithTime_deltaMs);
                 }
 #ifdef TARGET_XBOX
                 { static int _tsFR=0; if(_tsFR<1){ XDBG("sithTick: FinishRead\n"); _tsFR++; } }
 #endif
+                #ifdef TARGET_XBOX
+                if (xboxSplitScreen_IsEnabled())
+                    xboxSplitScreen_EndControlFrame();
+                else
+                #endif
                 sithControl_FinishRead();
             }
 
@@ -448,10 +464,25 @@ int sithMain_Tick()
             if ( g_sithMode != 2 )
             {
 #ifdef FIXED_TIMESTEP_PHYS
+                #ifdef TARGET_XBOX
+                if (xboxSplitScreen_IsEnabled())
+                    xboxSplitScreen_BeginControlFrame();
+                else
+                #endif
                 sithControl_ReadControls();
 #endif
+                #ifdef TARGET_XBOX
+                if (xboxSplitScreen_IsEnabled())
+                    xboxSplitScreen_TickControls(sithTime_deltaSeconds, sithTime_deltaMs);
+                else
+                #endif
                 sithControl_Tick(sithTime_deltaSeconds, sithTime_deltaMs);
 #ifdef FIXED_TIMESTEP_PHYS
+                #ifdef TARGET_XBOX
+                if (xboxSplitScreen_IsEnabled())
+                    xboxSplitScreen_EndControlFrame();
+                else
+                #endif
                 sithControl_FinishRead();
 #endif
             }

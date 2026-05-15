@@ -25,6 +25,10 @@
 #include "stdPlatform.h"
 #include "jk.h"
 
+#ifdef TARGET_XBOX
+#include "Platform/Xbox/xbox_splitscreen.h"
+#endif
+
 #if defined(TARGET_TWL)
 #include <nds.h>
 #endif
@@ -166,6 +170,11 @@ int jkGame_Update()
 #if defined(SDL2_RENDER) || defined(TARGET_TWL)
     // HACK
     Video_modeStruct.b3DAccel = (HKEY)1;
+#endif
+
+#ifdef TARGET_XBOX
+    if (xboxSplitScreen_IsEnabled())
+        return xboxSplitScreen_RenderGameplayFrame();
 #endif
 
 #if !defined(SDL2_RENDER) && !defined(TARGET_TWL)

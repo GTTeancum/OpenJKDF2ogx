@@ -24,6 +24,11 @@
 #include "stdPlatform.h"
 #include <stdarg.h>
 
+#ifdef TARGET_XBOX
+#include "Platform/Xbox/xbox_debug.h"
+#include "Platform/Xbox/xbox_splitscreen.h"
+#endif
+
 static void sithMulti_infoPrintf(const char *fmt, ...)
 {
     char buf[512];
@@ -51,6 +56,34 @@ static void sithMulti_verbosePrintf(const char *fmt, ...)
     stdPlatform_Printf("%s", buf);
 }
     ;
+
+#ifdef TARGET_XBOX
+static void sithMulti_XboxKeepSplitScreenSlotAlive(uint32_t idx, sithPlayerInfo *playerInfo)
+{
+    static int s_loggedRefreshes = 0;
+
+    if (!xboxSplitScreen_IsEnabled())
+        return;
+    if ((int)idx >= xboxSplitScreen_GetLocalPlayerCount())
+        return;
+    if ((playerInfo->flags & 1) == 0)
+        return;
+
+    if (sithTime_curMs > playerInfo->lastUpdateMs + MULTI_TIMEOUT_MS && s_loggedRefreshes < 8)
+    {
+        XDBGF("SplitScreenTimeout: preserve local slot=%u net=%u flags=0x%X thing=%p last=%u now=%u\n",
+              idx,
+              playerInfo->net_id,
+              playerInfo->flags,
+              (void*)playerInfo->playerThing,
+              playerInfo->lastUpdateMs,
+              sithTime_curMs);
+        s_loggedRefreshes++;
+    }
+
+    playerInfo->lastUpdateMs = sithTime_curMs;
+}
+#endif
 
 static wchar_t sithMulti_chatWStrTmp[256]; // Added
 
@@ -161,6 +194,9 @@ int sithMulti_StartupServer()
     sithPlayer_sub_4C87C0(0, stdComm_dplayIdSelf);
     sithPlayer_idk(0);
     sithPlayer_ResetPalEffects();
+#ifdef TARGET_XBOX
+    xboxSplitScreen_OnMultiplayerServerStarted();
+#endif
 
     // Added: dedicated server
     if (jkGuiNetHost_bIsDedicated) {
@@ -763,6 +799,9 @@ int sithMulti_ServerLeft(int32_t a, sithEventInfo* b)
             v1 = &jkPlayer_playerInfos[1];
             do
             {
+#ifdef TARGET_XBOX
+                sithMulti_XboxKeepSplitScreenSlotAlive(v0, v1);
+#endif
                 if ( (v1->flags & 1) != 0 && sithTime_curMs > v1->lastUpdateMs + MULTI_TIMEOUT_MS )
                 {
                     v2 = v1->net_id;

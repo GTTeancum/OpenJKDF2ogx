@@ -65,15 +65,41 @@
 #define XBOX_AXIS_LOOK_LR   2   /* AXIS_JOY1_Z — right stick horizontal*/
 #define XBOX_AXIS_LOOK_UD   3   /* AXIS_JOY1_R — right stick vertical  */
 #define XBOX_NUM_AXES       8
+#define XBOX_NUM_KEYS       512
+#define XBOX_MAX_CONTROLLERS 4
 
-static float g_axisValues[XBOX_NUM_AXES];
-static BYTE  g_prevAnalog[8];
-static WORD  g_prevButtons;
-static int   g_crouchToggle;
-static int   g_sprintToggle;
-static int   g_walkToggle;       /* L3 toggle: 1 = walk (DIK_CAPITAL held) */
-static int   g_connected;
-static HANDLE g_hController;
+typedef struct XboxControllerState
+{
+    float axisValues[XBOX_NUM_AXES];
+    BYTE  prevAnalog[8];
+    WORD  prevButtons;
+    int   crouchToggle;
+    int   sprintToggle;
+    int   walkToggle;       /* L3 toggle: 1 = walk (DIK_CAPITAL held) */
+    int   connected;
+    int   openAttempted;    /* deferred XInputOpen: tried once from ReadControls */
+    HANDLE hController;
+    unsigned char keyDown[XBOX_NUM_KEYS];      /* current held state */
+    unsigned int  keyTime[XBOX_NUM_KEYS];
+    unsigned int  keyPress[XBOX_NUM_KEYS];
+} XboxControllerState;
+
+static XboxControllerState g_pads[XBOX_MAX_CONTROLLERS];
+static int g_activeController = 0;
+static int g_pollController = 0;
+
+#define g_axisValues    (g_pads[g_pollController].axisValues)
+#define g_prevAnalog    (g_pads[g_pollController].prevAnalog)
+#define g_prevButtons   (g_pads[g_pollController].prevButtons)
+#define g_crouchToggle  (g_pads[g_pollController].crouchToggle)
+#define g_sprintToggle  (g_pads[g_pollController].sprintToggle)
+#define g_walkToggle    (g_pads[g_pollController].walkToggle)
+#define g_connected     (g_pads[g_pollController].connected)
+#define g_openAttempted (g_pads[g_pollController].openAttempted)
+#define g_hController   (g_pads[g_pollController].hController)
+#define g_keyDown       (g_pads[g_pollController].keyDown)
+#define g_keyTime       (g_pads[g_pollController].keyTime)
+#define g_keyPress      (g_pads[g_pollController].keyPress)
 /* Right-stick sensitivity multipliers.  These compound with the engine's
  * own binaryAxisVal (1.5 for TURN, 1.25 for PITCH set in
  * sithControl_MapDefaultsJoystick).  Halved from the previous 2.5/2.0
@@ -83,7 +109,6 @@ static float g_lookSensY = 1.2f;
 static int   g_lookSensitivity = 50;
 static int   g_invertLookY = 0;
 static int   g_vibrationEnabled = 1;
-static int   g_openAttempted;  /* deferred XInputOpen: tried once from ReadControls */
 
 /* Key state array — indexed by DIK_ value OR engine-extended joy/mouse
  * key index.  Must be >= JK_NUM_KEYS = 0x100 + JK_NUM_EXTENDED_KEYS
@@ -92,9 +117,6 @@ static int   g_openAttempted;  /* deferred XInputOpen: tried once from ReadContr
  * mouse buttons.  Smaller arrays silently drop joy-button writes —
  * the symptom is "right trigger does nothing because KEY_JOY1_B17 is
  * out of range". */
-#define XBOX_NUM_KEYS  512
-static unsigned char g_keyDown[XBOX_NUM_KEYS];      /* current held state */
-static unsigned int  g_keyTime[XBOX_NUM_KEYS];
 /* Per-frame press-edge counter.  Mirrors stdControl_aInput2 in PC's
  * Common/stdControl.c — increments on each off→on transition,
  * accumulated into the caller's pOut by ReadKey, then reset at the
@@ -103,8 +125,6 @@ static unsigned int  g_keyTime[XBOX_NUM_KEYS];
  * "while(readInput--)" style consumers (NEXTWEAPON cycle, etc.) read
  * — without it, a held key would be read as N presses where N =
  * frames-held. */
-static unsigned int  g_keyPress[XBOX_NUM_KEYS];
-
 void stdControl_ReadControls(void);
 void stdControl_XboxSetLookOptions(int sensitivity, int invertLook, int vibration);
 
@@ -168,10 +188,9 @@ int stdControl_Startup(void)
      * enumeration is asynchronous and may not complete by the time
      * stdControl_Startup runs (right after Main_Startup).  By the first
      * ReadControls call the game loop is running and USB is ready. */
-    memset(g_axisValues, 0, sizeof(g_axisValues));
-    memset(g_prevAnalog, 0, sizeof(g_prevAnalog));
-    g_prevButtons = 0; g_crouchToggle = 0; g_sprintToggle = 0; g_walkToggle = 0;
-    g_hController = NULL; g_connected = 0; g_openAttempted = 0;
+    memset(g_pads, 0, sizeof(g_pads));
+    g_activeController = 0;
+    g_pollController = 0;
     stdControl_XboxSetLookOptions(
         wuRegistry_GetInt("xboxLookSensitivity", 50),
         wuRegistry_GetBool("xboxInvertLook", 0),
@@ -186,13 +205,21 @@ int stdControl_Startup(void)
     xbox_init_joystick_axis(XBOX_AXIS_LOOK_LR, -32767, 32767);
     xbox_init_joystick_axis(XBOX_AXIS_LOOK_UD, -32767, 32767);
 
-    XDBG("stdControl_Startup: joystick axes 0..3 marked enabled, deferred XInputOpen\n");
+    XDBG("stdControl_Startup: joystick axes 0..3 marked enabled, deferred XInputOpen x4\n");
     return 1;
 }
 
 void stdControl_Shutdown(void)
 {
-    if (g_hController) { XInputClose(g_hController); g_hController = NULL; }
+    int i;
+    for (i = 0; i < XBOX_MAX_CONTROLLERS; i++)
+    {
+        if (g_pads[i].hController)
+        {
+            XInputClose(g_pads[i].hController);
+            g_pads[i].hController = NULL;
+        }
+    }
     XDBG("stdControl_Shutdown\n");
 }
 int  stdControl_Open(void)     { return 1; }
@@ -200,13 +227,17 @@ int  stdControl_Close(void)    { return 1; }
 
 void stdControl_Flush(void)
 {
-    memset(g_axisValues, 0, sizeof(g_axisValues));
-    memset(g_keyDown,    0, sizeof(g_keyDown));
-    memset(g_keyPress,   0, sizeof(g_keyPress));
+    int i;
+    for (i = 0; i < XBOX_MAX_CONTROLLERS; i++)
+    {
+        memset(g_pads[i].axisValues, 0, sizeof(g_pads[i].axisValues));
+        memset(g_pads[i].keyDown,    0, sizeof(g_pads[i].keyDown));
+        memset(g_pads[i].keyPress,   0, sizeof(g_pads[i].keyPress));
+    }
     stdControl_ReadControls();
 }
 
-void stdControl_ReadControls(void)
+static void stdControl_ReadController(int port)
 {
     XINPUT_STATE state;
     XINPUT_GAMEPAD *pad;
@@ -230,7 +261,7 @@ void stdControl_ReadControls(void)
     {
         g_openAttempted = 1;
         XDBG("stdControl: lazy XInputOpen\n");
-        g_hController = XInputOpen(XDEVICE_TYPE_GAMEPAD, XDEVICE_PORT0,
+        g_hController = XInputOpen(XDEVICE_TYPE_GAMEPAD, XDEVICE_PORT0 + port,
                                    XDEVICE_NO_SLOT, NULL);
         g_connected = (g_hController != NULL) ? 1 : 0;
         XDBGF("stdControl: controller %s (handle=%p)\n",
@@ -381,10 +412,10 @@ void stdControl_ReadControls(void)
     }
 }
 
-float stdControl_ReadAxis(int n)        { if(n<0||n>=XBOX_NUM_AXES) return 0.0f; return g_axisValues[n]; }
-int   stdControl_ReadAxisRaw(int n)     { if(n<0||n>=XBOX_NUM_AXES) return 0; return (int)(g_axisValues[n]*32767.0f); }
+float stdControl_ReadAxis(int n)        { if(n<0||n>=XBOX_NUM_AXES) return 0.0f; return g_pads[g_activeController].axisValues[n]; }
+int   stdControl_ReadAxisRaw(int n)     { if(n<0||n>=XBOX_NUM_AXES) return 0; return (int)(g_pads[g_activeController].axisValues[n]*32767.0f); }
 float stdControl_ReadKeyAsAxis(int k)   { (void)k; return 0.0f; }
-int   stdControl_ReadAxisAsKey(int n)   { if(n<0||n>=XBOX_NUM_AXES) return 0; return (g_axisValues[n]>0.5f||g_axisValues[n]<-0.5f)?1:0; }
+int   stdControl_ReadAxisAsKey(int n)   { if(n<0||n>=XBOX_NUM_AXES) return 0; return (g_pads[g_activeController].axisValues[n]>0.5f||g_pads[g_activeController].axisValues[n]<-0.5f)?1:0; }
 int   stdControl_ReadKey(int keyNum, int *pOut) {
     /* Mirror PC's Common/stdControl.c:455:
      *   *pOut += stdControl_aInput2[keyNum];   (press-edge count)
@@ -401,8 +432,8 @@ int   stdControl_ReadKey(int keyNum, int *pOut) {
      * `while (readInput--) cycle_weapon();` see one press per
      * physical button-down event, not one per held frame. */
     if (keyNum < 0 || keyNum >= XBOX_NUM_KEYS) return 0;
-    if (pOut) *pOut += g_keyPress[keyNum];
-    return g_keyDown[keyNum];
+    if (pOut) *pOut += g_pads[g_activeController].keyPress[keyNum];
+    return g_pads[g_activeController].keyDown[keyNum];
 }
 void  stdControl_FinishRead(void)       { }
 
@@ -418,9 +449,9 @@ void stdControl_ToggleMouse(void)       { }
 void stdControl_ReadMouse(void)         { }
 void stdControl_SetMouseSensitivity(float x, float y) { g_lookSensX=x*2.5f; g_lookSensY=y*2.0f; }
 
-void stdControl_InitAxis(int idx, int mn, int mx, float mult) { (void)mn;(void)mx;(void)mult; if(idx>=0&&idx<XBOX_NUM_AXES) g_axisValues[idx]=0.0f; }
+void stdControl_InitAxis(int idx, int mn, int mx, float mult) { (void)mn;(void)mx;(void)mult; if(idx>=0&&idx<XBOX_NUM_AXES) g_pads[g_activeController].axisValues[idx]=0.0f; }
 int  stdControl_EnableAxis(unsigned int idx) { (void)idx; return 1; }
-void stdControl_Reset(void)                  { memset(g_axisValues,0,sizeof(g_axisValues)); }
+void stdControl_Reset(void)                  { int i; for (i = 0; i < XBOX_MAX_CONTROLLERS; i++) memset(g_pads[i].axisValues,0,sizeof(g_pads[i].axisValues)); }
 
 void stdControl_ShowSystemKeyboard(void)      { }
 void stdControl_HideSystemKeyboard(void)      { }
@@ -440,6 +471,39 @@ void stdControl_XboxSetLookOptions(int sensitivity, int invertLook, int vibratio
     g_lookSensY = 1.2f * scale;
 }
 
+void stdControl_ReadControls(void)
+{
+    int port;
+    int oldPoll = g_pollController;
+
+    for (port = 0; port < XBOX_MAX_CONTROLLERS; port++)
+    {
+        g_pollController = port;
+        stdControl_ReadController(port);
+    }
+
+    g_pollController = oldPoll;
+}
+
 int stdControl_XboxGetLookSensitivity(void) { return g_lookSensitivity; }
 int stdControl_XboxGetInvertLook(void) { return g_invertLookY; }
 int stdControl_XboxGetVibration(void) { return g_vibrationEnabled; }
+
+void stdControl_XboxSetActiveController(int port)
+{
+    if (port < 0 || port >= XBOX_MAX_CONTROLLERS)
+        port = 0;
+    g_activeController = port;
+}
+
+int stdControl_XboxGetConnectedMask(void)
+{
+    int i;
+    int mask = 0;
+    for (i = 0; i < XBOX_MAX_CONTROLLERS; i++)
+    {
+        if (g_pads[i].connected)
+            mask |= (1 << i);
+    }
+    return mask;
+}

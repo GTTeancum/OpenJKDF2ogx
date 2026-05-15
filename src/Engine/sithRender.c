@@ -33,6 +33,7 @@
 #include "stdPlatform.h"
 #ifdef TARGET_XBOX
 #include "Platform/Xbox/xbox_debug.h"
+#include "Platform/Xbox/xbox_splitscreen.h"
 #endif
 
 #if defined(TARGET_TWL)
@@ -3173,6 +3174,34 @@ void sithRender_RenderThings()
                             break;
                     }
                     //printf("%f %f %f %d\n", (flex32_t)thingIter->screenPos.x, (flex32_t)thingIter->screenPos.y, (flex32_t)thingIter->screenPos.z, clippingVal);
+#ifdef TARGET_XBOX
+                    if (xboxSplitScreen_IsEnabled()
+                        && thingIter->type == SITH_THING_PLAYER
+                        && thingIter->rdthing.type == RD_THINGTYPE_MODEL
+                        && clippingVal == SPHERE_FULLY_OUTSIDE)
+                    {
+                        flex_t cameraDist = stdMath_Dist3D1(thingIter->screenPos.x, thingIter->screenPos.y, thingIter->screenPos.z);
+                        if (cameraDist <= clipRadius * 2.5f || thingIter->screenPos.y <= clipRadius)
+                        {
+                            static int s_xboxClosePlayerCullLog = 0;
+                            if (s_xboxClosePlayerCullLog < 16)
+                            {
+                                XDBGF("SplitScreenCloseCull: keep player=%p focus=%p clip=%d dist=%.4f radius=%.4f screen=(%.4f,%.4f,%.4f) frustumNear=%.6f\n",
+                                      (void*)thingIter,
+                                      sithCamera_currentCamera ? (void*)sithCamera_currentCamera->primaryFocus : 0,
+                                      clippingVal,
+                                      (double)cameraDist,
+                                      (double)clipRadius,
+                                      (double)thingIter->screenPos.x,
+                                      (double)thingIter->screenPos.y,
+                                      (double)thingIter->screenPos.z,
+                                      v1->clipFrustum ? (double)v1->clipFrustum->zNear : 0.0);
+                                s_xboxClosePlayerCullLog++;
+                            }
+                            clippingVal = SPHERE_CLIPPING_EDGE;
+                        }
+                    }
+#endif
                     thingIter->rdthing.clippingIdk = clippingVal;
                     if ( clippingVal == SPHERE_FULLY_OUTSIDE || sithRender_008d1668) // MoTS added: sithRender_008d1668
                         continue;
@@ -3349,6 +3378,9 @@ void sithRender_RenderThings()
 int sithRender_RenderThing(sithThing *pThing)
 {
     int ret;
+#ifdef TARGET_XBOX
+    int xboxSavedCullFlags = -1;
+#endif
 
     // Added: Ensure the clipping frustum doesn't get mutated
     //rdClipFrustum* pFullCameraFrustum = rdCamera_pCurCamera->pClipFrustum;
@@ -3388,7 +3420,41 @@ int sithRender_RenderThing(sithThing *pThing)
         rdCamera_pCurCamera->pClipFrustum = pThing->sector->clipFrustum;
     }
 #endif
+#ifdef TARGET_XBOX
+    if (xboxSplitScreen_IsEnabled()
+        && pThing->type == SITH_THING_PLAYER
+        && pThing->rdthing.type == RD_THINGTYPE_MODEL
+        && pThing != sithCamera_currentCamera->primaryFocus)
+    {
+        flex_t cameraDist = stdMath_Dist3D1(pThing->screenPos.x, pThing->screenPos.y, pThing->screenPos.z);
+        flex_t closeRadius = pThing->rdthing.model3 ? pThing->rdthing.model3->radius * 4.0f : 0.0f;
+        if (cameraDist <= closeRadius || pThing->screenPos.y <= closeRadius)
+        {
+            static int s_xboxCloseDrawLog = 0;
+            xboxSavedCullFlags = rdGetCullFlags();
+            rdSetCullFlags(0);
+            pThing->rdthing.clippingIdk = SPHERE_CLIPPING_EDGE;
+            if (s_xboxCloseDrawLog < 16)
+            {
+                XDBGF("SplitScreenCloseDraw: player=%p focus=%p dist=%.4f close=%.4f screen=(%.4f,%.4f,%.4f) oldCull=%d\n",
+                      (void*)pThing,
+                      sithCamera_currentCamera ? (void*)sithCamera_currentCamera->primaryFocus : 0,
+                      (double)cameraDist,
+                      (double)closeRadius,
+                      (double)pThing->screenPos.x,
+                      (double)pThing->screenPos.y,
+                      (double)pThing->screenPos.z,
+                      xboxSavedCullFlags);
+                s_xboxCloseDrawLog++;
+            }
+        }
+    }
+#endif
     ret = rdThing_Draw(&pThing->rdthing, &pThing->lookOrientation);
+#ifdef TARGET_XBOX
+    if (xboxSavedCullFlags >= 0)
+        rdSetCullFlags(xboxSavedCullFlags);
+#endif
     rdVector_Zero3(&pThing->lookOrientation.scale);
     if (sithRender_weaponRenderHandle && (pThing->thingflags & SITH_TF_RENDERWEAPON)) {
         sithRender_weaponRenderHandle(pThing);
