@@ -7,13 +7,61 @@
 #include "Win95/stdMci.h"
 #include "Main/jkRes.h"
 #include "Main/jkMain.h"
+#include "Platform/stdControl.h"
+#include "types_enums.h"
 
 #include "../jk.h"
+
+#ifdef TARGET_XBOX
+void jk_ShowCursor(int a);
+void jk_SetCursor(HCURSOR hCursor);
+extern int jkGame_isDDraw;
+void stdDisplay_XboxSetCreditsDebug(int enabled);
+#endif
 
 // Added: Simulate Disk 1 in menu
 int jkCredits_cdOverride = 0;
 
 static stdVBuffer* jkCredits_pVbufferTmp;
+#ifdef TARGET_XBOX
+static int jkCredits_xboxPrevSkipInput;
+static int jkCredits_xboxTickCount;
+
+static unsigned int jkCredits_xboxVbufSig(stdVBuffer *vbuf)
+{
+    static const int sampleRows[] = { 0, 1, 31, 32, 120, 240, 447, 448, 478, 479 };
+    unsigned int sig = 2166136261u;
+    unsigned int nonzero = 0;
+    int rows = (int)(sizeof(sampleRows) / sizeof(sampleRows[0]));
+
+    if (!vbuf || !vbuf->surface_lock_alloc || vbuf->format.width <= 0 || vbuf->format.height <= 0 || vbuf->format.width_in_bytes <= 0)
+        return 0;
+
+    for (int ri = 0; ri < rows; ri++)
+    {
+        int y = sampleRows[ri];
+        if (y >= vbuf->format.height)
+            continue;
+
+        const unsigned char *row = (const unsigned char *)vbuf->surface_lock_alloc + y * vbuf->format.width_in_bytes;
+        for (int x = 0; x < vbuf->format.width; x += 37)
+        {
+            unsigned int v = row[x];
+            sig = (sig ^ v) * 16777619u;
+            nonzero += (v != 0);
+        }
+    }
+
+    return sig ^ (nonzero << 24);
+}
+
+static unsigned char jkCredits_xboxVbufSample(stdVBuffer *vbuf, int x, int y)
+{
+    if (!vbuf || !vbuf->surface_lock_alloc || x < 0 || y < 0 || x >= vbuf->format.width || y >= vbuf->format.height || vbuf->format.width_in_bytes <= 0)
+        return 0;
+    return (unsigned char)vbuf->surface_lock_alloc[y * vbuf->format.width_in_bytes + x];
+}
+#endif
 
 void jkCredits_Startup(char *fpath)
 {
@@ -117,8 +165,10 @@ LABEL_36:
     }
     v2 = 0;
 LABEL_12:
+#ifndef TARGET_XBOX
     v3 = stdGdi_GetHwnd();
     jk_SetFocus(v3);
+#endif
     memset(jkCredits_aPalette, 0, sizeof(jkCredits_aPalette));
     v4 = stdDisplay_FindClosestMode(&a1, Video_renderSurface, stdDisplay_numVideoModes);
     if ( v2 )
@@ -141,18 +191,18 @@ LABEL_19:
         Window_ShowCursorUnwindowed(0);
     else
         Window_ShowCursorUnwindowed(1);
-    Window_AddMsgHandler(jkCredits_Handler);
+    Window_AddMsgHandler((WindowHandler_t)jkCredits_Handler);
     v5 = 0;
     v6 = 0;
     v7 = &jkCredits_aPalette[7];
     do
     {
         v7 += 3;
-        v8 = (uint64_t)(2510300521 * v6) >> 32;
+        v8 = ((uint64_t)2510300521u * (uint32_t)v6) >> 32;
         v6 += 4;
         *(v7 - 4) = (v8 >> 7 < 0) + (v8 >> 7);
         *(v7 - 3) = 0;
-        v9 = (int)((uint64_t)(2510300521 * v5) >> 32) >> 7;
+        v9 = (int)(((uint64_t)2510300521u * (uint32_t)v5) >> 32) >> 7;
         v5 += 183;
         *(v7 - 2) = (v9 < 0) + v9;
     }
@@ -162,17 +212,28 @@ LABEL_19:
     v12 = &jkCredits_aPalette[0x2A0];
     do
     {
-        v13 = (uint64_t)(2216757315 * v11) >> 32;
+        v13 = ((uint64_t)2216757315u * (uint32_t)v11) >> 32;
         v11 += 4;
         *(v12) = (v13 >> 4 < 0) + (v13 >> 4);
         *(v12 + 1) = 0;
-        v14 = (int)((uint64_t)(2216757315 * v10) >> 32) >> 4;
+        v14 = (int)(((uint64_t)2216757315u * (uint32_t)v10) >> 32) >> 4;
         v10 += 183;
         *(v12 + 2) = (v14 < 0) + v14;
 
         v12 += 3;
     }
     while ( (intptr_t)v12 < (intptr_t)&jkCredits_aPalette[0x300] );
+#ifdef TARGET_XBOX
+    for (int xboxPalIdx = 0; xboxPalIdx < 0x300; xboxPalIdx++)
+    {
+        int xboxPalVal = ((unsigned char)jkCredits_aPalette[xboxPalIdx]) << 2;
+        jkCredits_aPalette[xboxPalIdx] = (char)(xboxPalVal > 255 ? 255 : xboxPalVal);
+    }
+    stdPlatform_Printf("CreditsShow: scaled palette p1=%02X%02X%02X p224=%02X%02X%02X p255=%02X%02X%02X\n",
+        (unsigned char)jkCredits_aPalette[3], (unsigned char)jkCredits_aPalette[4], (unsigned char)jkCredits_aPalette[5],
+        (unsigned char)jkCredits_aPalette[672], (unsigned char)jkCredits_aPalette[673], (unsigned char)jkCredits_aPalette[674],
+        (unsigned char)jkCredits_aPalette[765], (unsigned char)jkCredits_aPalette[766], (unsigned char)jkCredits_aPalette[767]);
+#endif
     stdDisplay_SetMasterPalette((uint8_t*)jkCredits_aPalette);
     v15 = stdDisplay_VBufferNew(&Video_menuBuffer.format, 1, 1, jkCredits_aPalette);
     _memcpy(&v26, &Video_menuBuffer.format, sizeof(v26));
@@ -191,7 +252,7 @@ LABEL_19:
         v20 = 0;
         do
         {
-            v21 = (uint64_t)(2288265615 * v20) >> 32;
+            v21 = ((uint64_t)2288265615u * (uint32_t)v20) >> 32;
             v20 += v17;
             v18[v19++] = (v21 >> 9 < 0) + (v21 >> 9) + 2;
         }
@@ -250,8 +311,39 @@ LABEL_19:
     jkCredits_strIdx = 0;
     jkCredits_dword_55AD94 = 1;
 
+#ifdef TARGET_XBOX
+    jkGame_isDDraw = 0;
+    jkCredits_xboxPrevSkipInput = 1;
+    jkCredits_xboxTickCount = 0;
+    stdDisplay_XboxSetCreditsDebug(1);
+    stdPlatform_Printf("CreditsShow: menu draw mode set, msgs=%d vbuf=%p strip=%p tmpPending\n",
+        jkCredits_table.numMsgs, jkCredits_pVbuffer, jkCredits_pVbuffer2);
+#endif
+
     // Added
     jkCredits_pVbufferTmp = stdDisplay_VBufferNew(&Video_menuBuffer.format, 1, 1, jkCredits_aPalette);
+    stdDisplay_ClearRect(&Video_menuBuffer, 0, 0);
+    if (jkCredits_pVbufferTmp)
+        stdDisplay_ClearRect(jkCredits_pVbufferTmp, 0, 0);
+#ifdef TARGET_XBOX
+    stdPlatform_Printf("CreditsDbg: show-clear sig=%08X samples=%02X/%02X/%02X menu=%p tmp=%p mode=%dx%d pitch=%d\n",
+        jkCredits_xboxVbufSig(&Video_menuBuffer),
+        jkCredits_xboxVbufSample(&Video_menuBuffer, 0, 0),
+        jkCredits_xboxVbufSample(&Video_menuBuffer, 320, 240),
+        jkCredits_xboxVbufSample(&Video_menuBuffer, 639, 479),
+        &Video_menuBuffer,
+        jkCredits_pVbufferTmp,
+        Video_menuBuffer.format.width,
+        Video_menuBuffer.format.height,
+        Video_menuBuffer.format.width_in_bytes);
+    stdDisplay_DDrawGdiSurfaceFlip();
+#endif
+#ifdef TARGET_XBOX
+    stdPlatform_Printf("CreditsShow: tmp=%p menuBuf=%p pal0=%02X%02X%02X pal255=%02X%02X%02X\n",
+        jkCredits_pVbufferTmp, &Video_menuBuffer,
+        (unsigned char)jkCredits_aPalette[0], (unsigned char)jkCredits_aPalette[1], (unsigned char)jkCredits_aPalette[2],
+        (unsigned char)jkCredits_aPalette[765], (unsigned char)jkCredits_aPalette[766], (unsigned char)jkCredits_aPalette[767]);
+#endif
     return result;
 }
 
@@ -284,12 +376,63 @@ int jkCredits_Tick()
     rdRect a4; // [esp+30h] [ebp-20h] BYREF
     rdRect v27; // [esp+40h] [ebp-10h] BYREF
 
+#ifdef TARGET_XBOX
+    int xboxSkipNow = 0;
+    int xboxInput = 0;
+    stdControl_ReadControls();
+    if ((stdControl_ReadKey(KEY_JOY1_B1, &xboxInput) && xboxInput)
+        || (stdControl_ReadKey(KEY_JOY1_B2, &xboxInput) && xboxInput)
+        || (stdControl_ReadKey(DIK_ESCAPE, &xboxInput) && xboxInput))
+    {
+        xboxSkipNow = 1;
+    }
+    if (jkCredits_xboxTickCount < 12 || (jkCredits_xboxTickCount % 120) == 0 || xboxSkipNow != jkCredits_xboxPrevSkipInput)
+    {
+        stdPlatform_Printf("CreditsTick: tick=%d active=%d suspended=%d skipNow=%d prevSkip=%d strIdx=%d scroll=%d done=%d\n",
+            jkCredits_xboxTickCount,
+            jkCredits_dword_55AD94,
+            g_app_suspended,
+            xboxSkipNow,
+            jkCredits_xboxPrevSkipInput,
+            jkCredits_strIdx,
+            jkCredits_dword_55AD68,
+            jkCredits_dword_55ADA8);
+    }
+    jkCredits_xboxTickCount++;
+    if (xboxSkipNow && !jkCredits_xboxPrevSkipInput)
+    {
+        stdPlatform_Printf("CreditsTick: skip requested after release\n");
+        jkCredits_xboxPrevSkipInput = xboxSkipNow;
+        return 1;
+    }
+    jkCredits_xboxPrevSkipInput = xboxSkipNow;
+#endif
+
     if (!jkCredits_dword_55AD94 || !g_app_suspended)
+    {
+#ifdef TARGET_XBOX
+        stdPlatform_Printf("CreditsTick: returning early active=%d suspended=%d done=%d\n",
+            jkCredits_dword_55AD94, g_app_suspended, jkCredits_dword_55ADA8);
+#endif
         return jkCredits_dword_55ADA8;
+    }
 
     //pHS->some_float = 60.0;
 
     v0 = -jkCredits_dword_55AD68 - (int64_t)((flex_d_t)(pHS->getTimerTick() - jkCredits_startMs) * (1.0 / pHS->some_float) * -40.0);
+#ifdef TARGET_XBOX
+    if (v0 || jkCredits_xboxTickCount < 12 || (jkCredits_xboxTickCount % 120) == 0)
+    {
+        stdPlatform_Printf("CreditsTick: renderDelta=%d timer=%u start=%u tickRate=%u scrollBefore=%d strIdx=%d lineH=%d\n",
+            v0,
+            pHS->getTimerTick(),
+            jkCredits_startMs,
+            pHS->some_float,
+            jkCredits_dword_55AD68,
+            jkCredits_strIdx,
+            jkCredits_dword_55AD84);
+    }
+#endif
     jkCredits_dword_55AD68 += v0;
     if ( v0 )
     {
@@ -306,7 +449,6 @@ int jkCredits_Tick()
         stdDisplay_VBufferLock(&Video_menuBuffer);
         
         stdDisplay_VBufferCopy(&Video_menuBuffer, jkCredits_pVbufferTmp, 0, 0, &a4, 0);
-        stdDisplay_VBufferUnlock(&Video_menuBuffer);
 #else
         stdDisplay_VBufferCopy(&Video_menuBuffer, &Video_otherBuf, 0, 0, &a4, 0);
 #endif
@@ -359,7 +501,7 @@ int jkCredits_Tick()
             }
             else
             {
-                v5 = _strstr(jkCredits_table.msgs[jkCredits_strIdx].key, "big");
+                v5 = strstr(jkCredits_table.msgs[jkCredits_strIdx].key, "big");
                 v6 = jkCredits_fontLarge;
                 if ( !v5 )
                     v6 = jkCredits_fontSmall;
@@ -373,7 +515,7 @@ int jkCredits_Tick()
 #endif
                 stdFont_Draw3(jkCredits_pVbuffer, v6, 0, &a4, 1, v7, 0);
 #ifdef SDL2_RENDER
-                stdDisplay_VBufferUnlock(jkCredits_pVbuffer2);
+                stdDisplay_VBufferUnlock(jkCredits_pVbuffer);
 #endif
                 v1 = stdFont_sub_4357C0(v6, v7, &a4);
                 v4 = jkCredits_strIdx;
@@ -448,8 +590,42 @@ int jkCredits_Tick()
             while (v24 != 1);
             stdDisplay_VBufferUnlock(&Video_menuBuffer);
         }
+#ifdef TARGET_XBOX
+        if (jkCredits_xboxTickCount < 16 || (jkCredits_xboxTickCount % 120) == 0)
+        {
+            stdPlatform_Printf("CreditsDbg: preflip tick=%d delta=1 sig=%08X samples=%02X/%02X/%02X/%02X strIdx=%d scroll=%d lineH=%d\n",
+                jkCredits_xboxTickCount,
+                jkCredits_xboxVbufSig(&Video_menuBuffer),
+                jkCredits_xboxVbufSample(&Video_menuBuffer, 0, 0),
+                jkCredits_xboxVbufSample(&Video_menuBuffer, 320, 32),
+                jkCredits_xboxVbufSample(&Video_menuBuffer, 320, 240),
+                jkCredits_xboxVbufSample(&Video_menuBuffer, 320, 448),
+                jkCredits_strIdx,
+                jkCredits_dword_55AD68,
+                jkCredits_dword_55AD84);
+        }
+#endif
         stdDisplay_DDrawGdiSurfaceFlip();
     }
+#ifdef TARGET_XBOX
+    else
+    {
+        if (jkCredits_xboxTickCount < 16 || (jkCredits_xboxTickCount % 120) == 0)
+        {
+            stdPlatform_Printf("CreditsDbg: preflip tick=%d delta=0 sig=%08X samples=%02X/%02X/%02X/%02X strIdx=%d scroll=%d lineH=%d\n",
+                jkCredits_xboxTickCount,
+                jkCredits_xboxVbufSig(&Video_menuBuffer),
+                jkCredits_xboxVbufSample(&Video_menuBuffer, 0, 0),
+                jkCredits_xboxVbufSample(&Video_menuBuffer, 320, 32),
+                jkCredits_xboxVbufSample(&Video_menuBuffer, 320, 240),
+                jkCredits_xboxVbufSample(&Video_menuBuffer, 320, 448),
+                jkCredits_strIdx,
+                jkCredits_dword_55AD68,
+                jkCredits_dword_55AD84);
+        }
+        stdDisplay_DDrawGdiSurfaceFlip();
+    }
+#endif
     return jkCredits_dword_55ADA8;
 }
 
@@ -457,7 +633,10 @@ int jkCredits_Skip()
 {
     if ( !jkCredits_dword_55AD94 )
         return 0;
-    Window_RemoveMsgHandler(jkCredits_Handler);
+#ifdef TARGET_XBOX
+    stdDisplay_XboxSetCreditsDebug(0);
+#endif
+    Window_RemoveMsgHandler((WindowHandler_t)jkCredits_Handler);
     jkCredits_dword_55AD94 = 0;
     jk_ShowCursor(1);
     if ( jkCredits_pVbuffer )
@@ -473,6 +652,7 @@ int jkCredits_Skip()
     // Added
     if (jkCredits_pVbufferTmp)
         stdDisplay_VBufferFree(jkCredits_pVbufferTmp);
+    jkCredits_pVbufferTmp = 0;
 
     stdMci_Stop();
     return 1;

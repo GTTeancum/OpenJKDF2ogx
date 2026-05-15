@@ -21,6 +21,48 @@ uint32_t Video_overlayTexId = 0;
 rdColor24 stdDisplay_masterPalette[256];
 
 static int stdDisplay_xboxModeSet = 0;
+int stdDisplay_xboxCreditsDebug = 0;
+
+void stdDisplay_XboxSetCreditsDebug(int enabled)
+{
+    stdDisplay_xboxCreditsDebug = enabled ? 1 : 0;
+    XDBGF("CreditsDbg: display-debug=%d\n", stdDisplay_xboxCreditsDebug);
+}
+
+static unsigned int stdDisplay_xboxVbufSig(stdVBuffer *vbuf)
+{
+    static const int sampleRows[] = { 0, 1, 31, 32, 120, 240, 447, 448, 478, 479 };
+    unsigned int sig = 2166136261u;
+    unsigned int nonzero = 0;
+    int rows = (int)(sizeof(sampleRows) / sizeof(sampleRows[0]));
+
+    if (!vbuf || !vbuf->surface_lock_alloc || vbuf->format.width <= 0 || vbuf->format.height <= 0 || vbuf->format.width_in_bytes <= 0)
+        return 0;
+
+    for (int ri = 0; ri < rows; ri++)
+    {
+        int y = sampleRows[ri];
+        if (y >= vbuf->format.height)
+            continue;
+
+        const unsigned char *row = (const unsigned char *)vbuf->surface_lock_alloc + y * vbuf->format.width_in_bytes;
+        for (int x = 0; x < vbuf->format.width; x += 37)
+        {
+            unsigned int v = row[x];
+            sig = (sig ^ v) * 16777619u;
+            nonzero += (v != 0);
+        }
+    }
+
+    return sig ^ (nonzero << 24);
+}
+
+static unsigned char stdDisplay_xboxVbufSample(stdVBuffer *vbuf, int x, int y)
+{
+    if (!vbuf || !vbuf->surface_lock_alloc || x < 0 || y < 0 || x >= vbuf->format.width || y >= vbuf->format.height || vbuf->format.width_in_bytes <= 0)
+        return 0;
+    return (unsigned char)vbuf->surface_lock_alloc[y * vbuf->format.width_in_bytes + x];
+}
 
 static void stdDisplay_xbox_InitFmt(stdVBufferTexFmt *fmt, int w, int h, int bpp)
 {
@@ -147,11 +189,40 @@ int stdDisplay_ClearRect(stdVBuffer *buf, int fillColor, rdRect *rect)
 
 int stdDisplay_DDrawGdiSurfaceFlip()
 {
+    static unsigned int flipCalls = 0;
+    flipCalls++;
+
     if (!stdDisplay_xboxModeSet && !Video_menuBuffer.surface_lock_alloc)
+    {
+        if (stdDisplay_xboxCreditsDebug)
+            XDBGF("CreditsDbg: Flip call=%u rejected modeSet=%d alloc=%p\n",
+                  flipCalls, stdDisplay_xboxModeSet, Video_menuBuffer.surface_lock_alloc);
         return 0;
+    }
 
     if (jkGame_isDDraw && !jkCutscene_isRendering)
+    {
+        if (stdDisplay_xboxCreditsDebug)
+            XDBGF("CreditsDbg: Flip call=%u suppressed jkGame_isDDraw=%d cutscene=%d sig=%08X\n",
+                  flipCalls, jkGame_isDDraw, jkCutscene_isRendering, stdDisplay_xboxVbufSig(&Video_menuBuffer));
         return 1;
+    }
+
+    if (stdDisplay_xboxCreditsDebug && (flipCalls <= 20 || (flipCalls % 120) == 0))
+    {
+        XDBGF("CreditsDbg: Flip call=%u cutscene=%d ddraw=%d modeSet=%d menu=%p alloc=%p sig=%08X samples=%02X/%02X/%02X pitch=%d\n",
+              flipCalls,
+              jkCutscene_isRendering,
+              jkGame_isDDraw,
+              stdDisplay_xboxModeSet,
+              &Video_menuBuffer,
+              Video_menuBuffer.surface_lock_alloc,
+              stdDisplay_xboxVbufSig(&Video_menuBuffer),
+              stdDisplay_xboxVbufSample(&Video_menuBuffer, 0, 0),
+              stdDisplay_xboxVbufSample(&Video_menuBuffer, 320, 240),
+              stdDisplay_xboxVbufSample(&Video_menuBuffer, 639, 479),
+              Video_menuBuffer.format.width_in_bytes);
+    }
 
     if (jkCutscene_isRendering)
         std3D_StartScene();
@@ -159,9 +230,6 @@ int stdDisplay_DDrawGdiSurfaceFlip()
     std3D_DrawMenuVBuffer8(&Video_menuBuffer, stdDisplay_masterPalette);
     std3D_EndScene();
     std3D_Present();
-
-    if (!jkCutscene_isRendering)
-        std3D_StartScene();
 
     return 1;
 }

@@ -18,6 +18,7 @@
 #include <math.h>            /* tan() for projection-matrix setup */
 
 extern int jkCutscene_isRendering;
+extern int stdDisplay_xboxCreditsDebug;
 
 #ifdef __cplusplus
 extern "C" {
@@ -123,6 +124,10 @@ void * __stdcall wglGetProcAddress(const char *s);
 #define GL_SRC_ALPHA           0x0302
 #define GL_ONE_MINUS_SRC_ALPHA 0x0303
 
+#define STD3D_TRI_FLAG_CLAMP_X 0x20000
+#define STD3D_TRI_FLAG_CLAMP_Y 0x40000
+#define STD3D_TRI_FLAG_NEAREST 0x80000
+
 #ifdef __cplusplus
 extern "C" {
 #endif
@@ -196,6 +201,14 @@ typedef struct
     int             flags;
     rdDDrawSurface *texture;
 } rdTri;
+
+typedef struct
+{
+    int             vertIdxStart;
+    int             numVertices;
+    int             flags;
+    rdDDrawSurface *texture;
+} rdNGon;
 
 typedef struct
 {
@@ -767,7 +780,7 @@ void std3D_Present(void)
     if (!g_initialized) { XDBG("std3D_Present: not initialized\n"); return; }
     g_presentCalls++;
 
-    if (!jkCutscene_isRendering) {
+    if (!jkCutscene_isRendering && !stdDisplay_xboxCreditsDebug) {
         /* Publish vertex bbox to HUD slots 5/6/7.  Format: "VX  min max". */
         if (g_bboxValid) {
             sprintf(buf, "VX %d %d", (int)g_bboxXmin, (int)g_bboxXmax);
@@ -827,7 +840,7 @@ void std3D_Present(void)
     glDisable(GL_TEXTURE_2D);
 #endif
 
-    if (!jkCutscene_isRendering) {
+    if (!jkCutscene_isRendering && !stdDisplay_xboxCreditsDebug) {
         /* Live counters into the HUD text. */
         std3D_DebugLineKV(19, "STARTS",  g_startCalls);
         std3D_DebugLineKV(20, "CLEARS",  g_clearCalls);
@@ -910,7 +923,32 @@ void std3D_AddRenderListLines(rdLine *lines, unsigned int num_lines)
 
 void std3D_AddRenderListNGons(void *ngons, unsigned int n)
 {
-    (void)ngons; (void)n;
+    rdNGon *src;
+    unsigned int i;
+    unsigned int j;
+
+    if (!ngons || n == 0) return;
+
+    src = (rdNGon *)ngons;
+    for (i = 0; i < n; ++i)
+    {
+        if (src[i].numVertices < 3)
+            continue;
+
+        for (j = 0; j + 2 < (unsigned int)src[i].numVertices; ++j)
+        {
+            rdTri *dst;
+            if (GL_numTris >= STD3D_MAX_TRIS)
+                return;
+
+            dst = &GL_tmpTris[GL_numTris++];
+            dst->v1 = src[i].vertIdxStart;
+            dst->v2 = src[i].vertIdxStart + (int)j + 1;
+            dst->v3 = src[i].vertIdxStart + (int)j + 2;
+            dst->flags = src[i].flags;
+            dst->texture = src[i].texture;
+        }
+    }
 }
 
 void std3D_ResetRenderList(void)
@@ -944,7 +982,7 @@ void std3D_DrawRenderList(void)
 {
     int i;
     if (!g_initialized || !g_sceneOpen) return;
-    if (GL_numTris == 0 || !GL_verticesDone) return;
+    if ((GL_numTris == 0 && GL_numLines == 0) || !GL_verticesDone) return;
     std3D_DebugLineKV(10, "DRAWN", GL_numTris);
 
     /* ---------------------------------------------------------------- */
@@ -1049,6 +1087,7 @@ void std3D_DrawRenderList(void)
         int textured_tris = 0, untextured_tris = 0, bind_switches = 0;
         unsigned int last_id = 0;
         int last_flags = -1;
+        int last_sampler_flags = -1;
 
     for (i = 0; i < GL_numTris; ++i)
     {
@@ -1101,16 +1140,29 @@ void std3D_DrawRenderList(void)
 
             if (textured) {
                 unsigned int id = (unsigned int)t->texture->texture_id;
+                int sampler_flags = t->flags & (STD3D_TRI_FLAG_CLAMP_X | STD3D_TRI_FLAG_CLAMP_Y | STD3D_TRI_FLAG_NEAREST);
                 if (id != last_id) {
                     g_pfnBindTexture(GL_TEXTURE_2D, id);
                     last_id = id;
+                    last_sampler_flags = -1;
                     bind_switches++;
+                }
+                if (sampler_flags != last_sampler_flags) {
+                    GLfloat filter = (sampler_flags & STD3D_TRI_FLAG_NEAREST) ? (GLfloat)GL_NEAREST : (GLfloat)GL_LINEAR;
+                    glTexParameterf(GL_TEXTURE_2D, GL_TEXTURE_WRAP_S,
+                                    (sampler_flags & STD3D_TRI_FLAG_CLAMP_X) ? (GLfloat)GL_CLAMP : (GLfloat)GL_REPEAT);
+                    glTexParameterf(GL_TEXTURE_2D, GL_TEXTURE_WRAP_T,
+                                    (sampler_flags & STD3D_TRI_FLAG_CLAMP_Y) ? (GLfloat)GL_CLAMP : (GLfloat)GL_REPEAT);
+                    glTexParameterf(GL_TEXTURE_2D, GL_TEXTURE_MIN_FILTER, filter);
+                    glTexParameterf(GL_TEXTURE_2D, GL_TEXTURE_MAG_FILTER, filter);
+                    last_sampler_flags = sampler_flags;
                 }
                 glEnable(GL_TEXTURE_2D);
                 textured_tris++;
             } else {
                 glDisable(GL_TEXTURE_2D);
                 last_id = 0;
+                last_sampler_flags = -1;
                 untextured_tris++;
             }
 
@@ -1219,6 +1271,43 @@ void std3D_DrawRenderList(void)
     }
     glEnable(GL_DEPTH_TEST);
 #endif
+
+    if (GL_numLines)
+    {
+        glDisable(GL_TEXTURE_2D);
+        glDisable(GL_BLEND);
+        glDisable(GL_CULL_FACE);
+
+        for (i = 0; i < GL_numLines; ++i)
+        {
+            rdLine *l = &GL_tmpLines[i];
+            D3DVERTEX *a = &GL_tmpVertices[l->v1];
+            D3DVERTEX *b = &GL_tmpVertices[l->v2];
+
+            if (l->flags & 0x800) glDepthFunc(GL_LESS);
+            else                  glDepthFunc(GL_ALWAYS);
+
+            if (l->flags & 0x1000) glDepthMask(GL_TRUE);
+            else                   glDepthMask(GL_FALSE);
+
+#define V_COLOR_R(v) (float)(((v)->color >> 16) & 0xFF) / 255.0f
+#define V_COLOR_G(v) (float)(((v)->color >>  8) & 0xFF) / 255.0f
+#define V_COLOR_B(v) (float)( (v)->color        & 0xFF) / 255.0f
+#define V_COLOR_RGB_NONZERO(v) (((v)->color & 0x00FFFFFFu) != 0u)
+            glBegin(GL_LINES);
+            if (V_COLOR_RGB_NONZERO(a)) glColor4f(V_COLOR_R(a), V_COLOR_G(a), V_COLOR_B(a), 1.0f);
+            else                        glColor4f(a->lightLevel, a->lightLevel, a->lightLevel, 1.0f);
+            V3F_ENGINE_TO_GL(a);
+            if (V_COLOR_RGB_NONZERO(b)) glColor4f(V_COLOR_R(b), V_COLOR_G(b), V_COLOR_B(b), 1.0f);
+            else                        glColor4f(b->lightLevel, b->lightLevel, b->lightLevel, 1.0f);
+            V3F_ENGINE_TO_GL(b);
+            glEnd();
+#undef V_COLOR_R
+#undef V_COLOR_G
+#undef V_COLOR_B
+#undef V_COLOR_RGB_NONZERO
+        }
+    }
 
     GL_numVertices  = 0;
     GL_verticesDone = 0;
@@ -1775,6 +1864,34 @@ static void xbox_set_ui_state(int enable_blend)
     }
 }
 
+static unsigned int std3D_xboxMenuSig8(const stdVBuffer *vbuf)
+{
+    static const int sampleRows[] = { 0, 1, 31, 32, 120, 240, 447, 448, 478, 479 };
+    unsigned int sig = 2166136261u;
+    unsigned int nonzero = 0;
+    int rows = (int)(sizeof(sampleRows) / sizeof(sampleRows[0]));
+
+    if (!vbuf || !vbuf->surface_lock_alloc || vbuf->format.width <= 0 || vbuf->format.height <= 0 || vbuf->format.width_in_bytes <= 0)
+        return 0;
+
+    for (int ri = 0; ri < rows; ri++)
+    {
+        int y = sampleRows[ri];
+        if (y >= vbuf->format.height)
+            continue;
+
+        const unsigned char *row = (const unsigned char *)vbuf->surface_lock_alloc + y * vbuf->format.width_in_bytes;
+        for (int x = 0; x < vbuf->format.width; x += 37)
+        {
+            unsigned int v = row[x];
+            sig = (sig ^ v) * 16777619u;
+            nonzero += (v != 0);
+        }
+    }
+
+    return sig ^ (nonzero << 24);
+}
+
 void std3D_DrawMenuVBuffer8(stdVBuffer *vbuf, const rdColor24_local *pal)
 {
     unsigned int w, h, padW, padH, x, y, total;
@@ -1782,6 +1899,8 @@ void std3D_DrawMenuVBuffer8(stdVBuffer *vbuf, const rdColor24_local *pal)
     unsigned int texId;
     float u2, v2;
     static unsigned int menuTexId = 0;
+    static unsigned int menuDrawCalls = 0;
+    unsigned int srcSig = 0;
 
     if (!g_initialized || !vbuf || !vbuf->surface_lock_alloc)
         return;
@@ -1789,6 +1908,10 @@ void std3D_DrawMenuVBuffer8(stdVBuffer *vbuf, const rdColor24_local *pal)
         pal = g_pCurrentPalette;
     if (!pal)
         return;
+
+    menuDrawCalls++;
+    if (stdDisplay_xboxCreditsDebug)
+        srcSig = std3D_xboxMenuSig8(vbuf);
 
     w = (unsigned int)vbuf->format.width;
     h = (unsigned int)vbuf->format.height;
@@ -1820,6 +1943,37 @@ void std3D_DrawMenuVBuffer8(stdVBuffer *vbuf, const rdColor24_local *pal)
         }
     }
 
+    if (stdDisplay_xboxCreditsDebug && (menuDrawCalls <= 20 || (menuDrawCalls % 120) == 0))
+    {
+        unsigned int mid = ((h / 2) * padW + (w / 2)) * 4;
+        unsigned int top = ((h > 32 ? 32 : 0) * padW + (w / 2)) * 4;
+        unsigned int bot = (((h > 449 ? 448 : (h - 1))) * padW + (w / 2)) * 4;
+        XDBGF("CreditsDbg: DrawMenu call=%u sceneOpen=%d start=%u clear=%u end=%u endTr=%u present=%u w=%u h=%u pitch=%d pad=%ux%u tex=%u srcSig=%08X rgbaTop=%02X%02X%02X%02X rgbaMid=%02X%02X%02X%02X rgbaBot=%02X%02X%02X%02X pal0=%02X%02X%02X pal255=%02X%02X%02X\n",
+              menuDrawCalls,
+              g_sceneOpen,
+              g_startCalls,
+              g_clearCalls,
+              g_endCalls,
+              g_endTransitions,
+              g_presentCalls,
+              w,
+              h,
+              vbuf->format.width_in_bytes,
+              padW,
+              padH,
+              menuTexId,
+              srcSig,
+              g_texScratch[top + 0], g_texScratch[top + 1], g_texScratch[top + 2], g_texScratch[top + 3],
+              g_texScratch[mid + 0], g_texScratch[mid + 1], g_texScratch[mid + 2], g_texScratch[mid + 3],
+              g_texScratch[bot + 0], g_texScratch[bot + 1], g_texScratch[bot + 2], g_texScratch[bot + 3],
+              pal[0].r, pal[0].g, pal[0].b,
+              pal[255].r, pal[255].g, pal[255].b);
+    }
+
+    xbox_set_ui_state(0);
+    glDisable(GL_TEXTURE_2D);
+    glClear(GL_COLOR_BUFFER_BIT | GL_DEPTH_BUFFER_BIT | GL_STENCIL_BUFFER_BIT);
+
     if (!g_pfnBindTexture)
         return;
 
@@ -1834,7 +1988,6 @@ void std3D_DrawMenuVBuffer8(stdVBuffer *vbuf, const rdColor24_local *pal)
     glTexImage2D(GL_TEXTURE_2D, 0, 4, (GLsizei)padW, (GLsizei)padH, 0,
                  GL_RGBA, GL_UNSIGNED_BYTE, g_texScratch);
 
-    xbox_set_ui_state(0);
     glEnable(GL_TEXTURE_2D);
     g_pfnBindTexture(GL_TEXTURE_2D, texId);
     glColor4f(1.0f, 1.0f, 1.0f, 1.0f);
