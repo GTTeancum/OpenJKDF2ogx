@@ -26,6 +26,7 @@
 #include "jk.h"
 
 #ifdef TARGET_XBOX
+#include "Platform/Xbox/xbox_debug.h"
 #include "Platform/Xbox/xbox_splitscreen.h"
 #endif
 
@@ -173,6 +174,35 @@ int jkGame_Update()
 #endif
 
 #ifdef TARGET_XBOX
+    {
+        static int s_xboxFrameDbg = 0;
+        if (s_xboxFrameDbg < 12 || (s_xboxFrameDbg % 120) == 0)
+        {
+            XDBGF("XboxFrame: begin n=%d split=%d multi=%d server=%d b3d=%d geo=%d light=%d tex=%d viewIdx=%d palEn=%d tint=(%.3f,%.3f,%.3f) filter=(%d,%d,%d) add=(%d,%d,%d) fade=%.3f\n",
+                  s_xboxFrameDbg,
+                  xboxSplitScreen_IsEnabled(),
+                  sithNet_isMulti,
+                  sithNet_isServer,
+                  (int)Video_modeStruct.b3DAccel,
+                  Video_modeStruct.geoMode,
+                  Video_modeStruct.lightMode,
+                  Video_modeStruct.texMode,
+                  Video_modeStruct.viewSizeIdx,
+                  stdPalEffects_state.bEnabled,
+                  (double)stdPalEffects_state.effect.tint.x,
+                  (double)stdPalEffects_state.effect.tint.y,
+                  (double)stdPalEffects_state.effect.tint.z,
+                  stdPalEffects_state.effect.filter.x,
+                  stdPalEffects_state.effect.filter.y,
+                  stdPalEffects_state.effect.filter.z,
+                  stdPalEffects_state.effect.add.x,
+                  stdPalEffects_state.effect.add.y,
+                  stdPalEffects_state.effect.add.z,
+                  (double)stdPalEffects_state.effect.fade);
+        }
+        s_xboxFrameDbg++;
+    }
+
     if (xboxSplitScreen_IsEnabled())
         return xboxSplitScreen_RenderGameplayFrame();
 #endif
@@ -216,6 +246,39 @@ int jkGame_Update()
     }
 #endif
     jkGame_Update_UpdateCamera = stdPlatform_GetTimeMsec();
+#ifdef TARGET_XBOX
+    {
+        static int s_xboxCameraDbg = 0;
+        if (s_xboxCameraDbg < 12 || (s_xboxCameraDbg % 120) == 0)
+        {
+            sithCamera *cam = sithCamera_currentCamera;
+            rdClipFrustum *fr = cam ? cam->rdCam.pClipFrustum : NULL;
+            sithThing *focus = cam ? cam->primaryFocus : NULL;
+            XDBGF("XboxFrame: cam n=%d cam=%p persp=0x%X focus=%p worldFocus=%p sector=%p fov=%.2f aspect=%.4f rdFov=%.2f rdAspect=%.4f fr=%p zn=%.6f zf=%.2f l/r/t/b=(%.4f,%.4f,%.4f,%.4f) canvas=%p half=(%.1f,%.1f)\n",
+                  s_xboxCameraDbg,
+                  (void*)cam,
+                  cam ? (unsigned)cam->cameraPerspective : 0,
+                  (void*)focus,
+                  sithWorld_pCurrentWorld ? (void*)sithWorld_pCurrentWorld->cameraFocus : NULL,
+                  cam ? (void*)cam->sector : NULL,
+                  cam ? (double)cam->fov : 0.0,
+                  cam ? (double)cam->aspectRatio : 0.0,
+                  cam ? (double)cam->rdCam.fov : 0.0,
+                  cam ? (double)cam->rdCam.screenAspectRatio : 0.0,
+                  (void*)fr,
+                  fr ? (double)fr->zNear : 0.0,
+                  fr ? (double)fr->zFar : 0.0,
+                  fr ? (double)fr->farLeft : 0.0,
+                  fr ? (double)fr->right : 0.0,
+                  fr ? (double)fr->farTop : 0.0,
+                  fr ? (double)fr->bottom : 0.0,
+                  cam ? (void*)cam->rdCam.canvas : NULL,
+                  cam && cam->rdCam.canvas ? (double)cam->rdCam.canvas->half_screen_width : 0.0,
+                  cam && cam->rdCam.canvas ? (double)cam->rdCam.canvas->half_screen_height : 0.0);
+        }
+        s_xboxCameraDbg++;
+    }
+#endif
     jkPlayer_DrawPov();
     jkGame_Update_DrawPov = stdPlatform_GetTimeMsec();
 
@@ -283,6 +346,29 @@ int jkGame_Update()
 #endif
 
     // MOTS added: scope/security cam overlays
+#ifdef TARGET_XBOX
+    {
+        static int s_xboxHudGateDbg = 0;
+        if (s_xboxHudGateDbg < 12 || (s_xboxHudGateDbg % 120) == 0)
+        {
+            sithThing *actor = playerThings[playerThingIdx].actorThing;
+            unsigned actorFlags = actor ? (unsigned)actor->actorParams.typeflags : 0;
+            XDBGF("XboxFrame: hudGate n=%d mots=%d actor=%p typeflags=0x%X noHud=%d scope=%d camHud=%d viewIdx=%d hudOpen=%d localThing=%p playerIdx=%d\n",
+                  s_xboxHudGateDbg,
+                  Main_bMotsCompat,
+                  (void*)actor,
+                  actorFlags,
+                  actor ? !!(actor->actorParams.typeflags & SITH_AF_NOHUD) : -1,
+                  actor ? !!(actor->actorParams.typeflags & SITH_AF_SCOPEHUD) : -1,
+                  actor ? !!(actor->actorParams.typeflags & SITH_AF_80000000) : -1,
+                  Video_modeStruct.viewSizeIdx,
+                  jkHud_bOpened,
+                  (void*)sithPlayer_pLocalPlayerThing,
+                  playerThingIdx);
+        }
+        s_xboxHudGateDbg++;
+    }
+#endif
     if (!Main_bMotsCompat) {
         if ( (playerThings[playerThingIdx].actorThing->actorParams.typeflags & SITH_AF_NOHUD) == 0 ) {
             jkHud_Draw();

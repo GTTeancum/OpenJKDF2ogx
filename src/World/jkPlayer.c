@@ -772,6 +772,13 @@ int jkPlayer_ReadConf(wchar_t *name)
         jkPlayer_bKeepCorpses = stdJSON_GetBool(ext_fpath, "bKeepCorpses", jkPlayer_bKeepCorpses);
         jkPlayer_bFastMissionText = stdJSON_GetBool(ext_fpath, "bFastMissionText", jkPlayer_bFastMissionText);
         jkPlayer_hudScale = stdJSON_GetFloat(ext_fpath, "hudScale", jkPlayer_hudScale);
+#ifdef TARGET_XBOX
+        if (jkPlayer_hudScale <= 0.0f)
+            jkPlayer_hudScale = 1.0f;
+#else
+        if (jkPlayer_hudScale <= 0.0f)
+            jkPlayer_hudScale = 2.0f;
+#endif
         jkPlayer_crosshairLineWidth = stdJSON_GetFloat(ext_fpath, "crosshairLineWidth", jkPlayer_crosshairLineWidth);
         jkPlayer_crosshairScale = stdJSON_GetFloat(ext_fpath, "crosshairScale", jkPlayer_crosshairScale);
         jkPlayer_canonicalCogTickrate = stdJSON_GetFloat(ext_fpath, "canonicalCogTickrate", jkPlayer_canonicalCogTickrate);
@@ -794,6 +801,18 @@ int jkPlayer_ReadConf(wchar_t *name)
             jkPlayer_fov = FOV_MIN;
         if (jkPlayer_fov > FOV_MAX)
             jkPlayer_fov = FOV_MAX;
+#ifdef TARGET_XBOX
+        if (jkPlayer_fov == FOV_MIN)
+        {
+            XDBGF("PlayerConf: repairing Xbox minimum FOV %d -> 90\n", jkPlayer_fov);
+            jkPlayer_fov = 90;
+        }
+        if (jkPlayer_hudScale <= 0.0f)
+        {
+            XDBGF("PlayerConf: repairing Xbox HUD scale %.3f -> 1.0\n", (double)jkPlayer_hudScale);
+            jkPlayer_hudScale = 1.0f;
+        }
+#endif
 
         Window_SetHiDpi(Window_isHiDpi_tmp);
         Window_SetFullscreen(Window_isFullscreen_tmp);
@@ -845,7 +864,22 @@ void jkPlayer_DrawPov()
     rdMatrix34 viewMat;
 
     if (!playerThings[playerThingIdx].povModel.model3)
+    {
+#ifdef TARGET_XBOX
+        static int s_xboxPovNoModelDbg = 0;
+        if (s_xboxPovNoModelDbg < 8)
+        {
+            XDBGF("PovDbg: skip no model slot=%d actor=%p curW=%d povThingType=%d puppet=%p\n",
+                  playerThingIdx,
+                  (void*)playerThings[playerThingIdx].actorThing,
+                  playerThings[playerThingIdx].actorThing ? sithInventory_GetCurWeapon(playerThings[playerThingIdx].actorThing) : -1,
+                  playerThings[playerThingIdx].povModel.type,
+                  (void*)playerThings[playerThingIdx].povModel.puppet);
+            s_xboxPovNoModelDbg++;
+        }
+#endif
         return;
+    }
 
     if ( playerThings[playerThingIdx].povModel.puppet )
     {
@@ -941,13 +975,14 @@ void jkPlayer_DrawPov()
         //printf("pov in\n");
         //jkPlayer_checkPov = 1;
 #ifdef TARGET_XBOX
-        if (xboxSplitScreen_IsEnabled())
         {
             static int s_xboxPovDbgCount = 0;
-            if (s_xboxPovDbgCount < 16)
+            if (s_xboxPovDbgCount < 16 || (s_xboxPovDbgCount % 120) == 0)
             {
                 rdModel3 *povModel = playerThings[playerThingIdx].povModel.model3;
-                XDBGF("PovDbg: slot=%d curW=%d model=%p radius=%.4f eye=(%.4f,%.4f,%.4f) trans=(%.4f,%.4f,%.4f) scale=(%.4f,%.4f,%.4f)\n",
+                XDBGF("PovDbg: draw n=%d split=%d slot=%d curW=%d model=%p radius=%.4f eye=(%.4f,%.4f,%.4f) trans=(%.4f,%.4f,%.4f) scale=(%.4f,%.4f,%.4f) camPersp=0x%X focus=%p worldFocus=%p\n",
+                      s_xboxPovDbgCount,
+                      xboxSplitScreen_IsEnabled(),
                       playerThingIdx,
                       sithInventory_GetCurWeapon(playerThings[playerThingIdx].actorThing),
                       (void*)povModel,
@@ -960,9 +995,12 @@ void jkPlayer_DrawPov()
                       (double)trans.z,
                       (double)viewMat.scale.x,
                       (double)viewMat.scale.y,
-                      (double)viewMat.scale.z);
-                s_xboxPovDbgCount++;
+                      (double)viewMat.scale.z,
+                      sithCamera_currentCamera ? (unsigned)sithCamera_currentCamera->cameraPerspective : 0,
+                      sithCamera_currentCamera ? (void*)sithCamera_currentCamera->primaryFocus : NULL,
+                      sithWorld_pCurrentWorld ? (void*)sithWorld_pCurrentWorld->cameraFocus : NULL);
             }
+            s_xboxPovDbgCount++;
         }
 #endif
         rdThing_Draw(&playerThings[playerThingIdx].povModel, &viewMat);
@@ -990,6 +1028,25 @@ void jkPlayer_DrawPov()
         rdSetZBufferMethod(RD_ZBUFFER_READ_WRITE);
 #endif
     }
+#ifdef TARGET_XBOX
+    else
+    {
+        static int s_xboxPovGateDbg = 0;
+        if (s_xboxPovGateDbg < 16 || (s_xboxPovGateDbg % 120) == 0)
+        {
+            XDBGF("PovDbg: skip gate n=%d split=%d slot=%d model=%p cam=%p persp=0x%X focus=%p worldFocus=%p\n",
+                  s_xboxPovGateDbg,
+                  xboxSplitScreen_IsEnabled(),
+                  playerThingIdx,
+                  (void*)playerThings[playerThingIdx].povModel.model3,
+                  (void*)sithCamera_currentCamera,
+                  sithCamera_currentCamera ? (unsigned)sithCamera_currentCamera->cameraPerspective : 0,
+                  sithCamera_currentCamera ? (void*)sithCamera_currentCamera->primaryFocus : NULL,
+                  sithWorld_pCurrentWorld ? (void*)sithWorld_pCurrentWorld->cameraFocus : NULL);
+        }
+        s_xboxPovGateDbg++;
+    }
+#endif
 }
 
 void jkPlayer_renderSaberWeaponMesh(sithThing *thing)

@@ -108,9 +108,13 @@ void jkGuiGeneral_Shutdown()
 #if defined(QOL_IMPROVEMENTS) && !defined(SDL2_RENDER)
 void jkGuiGeneral_FovDraw(jkGuiElement *element, jkGuiMenu *menu, stdVBuffer *vbuf, int redraw)
 {
-    jkPlayer_fov = FOV_MIN + jkGuiGeneral_aElements[13].selectedTextEntry;
+    int fov = FOV_MIN + jkGuiGeneral_aElements[13].selectedTextEntry;
+    if (fov < FOV_MIN)
+        fov = FOV_MIN;
+    if (fov > FOV_MAX)
+        fov = FOV_MAX;
     
-    jk_snwprintf(slider_val_text, 5, L"%u", jkPlayer_fov);
+    jk_snwprintf(slider_val_text, 5, L"%u", fov);
     jkGuiGeneral_aElements[14].wstr = slider_val_text;
     
     jkGuiRend_SliderDraw(element, menu, vbuf, redraw);
@@ -157,18 +161,22 @@ int jkGuiGeneral_Show()
     jkGuiGeneral_aElements[7].selectedTextEntry = jkPlayer_setFullSubtitles;
     jkGuiGeneral_aElements[8].selectedTextEntry = jkPlayer_setRotateOverlayMap;
     jkGuiGeneral_aElements[9].selectedTextEntry = jkPlayer_setDisableCutscenes;
-    jkGuiRend_MenuSetReturnKeyShortcutElement(&jkGuiGeneral_menu, &jkGuiGeneral_aElements[10]);
-    jkGuiRend_MenuSetEscapeKeyShortcutElement(&jkGuiGeneral_menu, &jkGuiGeneral_aElements[11]);
-    jkGuiSetup_sub_412EF0(&jkGuiGeneral_menu, 0);
-
 #if defined(QOL_IMPROVEMENTS) && !defined(SDL2_RENDER)
     jkGuiGeneral_aElements[13].selectedTextEntry = jkPlayer_fov - FOV_MIN;
+    if (jkGuiGeneral_aElements[13].selectedTextEntry < 0)
+        jkGuiGeneral_aElements[13].selectedTextEntry = 0;
+    if (jkGuiGeneral_aElements[13].selectedTextEntry > (FOV_MAX - FOV_MIN))
+        jkGuiGeneral_aElements[13].selectedTextEntry = FOV_MAX - FOV_MIN;
     jkGuiGeneral_aElements[15].selectedTextEntry = jkPlayer_fovIsVertical;
 #endif
 
 #if defined(QOL_IMPROVEMENTS)
     jkGuiGeneral_aElements[17].selectedTextEntry = jkPlayer_bFastMissionText;
 #endif
+
+    jkGuiRend_MenuSetReturnKeyShortcutElement(&jkGuiGeneral_menu, &jkGuiGeneral_aElements[10]);
+    jkGuiRend_MenuSetEscapeKeyShortcutElement(&jkGuiGeneral_menu, &jkGuiGeneral_aElements[11]);
+    jkGuiSetup_sub_412EF0(&jkGuiGeneral_menu, 0);
 
     while (1)
     {
@@ -188,6 +196,11 @@ int jkGuiGeneral_Show()
             jkPlayer_setDisableCutscenes = jkGuiGeneral_aElements[9].selectedTextEntry;
 
 #if defined(QOL_IMPROVEMENTS) && !defined(SDL2_RENDER)
+            if (jkGuiGeneral_aElements[13].selectedTextEntry < 0)
+                jkGuiGeneral_aElements[13].selectedTextEntry = 0;
+            if (jkGuiGeneral_aElements[13].selectedTextEntry > (FOV_MAX - FOV_MIN))
+                jkGuiGeneral_aElements[13].selectedTextEntry = FOV_MAX - FOV_MIN;
+            jkPlayer_fov = FOV_MIN + jkGuiGeneral_aElements[13].selectedTextEntry;
             jkPlayer_fovIsVertical = jkGuiGeneral_aElements[15].selectedTextEntry;
 #endif
 

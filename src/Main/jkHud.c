@@ -12,6 +12,7 @@
 #include "Devices/sithConsole.h"
 #include "General/stdBitmap.h"
 #include "General/stdFont.h"
+#include "General/stdPalEffects.h"
 #include "General/stdColor.h"
 #include "General/stdString.h"
 #include "General/stdFnames.h"
@@ -144,6 +145,13 @@ int jkHud_Open()
 #endif
         ++fontIter;
     }
+#ifdef TARGET_XBOX
+    if (jkPlayer_hudScale <= 0.0f)
+    {
+        XDBGF("HudDbg: repairing HUD scale before layout %.3f -> 1.0\n", (double)jkPlayer_hudScale);
+        jkPlayer_hudScale = 1.0f;
+    }
+#endif
     jkHud_leftBlitX = 0;
     jkHud_leftBlitY = Video_format.height - HUD_SCALED((*jkHud_pStatusLeftBm->mipSurfaces)->format.height);
     v6 = *jkHud_pStatusRightBm->mipSurfaces;
@@ -981,12 +989,57 @@ void jkHud_DrawGPU()
     flex_t tmpFloat1;
 
     if (!jkHud_bOpened)
+    {
+#ifdef TARGET_XBOX
+        static int s_xboxHudClosedDbg = 0;
+        if (s_xboxHudClosedDbg < 8)
+        {
+            XDBGF("HudDbg: DrawGPU skipped closed viewIdx=%d b3d=%d multi=%d server=%d\n",
+                  Video_modeStruct.viewSizeIdx,
+                  (int)Video_modeStruct.b3DAccel,
+                  sithNet_isMulti,
+                  sithNet_isServer);
+            s_xboxHudClosedDbg++;
+        }
+#endif
         return;
+    }
 
     if (!(Video_modeStruct.viewSizeIdx < 0xAu  && !(sithNet_isServer && jkGuiNetHost_bIsDedicated)))
     {
+#ifdef TARGET_XBOX
+        static int s_xboxHudViewDbg = 0;
+        if (s_xboxHudViewDbg < 8)
+        {
+            XDBGF("HudDbg: DrawGPU skipped view gate viewIdx=%d server=%d dedicated=%d b3d=%d hudScale=%.3f\n",
+                  Video_modeStruct.viewSizeIdx,
+                  sithNet_isServer,
+                  jkGuiNetHost_bIsDedicated,
+                  (int)Video_modeStruct.b3DAccel,
+                  (double)jkPlayer_hudScale);
+            s_xboxHudViewDbg++;
+        }
+#endif
         return;
     }
+
+#ifdef TARGET_XBOX
+    if (jkPlayer_hudScale <= 0.0f)
+    {
+        XDBGF("HudDbg: repairing HUD scale before draw %.3f -> 1.0\n", (double)jkPlayer_hudScale);
+        jkPlayer_hudScale = 1.0f;
+        if (jkHud_pStatusLeftBm && jkHud_pStatusLeftBm->mipSurfaces && jkHud_pStatusLeftBm->mipSurfaces[0])
+        {
+            jkHud_leftBlitX = 0;
+            jkHud_leftBlitY = Video_format.height - HUD_SCALED(jkHud_pStatusLeftBm->mipSurfaces[0]->format.height);
+        }
+        if (jkHud_pStatusRightBm && jkHud_pStatusRightBm->mipSurfaces && jkHud_pStatusRightBm->mipSurfaces[0])
+        {
+            jkHud_rightBlitX = Video_format.width - HUD_SCALED(jkHud_pStatusRightBm->mipSurfaces[0]->format.width);
+            jkHud_rightBlitY = Video_format.height - HUD_SCALED(jkHud_pStatusRightBm->mipSurfaces[0]->format.height);
+        }
+    }
+#endif
 
 #ifdef TARGET_XBOX
     /* One-shot diagnostic: did we reach jkHud_DrawGPU and what do the
@@ -994,11 +1047,24 @@ void jkHud_DrawGPU()
      * failed silently (file not in GOB).  Non-NULL but no UI draws
      * downstream means the std3D path is rejecting them. */
     { static int _hd = 0;
-      if (_hd < 2) {
-          xbox_debug_Printf("jkHud_DrawGPU: bOpened=%d viewIdx=%u hudScale=%f\n",
-              jkHud_bOpened, (unsigned)Video_modeStruct.viewSizeIdx, (double)jkPlayer_hudScale);
-          xbox_debug_Printf("  statusL=%p statusR=%p\n",
-              (void*)jkHud_pStatusLeftBm, (void*)jkHud_pStatusRightBm);
+      if (_hd < 12 || (_hd % 120) == 0) {
+          xbox_debug_Printf("HudDbg: DrawGPU n=%d bOpened=%d viewIdx=%u hudScale=%f b3d=%d palEn=%d tint=(%.3f,%.3f,%.3f) fade=%.3f\n",
+              _hd,
+              jkHud_bOpened,
+              (unsigned)Video_modeStruct.viewSizeIdx,
+              (double)jkPlayer_hudScale,
+              (int)Video_modeStruct.b3DAccel,
+              stdPalEffects_state.bEnabled,
+              (double)stdPalEffects_state.effect.tint.x,
+              (double)stdPalEffects_state.effect.tint.y,
+              (double)stdPalEffects_state.effect.tint.z,
+              (double)stdPalEffects_state.effect.fade);
+          xbox_debug_Printf("HudDbg: statusL=%p statusR=%p local=%p playerIdx=%d curW=%d\n",
+              (void*)jkHud_pStatusLeftBm,
+              (void*)jkHud_pStatusRightBm,
+              (void*)sithPlayer_pLocalPlayerThing,
+              playerThingIdx,
+              sithPlayer_pLocalPlayerThing ? sithInventory_GetCurWeapon(sithPlayer_pLocalPlayerThing) : -1);
           _hd++; } }
 #endif
 

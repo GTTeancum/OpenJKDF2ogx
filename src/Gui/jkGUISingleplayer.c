@@ -1,5 +1,9 @@
 #include "jkGUISingleplayer.h"
 
+#ifdef TARGET_XBOX
+#include "Platform/Xbox/xbox_splitscreen.h"
+#endif
+
 #include "General/Darray.h"
 #include "General/stdBitmap.h"
 #include "General/stdFont.h"
@@ -109,6 +113,10 @@ int jkGuiSingleplayer_Show()
     char v24[128]; // [esp+D8h] [ebp-100h]
     char v25[128]; // [esp+158h] [ebp-80h]
     int debug_episode_idx = 0;
+
+#ifdef TARGET_XBOX
+    xboxSplitScreen_Disable();
+#endif
 
     jkGuiRend_MenuSetReturnKeyShortcutElement(&jkGuiSingleplayer_menu1, &jkGuiSingleplayer_buttons1[2]);
     jkGuiRend_MenuSetEscapeKeyShortcutElement(&jkGuiSingleplayer_menu1, &jkGuiSingleplayer_buttons1[5]);

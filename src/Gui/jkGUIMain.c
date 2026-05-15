@@ -29,6 +29,9 @@
 #include "General/stdFnames.h"
 #include "Main/sithCvar.h"
 #include "stdPlatform.h"
+#ifdef TARGET_XBOX
+#include "Platform/Xbox/xbox_splitscreen.h"
+#endif
 
 // Added
 extern int jkCredits_cdOverride;
@@ -102,7 +105,13 @@ static jkGuiMenu jkGuiMain_xboxMultiplayerMenu = {jkGuiMain_xboxMultiplayerEleme
 
 static int jkGuiMain_XboxStartLocalMultiplayerTest(void)
 {
-    return jkMain_loadFile2("JK1MP", "m10.jkl") ? 1 : -1;
+    int result;
+
+    xboxSplitScreen_Enable();
+    result = jkMain_loadFile2("JK1MP", "m10.jkl") ? 1 : -1;
+    if (result != 1)
+        xboxSplitScreen_Disable();
+    return result;
 }
 
 static int jkGuiMain_XboxShowMultiplayer(void)

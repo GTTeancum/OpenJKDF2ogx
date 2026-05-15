@@ -36,6 +36,7 @@ void std3D_XboxResetViewport(void);
 #endif
 
 static int g_xboxSplitScreenEnabled = 0;
+static int g_xboxSplitScreenRequested = 0;
 static int g_xboxSplitScreenLocalCount = 1;
 static int g_xboxSplitScreenLoggedViewports = 0;
 static int g_xboxSplitScreenLoggedSlots = 0;
@@ -86,10 +87,47 @@ int xboxSplitScreen_GetLocalPlayerCount(void)
     return g_xboxSplitScreenLocalCount;
 }
 
+void xboxSplitScreen_Enable(void)
+{
+    g_xboxSplitScreenRequested = 1;
+}
+
+void xboxSplitScreen_Disable(void)
+{
+    int i;
+
+    if (g_xboxSplitScreenEnabled || g_xboxSplitScreenLocalCount != 1)
+        XDBG("SplitScreen: disabled\n");
+
+    g_xboxSplitScreenRequested = 0;
+    g_xboxSplitScreenEnabled = 0;
+    g_xboxSplitScreenLocalCount = 1;
+    g_xboxSplitScreenLoggedViewports = 0;
+    g_xboxSplitScreenLoggedSlots = 0;
+    g_xboxSplitScreenFrameCount = 0;
+    for (i = 0; i < XBOX_SPLITSCREEN_MAX_LOCAL_PLAYERS; i++)
+        g_xboxSplitScreenRespawnAt[i] = 0;
+
+    stdControl_XboxSetActiveController(0);
+    std3D_XboxResetViewport();
+}
+
 void xboxSplitScreen_OnMultiplayerServerStarted(void)
 {
     int i;
     int count = jkPlayer_maxPlayers;
+
+    if (!g_xboxSplitScreenRequested)
+    {
+        g_xboxSplitScreenEnabled = 0;
+        g_xboxSplitScreenLocalCount = 1;
+        g_xboxSplitScreenLoggedViewports = 0;
+        g_xboxSplitScreenLoggedSlots = 0;
+        stdControl_XboxSetActiveController(0);
+        std3D_XboxResetViewport();
+        XDBG("SplitScreen: multiplayer server started without local split request\n");
+        return;
+    }
 
     if (count > XBOX_SPLITSCREEN_MAX_LOCAL_PLAYERS)
         count = XBOX_SPLITSCREEN_MAX_LOCAL_PLAYERS;
@@ -313,6 +351,29 @@ int xboxSplitScreen_RenderGameplayFrame(void)
     frameStartMs = stdPlatform_GetTimeMsec();
     g_xboxSplitScreenFrameCount++;
 
+    if (g_xboxSplitScreenFrameCount <= 12 || (g_xboxSplitScreenFrameCount % 120) == 0)
+    {
+        XDBGF("SplitFrame: begin frame=%u locals=%d split=%d multi=%d server=%d b3d=%d viewIdx=%d palEn=%d tint=(%.3f,%.3f,%.3f) filter=(%d,%d,%d) add=(%d,%d,%d) fade=%.3f\n",
+              g_xboxSplitScreenFrameCount,
+              g_xboxSplitScreenLocalCount,
+              g_xboxSplitScreenEnabled,
+              sithNet_isMulti,
+              sithNet_isServer,
+              (int)Video_modeStruct.b3DAccel,
+              Video_modeStruct.viewSizeIdx,
+              stdPalEffects_state.bEnabled,
+              (double)stdPalEffects_state.effect.tint.x,
+              (double)stdPalEffects_state.effect.tint.y,
+              (double)stdPalEffects_state.effect.tint.z,
+              stdPalEffects_state.effect.filter.x,
+              stdPalEffects_state.effect.filter.y,
+              stdPalEffects_state.effect.filter.z,
+              stdPalEffects_state.effect.add.x,
+              stdPalEffects_state.effect.add.y,
+              stdPalEffects_state.effect.add.z,
+              (double)stdPalEffects_state.effect.fade);
+    }
+
     Video_modeStruct.b3DAccel = (HKEY)1;
     stdDisplay_VBufferFill(Video_pMenuBuffer, Video_fillColor, 0);
     jkDev_DrawLog();
@@ -332,21 +393,30 @@ int xboxSplitScreen_RenderGameplayFrame(void)
         xboxSplitScreen_ApplyViewport(i);
         sithMain_UpdateCamera();
 
-        if (g_xboxSplitScreenLoggedSlots < g_xboxSplitScreenLocalCount)
+        if (g_xboxSplitScreenLoggedSlots < g_xboxSplitScreenLocalCount
+            || g_xboxSplitScreenFrameCount <= 4
+            || (g_xboxSplitScreenFrameCount % 120) == 0)
         {
             sithThing *player = jkPlayer_playerInfos[i].playerThing;
-            XDBGF("SplitScreenSlot: frame=%u slot=%d thing=%p cam=%p focus=%p sector=%p curW=%d pov=%p rdFov=%.2f aspect=%.4f\n",
+            rdClipFrustum *fr = sithCamera_currentCamera ? sithCamera_currentCamera->rdCam.pClipFrustum : NULL;
+            XDBGF("SplitScreenSlot: frame=%u slot=%d thing=%p cam=%p focus=%p worldFocus=%p sector=%p curW=%d pov=%p persp=0x%X rdFov=%.2f aspect=%.4f fr=%p zn=%.6f zf=%.2f\n",
                   g_xboxSplitScreenFrameCount,
                   i,
                   (void*)player,
                   (void*)sithCamera_currentCamera,
                   sithCamera_currentCamera ? (void*)sithCamera_currentCamera->primaryFocus : 0,
+                  sithWorld_pCurrentWorld ? (void*)sithWorld_pCurrentWorld->cameraFocus : 0,
                   sithCamera_currentCamera ? (void*)sithCamera_currentCamera->sector : 0,
                   player ? sithInventory_GetCurWeapon(player) : -1,
                   player && player->playerInfo ? (void*)player->playerInfo->povModel.model3 : 0,
+                  sithCamera_currentCamera ? (unsigned)sithCamera_currentCamera->cameraPerspective : 0,
                   sithCamera_currentCamera ? (double)sithCamera_currentCamera->rdCam.fov : 0.0,
-                  sithCamera_currentCamera ? (double)sithCamera_currentCamera->rdCam.screenAspectRatio : 0.0);
-            g_xboxSplitScreenLoggedSlots++;
+                  sithCamera_currentCamera ? (double)sithCamera_currentCamera->rdCam.screenAspectRatio : 0.0,
+                  (void*)fr,
+                  fr ? (double)fr->zNear : 0.0,
+                  fr ? (double)fr->zFar : 0.0);
+            if (g_xboxSplitScreenLoggedSlots < g_xboxSplitScreenLocalCount)
+                g_xboxSplitScreenLoggedSlots++;
         }
 
         jkPlayer_DrawPov();

@@ -301,6 +301,9 @@ void sithMulti_FreeThing(int a1)
 
 void sithMulti_Shutdown()
 {
+#ifdef TARGET_XBOX
+    xboxSplitScreen_Disable();
+#endif
     sithComm_multiplayerFlags &= ~1u;
     sithNet_isMulti = 0;
     sithNet_isServer = 0;

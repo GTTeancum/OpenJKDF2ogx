@@ -9,7 +9,9 @@ extern "C" {
 
 int  xboxSplitScreen_IsEnabled(void);
 int  xboxSplitScreen_GetLocalPlayerCount(void);
+void xboxSplitScreen_Enable(void);
 void xboxSplitScreen_OnMultiplayerServerStarted(void);
+void xboxSplitScreen_Disable(void);
 void xboxSplitScreen_BeginControlFrame(void);
 void xboxSplitScreen_TickControls(float deltaSecs, int deltaMs);
 void xboxSplitScreen_EndControlFrame(void);

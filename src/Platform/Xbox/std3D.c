@@ -11,7 +11,7 @@
  * If you need to touch GPU state, do it via gl* — that is the contract.
  */
 
-#include "platform_xbox.h"   /* Must come first — sets up Xbox defines. */
+#include "platform_xbox.h"   /* Must come first - sets up Xbox defines. */
 #include "xbox_debug.h"
 #include <stdio.h>           /* sprintf for HUD text formatting */
 #include <string.h>           /* memcpy */
@@ -1010,8 +1010,30 @@ extern int xbox_get_camera_params(float *fov, float *aspect,
 void std3D_DrawRenderList(void)
 {
     int i;
-    if (!g_initialized || !g_sceneOpen) return;
-    if ((GL_numTris == 0 && GL_numLines == 0) || !GL_verticesDone) return;
+    if (!g_initialized || !g_sceneOpen)
+    {
+        static int s_xboxDrlClosedDbg = 0;
+        if (s_xboxDrlClosedDbg < 8)
+        {
+            XDBGF("DRLDbg: skipped init/scene init=%d scene=%d tris=%d lines=%d vertsDone=%d viewport=(%d,%d %dx%d)\n",
+                  g_initialized, g_sceneOpen, GL_numTris, GL_numLines, GL_verticesDone,
+                  g_xboxViewportX, g_xboxViewportY, g_xboxViewportW, g_xboxViewportH);
+            s_xboxDrlClosedDbg++;
+        }
+        return;
+    }
+    if ((GL_numTris == 0 && GL_numLines == 0) || !GL_verticesDone)
+    {
+        static int s_xboxDrlEmptyDbg = 0;
+        if (s_xboxDrlEmptyDbg < 12)
+        {
+            XDBGF("DRLDbg: skipped empty tris=%d lines=%d nverts=%d vertsDone=%d viewport=(%d,%d %dx%d)\n",
+                  GL_numTris, GL_numLines, GL_numVertices, GL_verticesDone,
+                  g_xboxViewportX, g_xboxViewportY, g_xboxViewportW, g_xboxViewportH);
+            s_xboxDrlEmptyDbg++;
+        }
+        return;
+    }
     std3D_DebugLineKV(10, "DRAWN", GL_numTris);
 
     /* ---------------------------------------------------------------- */
@@ -1036,7 +1058,7 @@ void std3D_DrawRenderList(void)
         float cam_fov = 90.0f, cam_aspect = 0.75f;
         float cam_znear = 1.0f/64.0f, cam_zfar = 128.0f;
         float tan_h, tan_v, half_w, half_h;
-        xbox_get_camera_params(&cam_fov, &cam_aspect, &cam_znear, &cam_zfar);
+        int got_cam = xbox_get_camera_params(&cam_fov, &cam_aspect, &cam_znear, &cam_zfar);
         tan_h  = (float)tan((double)cam_fov * (3.14159265358979 / 360.0));
         tan_v  = tan_h * cam_aspect;
         half_w = cam_znear * tan_h;
@@ -1049,9 +1071,18 @@ void std3D_DrawRenderList(void)
         glMatrixMode(GL_MODELVIEW);
         glLoadIdentity();
 
-        { static int _pl=0; if(_pl<3){
-            XDBGF("DRL projection: fov=%.2f aspect=%.4f znear=%.6f zfar=%.2f -> tan_h=%.4f tan_v=%.4f\n",
-                  cam_fov, cam_aspect, cam_znear, cam_zfar, tan_h, tan_v);
+        { static int _pl=0; if(_pl<16 || (_pl % 120) == 0){
+            XDBGF("DRLDbg: draw n=%d gotCam=%d tris=%d lines=%d nverts=%d viewport=(%d,%d %dx%d) fov=%.2f aspect=%.4f znear=%.6f zfar=%.2f half=(%.6f,%.6f) tan=(%.4f,%.4f)\n",
+                  _pl,
+                  got_cam,
+                  GL_numTris,
+                  GL_numLines,
+                  GL_numVertices,
+                  g_xboxViewportX,
+                  g_xboxViewportY,
+                  g_xboxViewportW,
+                  g_xboxViewportH,
+                  cam_fov, cam_aspect, cam_znear, cam_zfar, half_w, half_h, tan_h, tan_v);
             _pl++;
         }}
     }
@@ -1156,15 +1187,11 @@ void std3D_DrawRenderList(void)
                     if (t->flags & 0x600) glBlendFunc(GL_ONE, GL_ONE_MINUS_SRC_ALPHA);
                     else                  glBlendFunc(GL_SRC_ALPHA, GL_ONE_MINUS_SRC_ALPHA);
 
-                    if (t->flags & 0x200) glDisable(GL_ALPHA_TEST);
-                    else                  glEnable(GL_ALPHA_TEST);
-
                     last_flags = t->flags;
                 }
             } else if (last_flags != -2) {
                 glDisable(GL_BLEND);
                 glDisable(GL_CULL_FACE);
-                glDisable(GL_ALPHA_TEST);
                 glDepthFunc(GL_LEQUAL);
                 glDepthMask(GL_TRUE);
                 last_flags = -2;
@@ -2133,6 +2160,15 @@ void std3D_DrawUIBitmapRGBA(void *pBmp_v, int mipIdx, float dstX, float dstY,
 
     dstW = srcW * scaleX;
     dstH = srcH * scaleY;
+    if (dstW <= 0.0f || dstH <= 0.0f)
+    {
+        if (scaleX <= 0.0f)
+            scaleX = 1.0f;
+        if (scaleY <= 0.0f)
+            scaleY = 1.0f;
+        dstW = srcW * scaleX;
+        dstH = srcH * scaleY;
+    }
 
     /* UI bitmaps that arrived as 16-bit (RGB565) encode transparency via
      * vbuf->transparent_color (typically magenta).  Their palFmt bit
