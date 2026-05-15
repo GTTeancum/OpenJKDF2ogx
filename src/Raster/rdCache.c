@@ -430,6 +430,24 @@ int rdCache_SendFaceListToHardware()
         {
             flags_idk_ |= 0x10000;
         }
+#ifdef TARGET_XBOX
+        if (active_6c->type & RD_FF_ZWRITE_DISABLED)
+        {
+            flags_idk_ &= ~0x1000;
+        }
+        if (active_6c->type & RD_FF_TEX_CLAMP_X)
+        {
+            flags_idk_ |= 0x20000;
+        }
+        if (active_6c->type & RD_FF_TEX_CLAMP_Y)
+        {
+            flags_idk_ |= 0x40000;
+        }
+        if (active_6c->type & RD_FF_TEX_FILTER_NEAREST)
+        {
+            flags_idk_ |= 0x80000;
+        }
+#endif
 
 #if defined(SDL2_RENDER) || defined(TARGET_TWL)
         d3d_maxVertices = STD3D_MAX_VERTICES;

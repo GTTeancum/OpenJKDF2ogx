@@ -187,26 +187,31 @@ void jkGuiSingleTally_Show(int a, int b) STUBV
 void jkGuiMultiTally_Show(int a, int b) STUBV
 
 /* Remaining jkGui* Startup/Shutdown pairs — all need display */
-int  jkGuiMap_Startup(void) STUB0
-int  jkGuiMap_Shutdown(void) STUB0
-int  jkGuiSound_Startup(void) STUB0
-int  jkGuiSound_Shutdown(void) STUB0
+/* jkGuiMap_* is now provided by the real map GUI implementation. */
+//int  jkGuiMap_Startup(void) STUB0
+//int  jkGuiMap_Shutdown(void) STUB0
+/* jkGuiSound_* is now provided by the real setup sound menu implementation. */
+//int  jkGuiSound_Startup(void) STUB0
+//int  jkGuiSound_Shutdown(void) STUB0
 int  jkGuiDisplay_Startup(void) STUB0
 int  jkGuiDisplay_Shutdown(void) STUB0
-int  jkGuiSetup_Startup(void) STUB0
-int  jkGuiSetup_Shutdown(void) STUB0
+/* jkGuiSetup_* is now provided by the real setup menu implementation. */
+//int  jkGuiSetup_Startup(void) STUB0
+//int  jkGuiSetup_Shutdown(void) STUB0
 int  jkGuiMouse_Startup(void) STUB0
 int  jkGuiMouse_Shutdown(void) STUB0
 int  jkGuiKeyboard_Startup(void) STUB0
 int  jkGuiKeyboard_Shutdown(void) STUB0
 int  jkGuiJoystick_Startup(void) STUB0
 int  jkGuiJoystick_Shutdown(void) STUB0
-int  jkGuiPlayer_Startup(void) STUB0
-int  jkGuiPlayer_Shutdown(void) STUB0
-int  jkGuiGeneral_Startup(void) STUB0
-int  jkGuiGeneral_Shutdown(void) STUB0
-int  jkGuiGameplay_Startup(void) STUB0
-int  jkGuiGameplay_Shutdown(void) STUB0
+/* jkGuiPlayer_* is now provided by the real player GUI. */
+//int  jkGuiPlayer_Startup(void) STUB0
+//int  jkGuiPlayer_Shutdown(void) STUB0
+/* jkGuiGeneral/Gameplay are now provided by real setup pages. */
+//int  jkGuiGeneral_Startup(void) STUB0
+//int  jkGuiGeneral_Shutdown(void) STUB0
+//int  jkGuiGameplay_Startup(void) STUB0
+//int  jkGuiGameplay_Shutdown(void) STUB0
 int  jkGuiDecision_Startup(void) STUB0
 int  jkGuiDecision_Shutdown(void) STUB0
 /* jkGuiObjectives/jkGuiSingleplayer/jkGuiSaveLoad are real. */
@@ -214,8 +219,9 @@ int  jkGuiControlSaveLoad_Startup(void) STUB0
 int  jkGuiControlSaveLoad_Shutdown(void) STUB0
 int  jkGuiControlOptions_Startup(void) STUB0
 int  jkGuiControlOptions_Shutdown(void) STUB0
-int  jkGuiMods_Startup(void) STUB0
-int  jkGuiMods_Shutdown(void) STUB0
+/* jkGuiMods_* is now provided by the real Expansions & Mods menu. */
+//int  jkGuiMods_Startup(void) STUB0
+//int  jkGuiMods_Shutdown(void) STUB0
 
 /* jkHud — C++ mangled versions at end of file.
    C callers (jkMain.c) use implicit declaration which resolves
@@ -223,20 +229,20 @@ int  jkGuiMods_Shutdown(void) STUB0
 
 /* jkHudInv — needs display */
 
-/* jkDev — needs display/debug overlay */
-int  jkDev_Startup(void) STUB0
-int  jkDev_Shutdown(void) STUB0
-void jkDev_Open(void) STUBV
-void jkDev_Close(void) STUBV
+/* jkDev is now provided by the real in-game message/debug-log implementation. */
+//int  jkDev_Startup(void) STUB0
+//int  jkDev_Shutdown(void) STUB0
+//void jkDev_Open(void) STUBV
+//void jkDev_Close(void) STUBV
 
 /* jkSmack is compiled for Xbox. */
 
-/* jkCredits — needs display */
-int  jkCredits_Startup(const char* a) { (void)a; return 0; }
-int  jkCredits_Shutdown(void) STUB0
-void jkCredits_Show(int a, int b) STUBV
-void jkCredits_Tick(int a) STUBV
-void jkCredits_Skip(int a, int b) STUBV
+/* jkCredits is now provided by the real credits implementation. */
+//int  jkCredits_Startup(const char* a) { (void)a; return 0; }
+//int  jkCredits_Shutdown(void) STUB0
+//void jkCredits_Show(int a, int b) STUBV
+//void jkCredits_Tick(int a) STUBV
+//void jkCredits_Skip(int a, int b) STUBV
 
 /* jkCutscene is compiled for Xbox. */
 
@@ -249,26 +255,26 @@ void jkDSS_wrap_SendSaberInfo_alt(void) STUBV
 /* jkControl_Startup, jkControl_Shutdown — real impls in src/Main/jkControl.c (now in build) */
 
 /* jkGui* — multiplayer/network GUI stubs */
-void jkGuiBuildMulti_StartupEditCharacter(void) STUBV
-int  jkGuiBuildMulti_Startup(void) STUB0
-int  jkGuiBuildMulti_Shutdown(void) STUB0
-void jkGuiMultiTally_Startup(void) STUBV
-void jkGuiMultiplayer_Startup(void) STUBV
-void jkGuiMultiplayer_Shutdown(void) STUBV
-void jkGuiNetHost_Startup(void) STUBV
-void jkGuiNetHost_Shutdown(void) STUBV
+//void jkGuiBuildMulti_StartupEditCharacter(void) STUBV
+//int  jkGuiBuildMulti_Startup(void) STUB0
+//int  jkGuiBuildMulti_Shutdown(void) STUB0
+//void jkGuiMultiTally_Startup(void) STUBV
+//void jkGuiMultiplayer_Startup(void) STUBV
+//void jkGuiMultiplayer_Shutdown(void) STUBV
+//void jkGuiNetHost_Startup(void) STUBV
+//void jkGuiNetHost_Shutdown(void) STUBV
 
 /* smack — no Xbox implementation */
 void smack_Shutdown(void) STUBV
 
 /* Additional stubs needed by Main.c */
-void jkGuiNetHost_LoadSettings(void) STUBV
-void jkGuiNetHost_SaveSettings(void) STUBV
+//void jkGuiNetHost_LoadSettings(void) STUBV
+//void jkGuiNetHost_SaveSettings(void) STUBV
 void sithTime_idk_record(void) STUBV
 /* stdString_CharToWchar / stdString_SafeWStrCopy — now in stdString.c */
 
 /* Additional stubs needed by jkMain.c */
-void jkGuiMultiplayer_ShowSynchronizing(void) STUBV
+//void jkGuiMultiplayer_ShowSynchronizing(void) STUBV
 /* sithControl_Close/IsOpen — now in sithControl.c */
 int  sithWorld_GetMemorySize(void) STUB0
 
@@ -488,7 +494,8 @@ int stdControl_MessageHandler(HWND hWnd, UINT Msg, WPARAM wParam, LPARAM lParam,
  * F-key/dev shortcuts.  Stubbed because the corresponding subsystems
  * (HUD popups, screenshot, gamma config, save UI) aren't wired up
  * on Xbox yet.  Pressing those keys does nothing rather than crashing. */
-int  jkDev_PrintUniString(const unsigned short *s)      { (void)s; return 0; }
+/* jkDev_PrintUniString is now provided by the real in-game message/debug-log implementation. */
+//int  jkDev_PrintUniString(const unsigned short *s)      { (void)s; return 0; }
 /* jkGuiTitle_quicksave_related_func1 is provided by the real title GUI. */
 
 /* ================================================================
@@ -514,16 +521,24 @@ extern "C" {
 /* C++-mangled stubs (headers without extern "C") */
 /* sithDSSThing_SendTakeItem is compiled from src/Dss/sithDSSThing.c. */
 /* sithDSSThing_SendFireProjectile is compiled from src/Dss/sithDSSThing.c. */
-int  rdPrimit2_DrawClippedLine(struct rdCanvas* c, int x1, int y1, int x2, int y2, unsigned short col, int mask)
-    { (void)c; (void)x1; (void)y1; (void)x2; (void)y2; (void)col; (void)mask; return 0; }
+/* rdPrimit2_* is now provided by the real 2D primitive implementation. */
+//int  rdPrimit2_DrawClippedLine(struct rdCanvas* c, int x1, int y1, int x2, int y2, unsigned short col, int mask)
+//    { (void)c; (void)x1; (void)y1; (void)x2; (void)y2; (void)col; (void)mask; return 0; }
 void jkQuakeConsole_ExecuteCommand(const char* pCmd)                        { (void)pCmd; }
-void jkGuiSetup_Show(void)                                                  { }
-int  jkGuiMap_Show(void)                                                    { return 0; }
-void jkGuiMods_Show(void)                                                   { }
-void jkGuiPlayer_ShowNewPlayer(int a1)                                      { (void)a1; }
-int  jkGuiMultiplayer_Show(void)                                            { return -1; }
-int  jkGuiMultiplayer_Show2(void)                                           { return 0; }
-int  jkCredits_cdOverride                                                   = 0;
+void jkQuakeConsole_PrintLine(const char* pLine)                            { (void)pLine; }
+void jkDSS_SendSetTeam(short team)                                          { (void)team; }
+/* jkGuiSetup_Show is now provided by the real setup menu implementation. */
+//void jkGuiSetup_Show(void)                                                  { }
+/* jkGuiMap_Show is now provided by the real map GUI implementation. */
+//int  jkGuiMap_Show(void)                                                    { return 0; }
+/* jkGuiMods_Show is now provided by the real Expansions & Mods menu. */
+//void jkGuiMods_Show(void)                                                   { }
+/* Multiplayer/player GUI is now provided by the real upstream modules. */
+//void jkGuiPlayer_ShowNewPlayer(int a1)                                      { (void)a1; }
+//int  jkGuiMultiplayer_Show(void)                                            { return -1; }
+//int  jkGuiMultiplayer_Show2(void)                                           { return 0; }
+/* jkCredits_cdOverride is now provided by jkCredits.c. */
+//int  jkCredits_cdOverride                                                   = 0;
 extern "C" const wchar_t *openjkdf2_waReleaseVersion                        = L"Xbox";
 extern "C" const wchar_t *openjkdf2_waReleaseCommitShort                    = L"";
 /* sithGamesave_GetProfilePath is implemented by sithGamesave.c. */
@@ -533,6 +548,8 @@ extern "C" const wchar_t *openjkdf2_waReleaseCommitShort                    = L"
 /* MSVC CRT helper: __isspace (single underscore _isspace exists in libc; the
    double-underscore mangling is what stdStrTable.c references via macros.) */
 extern "C" int __isspace(int c) { return (c == ' ' || c == '\t' || c == '\n' || c == '\r' || c == '\v' || c == '\f'); }
+extern "C" long _atol(const char *s) { return atol(s); }
+extern "C" long __atol(const char *s) { return atol(s); }
 
 /* Helper from upstream src/jk.c (we don't pull jk.c, only need this one fn). */
 extern "C" int _string_modify_idk(int c) { return (c >= 'a' && c <= 'z') ? c - ('a' - 'A') : c; }
@@ -600,14 +617,14 @@ extern "C" {
 
 /* stdFileUtil_MkDir is implemented by stdFile_xbox.c. */
 
-/* jkDev — dev tools / debug overlay; stubbed (no dev console on Xbox yet) */
-void jkDev_BlitLogToScreen(void)                                { }
-void jkDev_DrawLog(void)                                        { }
-int  jkDev_sub_41FC40(int a, const char* b)                     { (void)a; (void)b; return 0; }
-int  jkDev_sub_41FB80(int a, const unsigned short* b)           { (void)a; (void)b; return 0; }
-void jkDev_sub_41FC90(int a)                                    { (void)a; }
-int  jkDev_TryCommand(const char* s)                            { (void)s; return 0; }
-int  jkDev_DebugLog(const char* s)                              { (void)s; return 0; }
+/* jkDev — real in-game message/debug-log implementation is now compiled. */
+//void jkDev_BlitLogToScreen(void)                                { }
+//void jkDev_DrawLog(void)                                        { }
+//int  jkDev_sub_41FC40(int a, const char* b)                     { (void)a; (void)b; return 0; }
+//int  jkDev_sub_41FB80(int a, const unsigned short* b)           { (void)a; (void)b; return 0; }
+//void jkDev_sub_41FC90(int a)                                    { (void)a; }
+//int  jkDev_TryCommand(const char* s)                            { (void)s; return 0; }
+//int  jkDev_DebugLog(const char* s)                              { (void)s; return 0; }
 
 /* jkQuakeConsole_Render — stubbed (no quake console rendering on Xbox) */
 void jkQuakeConsole_Render(void)                                { }

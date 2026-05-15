@@ -74,6 +74,13 @@ void stdControl_ShowSystemKeyboard();
 void stdControl_HideSystemKeyboard();
 BOOL stdControl_IsSystemKeyboardShowing();
 
+#ifdef TARGET_XBOX
+void stdControl_XboxSetLookOptions(int sensitivity, int invertLook, int vibration);
+int stdControl_XboxGetLookSensitivity(void);
+int stdControl_XboxGetInvertLook(void);
+int stdControl_XboxGetVibration(void);
+#endif
+
 extern const stdControlDikStrToNum stdControl_aDikNumToStr[JK_TOTAL_NUM_KEYS];
 extern const char *stdControl_aAxisNames[JK_NUM_AXES+1];
 

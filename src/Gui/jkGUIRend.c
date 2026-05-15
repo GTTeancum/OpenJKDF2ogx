@@ -2690,6 +2690,20 @@ void jkGuiRend_FocusElementDir(jkGuiMenu *pMenu, int32_t dir)
         }
     }
 
+#ifdef TARGET_XBOX
+    stdPlatform_Printf("FocusDbg: menu=%p dir=%d start=%p idx=%d type=%d id=%d visible=%d hover=%d last=%p focus=%p\n",
+        pMenu,
+        dir,
+        focusedElement,
+        focusedElement ? (int)(focusedElement - pMenu->paElements) : -1,
+        focusedElement ? focusedElement->type : -1,
+        focusedElement ? focusedElement->hoverId : -999,
+        focusedElement ? focusedElement->bIsVisible : -1,
+        focusedElement ? focusedElement->enableHover : -1,
+        pMenu->lastMouseOverClickable,
+        pMenu->focusedElement);
+#endif
+
     if (focusedElement->type == ELEMENT_LISTBOX) {
         //printf("listbox\n");
         int32_t prev_selected = focusedElement->selectedTextEntry;
@@ -2873,6 +2887,18 @@ void jkGuiRend_FocusElementDir(jkGuiMenu *pMenu, int32_t dir)
     if (!element) {
         return;
     }
+#ifdef TARGET_XBOX
+    stdPlatform_Printf("FocusDbg: menu=%p dir=%d best=%p idx=%d type=%d id=%d visible=%d hover=%d same=%d\n",
+        pMenu,
+        dir,
+        element,
+        (int)(element - pMenu->paElements),
+        element->type,
+        element->hoverId,
+        element->bIsVisible,
+        element->enableHover,
+        element == focusedElement);
+#endif
     if ((element->type == ELEMENT_LISTBOX || element->type == ELEMENT_TEXTBOX) && jkGuiRend_sub_5103E0(element))
     {
 //#if !defined(SDL2_RENDER) && !defined(TARGET_TWL)

@@ -767,7 +767,7 @@ extern HostServices *std_pHS;
 
 static void *g_xboxHS[] =
 {
-    (void*)0,                       /* some_float      */
+    (void*)1000,                    /* some_float: GetTickCount ticks per second */
     (void*)xbox_printStub,          /* messagePrint    */
     (void*)xbox_printStub,          /* statusPrint     */
     (void*)xbox_printStub,          /* warningPrint    */

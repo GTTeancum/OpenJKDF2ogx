@@ -63,11 +63,11 @@ enum jkGuiModsButton_t
 static int32_t jkGuiMods_listboxBitmapIndices[2] = {14, 15};
 
 static jkGuiElement jkGuiMods_aElements[9] = {
-    {ELEMENT_TEXT, 0, 5, L"Expansions & Mods", 3, {0, 30, 640, 60}, 1, 0, 0, 0, 0, 0, {0}, 0},
+    {ELEMENT_TEXT, 0, 5, L"EXPANSIONS & MODS", 3, {0, 30, 640, 60}, 1, 0, 0, 0, 0, 0, {0}, 0},
     {ELEMENT_LISTBOX, JKGUIMODS_BTN_LISTCLICK, 2, 0, 0, {80, 135, 480, 240}, 1, 0, 0, 0, 0, jkGuiMods_listboxBitmapIndices, {0}, 0},
     
-    {ELEMENT_TEXT, 0, 2, L"This menu is slightly functional.", 3, {160, 100, 320, 30}, 1, 0, 0, 0, 0, 0, {0}, 0},
-    {ELEMENT_TEXTBUTTON, JKGUIMODS_BTN_OPENRESOURCEFOLDER, 2, L"Open Resource Folder", 3, {160, 380, 320, 40}, 1, 0, 0, 0, 0, 0, {0}, 0},
+    {ELEMENT_TEXT, 0, 2, L"SELECT AN EXPANSION OR MOD", 3, {160, 100, 320, 30}, 1, 0, 0, 0, 0, 0, {0}, 0},
+    {ELEMENT_TEXTBUTTON, JKGUIMODS_BTN_OPENRESOURCEFOLDER, 2, L"OPEN RESOURCE FOLDER", 3, {160, 380, 320, 40}, 1, 0, 0, 0, 0, 0, {0}, 0},
 
     {ELEMENT_TEXT,  0,  0,  NULL,  3, {560, 440, 70, 15},  1,  0,  0,  0,  0,  0, {0},  0},
     {ELEMENT_TEXT,  0,  0,  NULL,  3, {560, 455, 70, 15},  1,  0,  0,  0,  0,  0, {0},  0},
@@ -135,6 +135,12 @@ int jkGuiMods_OpenURL(const char *url)
     }
     return 0;
 }
+#elif defined(TARGET_XBOX)
+int jkGuiMods_OpenURL(const char* url)
+{
+    (void)url;
+    return 0;
+}
 #elif defined(SDL2_RENDER)
 int jkGuiMods_OpenURL(const char* url)
 {
@@ -178,6 +184,9 @@ void jkGuiMods_Show()
 
     jkGuiMods_aElements[4].wstr = openjkdf2_waReleaseVersion;
     jkGuiMods_aElements[5].wstr = openjkdf2_waReleaseCommitShort;
+#ifdef TARGET_XBOX
+    jkGuiMods_aElements[3].bIsVisible = 0;
+#endif
 
     // Added
     stdBitmap_EnsureData(jkGui_stdBitmaps[JKGUI_BM_BK_MAIN]);
@@ -195,7 +204,7 @@ void jkGuiMods_Show()
         v4 = jkGuiRend_DisplayAndReturnClicked(&jkGuiMods_menu);
         
         if (v4 == JKGUIMODS_BTN_OPENRESOURCEFOLDER) {
-#ifdef SDL2_RENDER
+#if defined(SDL2_RENDER) && !defined(TARGET_XBOX)
             char tmpCwd[256];
             char tmpUrl[512];
             getcwd(tmpCwd, sizeof(tmpCwd));
@@ -283,6 +292,10 @@ void jkGuiMods_PopulateEntries(Darray *pListDisplayed, jkGuiElement *element)
     char tmpCwd[512];
     char tmpKeyPath[512];
 
+#ifdef TARGET_XBOX
+    tmpCwd[0] = 0;
+    tmpKeyPath[0] = 0;
+#else
 #if !defined(ARCH_WASM) && !defined(TARGET_ANDROID) && !defined(TARGET_TWL)
     Main_bMotsCompat = !Main_bMotsCompat;
     InstallHelper_GetLocalDataDir(tmpCwd, sizeof(tmpCwd), 0);
@@ -329,6 +342,7 @@ void jkGuiMods_PopulateEntries(Darray *pListDisplayed, jkGuiElement *element)
     {
         jkGuiMods_AddEntry(pListDisplayed, JKGUIMODS_TYPE_RESTART, "OPENJKDF2_RESTART_DF2", "Return to Dark Forces II");
     }
+#endif
     
     stdFileSearchResult modResult;
     stdFileSearch* pSearch = stdFileUtil_NewFind("expansions", 2, NULL);

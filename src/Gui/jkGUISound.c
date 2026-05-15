@@ -40,7 +40,7 @@ static jkGuiElement jkGuiSound_elements[25] = {
     {ELEMENT_SLIDER, 0, 0, (const char*)100, 0, {300, 245, 320, 30}, 1, 0, "GUI_SFXVOLUME_HINT", 0, 0, slider_images, {0}, 0},
     {ELEMENT_TEXT, 0, 0, "GUI_OFF", 2, {300, 280, 40, 20}, 1, 0, 0, 0, 0, 0, {0}, 0},
     {ELEMENT_TEXT, 0, 0, "GUI_MAX", 2, {580, 280, 40, 20}, 1, 0, 0, 0, 0, 0, {0}, 0},
-#ifdef SDL2_RENDER
+#if defined(SDL2_RENDER) || defined(TARGET_XBOX)
     {ELEMENT_TEXT, 0, 0, "GUIEXT_CUTSCENE_VOLUME", 3, {340, 310, 220, 20}, 1, 0, 0, 0, 0, 0, {0}, 0},
     {ELEMENT_SLIDER, 0, 0, (const char*)100, 0, {300, 335, 320, 30}, 1, 0, "GUIEXT_CUTSCENE_VOLUME_HINT", 0, 0, slider_images, {0}, 0},
     {ELEMENT_TEXT, 0, 0, "GUI_OFF", 2, {310, 370, 40, 20}, 1, 0, 0, 0, 0, 0, {0}, 0},
@@ -102,9 +102,13 @@ int jkGuiSound_Show()
     jkGui_sub_412E20(&jkGuiSound_menu, 102, 107, 103);
     jkGuiSound_elements[7].selectedTextEntry = jkGuiSound_b3DSound_2;
     jkGuiSound_elements[7].bIsVisible = jkGuiSound_b3DSound_3 != 0;
+#ifdef TARGET_XBOX
+    jkGuiSound_elements[7].bIsVisible = 0;
+    jkGuiSound_elements[8].bIsVisible = 0;
+#endif
     jkGuiSound_elements[10].selectedTextEntry = (__int64)(jkGuiSound_musicVolume * 100.0);
     jkGuiSound_elements[14].selectedTextEntry = (__int64)(jkGuiSound_sfxVolume * 100.0);
-#ifdef SDL2_RENDER
+#if defined(SDL2_RENDER) || defined(TARGET_XBOX)
     jkGuiSound_elements[18].selectedTextEntry = (__int64)(jkGuiSound_cutsceneVolume * 100.0);
     jkGuiSound_numChannels = 256;
 #else
@@ -129,12 +133,12 @@ int jkGuiSound_Show()
         jkGuiSound_musicVolume = (flex_d_t)jkGuiSound_elements[10].selectedTextEntry * 0.01;
         jkGuiSound_sfxVolume = (flex_d_t)jkGuiSound_elements[14].selectedTextEntry * 0.01;
         
-#ifdef SDL2_RENDER
+#if defined(SDL2_RENDER) || defined(TARGET_XBOX)
         jkGuiSound_cutsceneVolume = (flex_d_t)jkGuiSound_elements[18].selectedTextEntry * 0.01;
         jkGuiSound_numChannels = 256;
         jkGuiSound_b3DSound_2 = jkGuiSound_elements[7].selectedTextEntry;
         jkGuiSound_b3DSound = jkGuiSound_b3DSound_2;
-        wuRegistry_SaveBool("b3DSound", (HKEY)jkGuiSound_elements[7].selectedTextEntry);
+        wuRegistry_SaveBool("b3DSound", jkGuiSound_elements[7].selectedTextEntry);
 
         wuRegistry_SaveFloat("musicVolume", jkGuiSound_musicVolume);
         wuRegistry_SaveFloat("sfxVolume", jkGuiSound_sfxVolume);
@@ -148,7 +152,7 @@ int jkGuiSound_Show()
             v2 = jkStrings_GetUniStringWithFallback("GUISOUND_WARNING");
             jkGuiDialog_ErrorDialog(v2, v4);
             jkGuiSound_b3DSound_2 = jkGuiSound_elements[7].selectedTextEntry;
-            wuRegistry_SaveBool("b3DSound", (HKEY)jkGuiSound_elements[7].selectedTextEntry);
+            wuRegistry_SaveBool("b3DSound", jkGuiSound_elements[7].selectedTextEntry);
         }
 #endif
         sithSoundMixer_UpdateMusicVolume(jkGuiSound_musicVolume);

@@ -20,6 +20,7 @@
 #include "../../Main/jkMain.h"
 #include "../../Main/jkSmack.h"
 #include "../../globals.h"
+#include "../../Platform/wuRegistry.h"
 
 #define DIK_ESCAPE      0x01
 #define DIK_TAB         0x0F
@@ -79,6 +80,9 @@ static HANDLE g_hController;
  * which felt too twitchy on hardware. */
 static float g_lookSensX = 1.25f;
 static float g_lookSensY = 1.2f;
+static int   g_lookSensitivity = 50;
+static int   g_invertLookY = 0;
+static int   g_vibrationEnabled = 1;
 static int   g_openAttempted;  /* deferred XInputOpen: tried once from ReadControls */
 
 /* Key state array — indexed by DIK_ value OR engine-extended joy/mouse
@@ -102,6 +106,7 @@ static unsigned int  g_keyTime[XBOX_NUM_KEYS];
 static unsigned int  g_keyPress[XBOX_NUM_KEYS];
 
 void stdControl_ReadControls(void);
+void stdControl_XboxSetLookOptions(int sensitivity, int invertLook, int vibration);
 
 void stdControl_SetKeydown(int keyNum, int bDown, unsigned int readTime)
 {
@@ -167,6 +172,10 @@ int stdControl_Startup(void)
     memset(g_prevAnalog, 0, sizeof(g_prevAnalog));
     g_prevButtons = 0; g_crouchToggle = 0; g_sprintToggle = 0; g_walkToggle = 0;
     g_hController = NULL; g_connected = 0; g_openAttempted = 0;
+    stdControl_XboxSetLookOptions(
+        wuRegistry_GetInt("xboxLookSensitivity", 50),
+        wuRegistry_GetBool("xboxInvertLook", 0),
+        wuRegistry_GetBool("xboxVibration", 1));
 
     /* Mark our 4 joystick axes as enabled in stdControl_aJoysticks[].
      * Without this, sithControl_MapAxisFunc silently rejects every
@@ -354,6 +363,8 @@ void stdControl_ReadControls(void)
      * inputs stay near full speed.  Feels much less twitchy than linear. */
     g_axisValues[XBOX_AXIS_LOOK_LR] =  xbox_LookCurve(xbox_NormalizeStick(pad->sThumbRX), 2.0f) * g_lookSensX;
     g_axisValues[XBOX_AXIS_LOOK_UD] = -xbox_LookCurve(xbox_NormalizeStick(pad->sThumbRY), 2.0f) * g_lookSensY;
+    if (g_invertLookY)
+        g_axisValues[XBOX_AXIS_LOOK_UD] = -g_axisValues[XBOX_AXIS_LOOK_UD];
 
     /* Per-call axis log: first 3 calls only, just for boot sanity.  No
      * periodic spam — it floods D:\debug_openjkdf2.txt over time. */
@@ -414,3 +425,21 @@ void stdControl_Reset(void)                  { memset(g_axisValues,0,sizeof(g_ax
 void stdControl_ShowSystemKeyboard(void)      { }
 void stdControl_HideSystemKeyboard(void)      { }
 int  stdControl_IsSystemKeyboardShowing(void) { return 0; }
+
+void stdControl_XboxSetLookOptions(int sensitivity, int invertLook, int vibration)
+{
+    float scale;
+    if (sensitivity < 1) sensitivity = 1;
+    if (sensitivity > 100) sensitivity = 100;
+    g_lookSensitivity = sensitivity;
+    g_invertLookY = invertLook ? 1 : 0;
+    g_vibrationEnabled = vibration ? 1 : 0;
+
+    scale = (float)g_lookSensitivity / 50.0f;
+    g_lookSensX = 1.25f * scale;
+    g_lookSensY = 1.2f * scale;
+}
+
+int stdControl_XboxGetLookSensitivity(void) { return g_lookSensitivity; }
+int stdControl_XboxGetInvertLook(void) { return g_invertLookY; }
+int stdControl_XboxGetVibration(void) { return g_vibrationEnabled; }

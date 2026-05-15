@@ -990,6 +990,20 @@ int sithControl_HandlePlayer(sithThing *player, flex_t deltaSecs)
                     goto LABEL_39;
                 if ( sithControl_death_msgtimer <= sithTime_curMs )
                 {
+#ifdef TARGET_XBOX
+                    if ( sithNet_isMulti )
+                    {
+                        v17 = (wchar_t *)L"Press FIRE to respawn";
+                    }
+                    else if ( !__strnicmp(sithGamesave_autosave_fname, "_JKAUTO_", 8u) )
+                    {
+                        v17 = (wchar_t *)L"Press FIRE to restart";
+                    }
+                    else
+                    {
+                        v17 = (wchar_t *)L"Press FIRE to load last save";
+                    }
+#else
                     if ( sithNet_isMulti )
                     {
                         v17 = sithStrTable_GetUniStringWithFallback("PRESS_ACTIVATE_TO_RESPAWN");
@@ -1002,6 +1016,7 @@ int sithControl_HandlePlayer(sithThing *player, flex_t deltaSecs)
                     {
                         v17 = sithStrTable_GetUniStringWithFallback("PRESS_ACTIVATE_TO_RESTORE");
                     }
+#endif
                     sithConsole_PrintUniStr(v17);
                     sithConsole_AlertSound();
                     sithControl_death_msgtimer = 0;

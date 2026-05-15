@@ -48,7 +48,9 @@ int   __cdecl _rand(void)                                    { return rand(); }
 void  __cdecl _qsort(void* b, size_t n, size_t s, int(__cdecl*c)(const void*,const void*)) { qsort(b,n,s,c); }
 
 int   __cdecl _sprintf(char* b, const char* f, ...)         { va_list a; int r; va_start(a,f); r=vsprintf(b,f,a); va_end(a); return r; }
+int   __cdecl __snprintf(char* b, size_t n, const char* f, ...) { va_list a; int r; va_start(a,f); r=_vsnprintf(b,n,f,a); va_end(a); return r; }
 int   __cdecl __vsnprintf(char* b, size_t n, const char* f, va_list a) { return _vsnprintf(b,n,f,a); }
+int   __cdecl ___snprintf(char* b, size_t n, const char* f, ...) { va_list a; int r; va_start(a,f); r=_vsnprintf(b,n,f,a); va_end(a); return r; }
 /* _sscanf is now #defined to sscanf in platform_xbox.h.
    The old va_list wrapper was broken (XDK lacks vsscanf). */
 
@@ -174,9 +176,6 @@ void stdUpdater_StartupCvars(void) { }
 
 /* DirectPlay — stubbed */
 /* DirectPlay no-network backend is compiled from stdComm_none.c. */
-
-/* Misc globals (C linkage) */
-int jkGuiNetHost_bIsDedicated = 0;
 
 /* CRT */
 int __cdecl __strnicmp(const char* a, const char* b, size_t n) { return _strnicmp(a, b, n); }

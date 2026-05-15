@@ -12,13 +12,15 @@
 /* sithTime_physicsRolloverFrames — defined in src/Gameplay/sithTime.c (now in build) */
 /* rdMath_DistancePointToPlane, rdMath_clampf — now in rdMath.c */
 /* sithActor_Hit — real impl in src/World/sithActor.c (now in build) */
-int jkCredits_Show(void) { return 0; }
-int jkCredits_Skip(void) { return 0; }
-int jkCredits_Tick(void) { return 0; }
+/* jkCredits_* is now provided by the real credits implementation. */
+//int jkCredits_Show(void) { return 0; }
+//int jkCredits_Skip(void) { return 0; }
+//int jkCredits_Tick(void) { return 0; }
 int jkDSS_wrap_SendSaberInfo_alt(void) { return 0; }
-int jkDev_Open(void) { return 0; }
+/* jkDev is now provided by the real in-game message/debug-log implementation. */
+//int jkDev_Open(void) { return 0; }
 /* jkGuiDialog_YesNoDialog, jkGuiForce_Show — real GUI implementations now compiled. */
-int jkGuiMultiTally_Show(int a0) { return 0; }
+/* jkGuiMultiTally_Show is now provided by the real multiplayer tally GUI. */
 /* stdComm_EarlyInit is compiled from src/Win95/stdComm.c. */
 /* jkGuiSingleTally_Show, jkGui_SetModeMenu — real GUI implementations now compiled. */
 /* rdMath_PointsCollinear — now in rdMath.c */
@@ -48,14 +50,17 @@ void Video_Shutdown(void) { }
 void Windows_Shutdown(void) { }
 void Windows_Startup(void) { }
 /* jkCog_Shutdown — defined in src/Cog/jkCog.c (now in build) */
-flex_t jkGuiSound_cutsceneVolume = 1.0f;
+/* jkGuiSound_cutsceneVolume is now provided by the real sound setup menu. */
+//flex_t jkGuiSound_cutsceneVolume = 1.0f;
 void jk_SetCursor(HCURSOR hCursor) { (void)hCursor; }
 void jk_ShowCursor(int a) { (void)a; }
-void jkCredits_Shutdown(void) { }
-void jkCredits_Startup(char * a0) { }
+/* jkCredits_* is now provided by the real credits implementation. */
+//void jkCredits_Shutdown(void) { }
+//void jkCredits_Startup(char * a0) { }
 void jkDSS_Shutdown(void) { }
-void jkDev_Shutdown(void) { }
-void jkDev_Startup(void) { }
+/* jkDev is now provided by the real in-game message/debug-log implementation. */
+//void jkDev_Shutdown(void) { }
+//void jkDev_Startup(void) { }
 void jkGuiControlOptions_Shutdown(void) { }
 void jkGuiControlOptions_Startup(void) { }
 void jkGuiControlSaveLoad_Shutdown(void) { }
@@ -66,36 +71,43 @@ void jkGuiDecision_Startup(void) { }
 void jkGuiDisplay_Shutdown(void) { }
 void jkGuiDisplay_Startup(void) { }
 /* jkGuiEsc_*, jkGuiForce_* — real GUI implementations now compiled. */
-void jkGuiGameplay_Shutdown(void) { }
-void jkGuiGameplay_Startup(void) { }
-void jkGuiGeneral_Shutdown(void) { }
-void jkGuiGeneral_Startup(void) { }
+/* jkGuiGeneral/Gameplay are now provided by real setup pages. */
+//void jkGuiGameplay_Shutdown(void) { }
+//void jkGuiGameplay_Startup(void) { }
+//void jkGuiGeneral_Shutdown(void) { }
+//void jkGuiGeneral_Startup(void) { }
 void jkGuiJoystick_Shutdown(void) { }
 void jkGuiJoystick_Startup(void) { }
 void jkGuiKeyboard_Shutdown(void) { }
 void jkGuiKeyboard_Startup(void) { }
 /* jkGuiMain_* — real GUI implementations now compiled. */
-void jkGuiMap_Shutdown(void) { }
-void jkGuiMap_Startup(void) { }
-void jkGuiMods_Shutdown(void) { }
-void jkGuiMods_Startup(void) { }
+/* jkGuiMap_* is now provided by the real map GUI implementation. */
+//void jkGuiMap_Shutdown(void) { }
+//void jkGuiMap_Startup(void) { }
+/* jkGuiMods_* is now provided by the real Expansions & Mods menu. */
+//void jkGuiMods_Shutdown(void) { }
+//void jkGuiMods_Startup(void) { }
 void jkGuiMouse_Shutdown(void) { }
 void jkGuiMouse_Startup(void) { }
 /* jkGuiObjectives_* — real GUI implementations now compiled. */
-void jkGuiPlayer_Shutdown(void) { }
+/* jkGuiPlayer_Shutdown is now provided by the real player GUI. */
+//void jkGuiPlayer_Shutdown(void) { }
 /* jkGuiRend_*, jkGuiSaveLoad_* — real GUI implementations now compiled. */
-void jkGuiSetup_Shutdown(void) { }
-void jkGuiSetup_Startup(void) { }
+/* jkGuiSetup_* is now provided by the real setup menu implementation. */
+//void jkGuiSetup_Shutdown(void) { }
+//void jkGuiSetup_Startup(void) { }
 /* jkGuiSingleTally_*, jkGuiSingleplayer_* — real GUI implementations now compiled. */
-void jkGuiSound_Shutdown(void) { }
-void jkGuiSound_Startup(void) { }
+/* jkGuiSound_* is now provided by the real setup sound menu implementation. */
+//void jkGuiSound_Shutdown(void) { }
+//void jkGuiSound_Startup(void) { }
 /* jkGuiTitle_*, jkGui_Shutdown/copies_string — real GUI implementations now compiled. */
 void jkQuakeConsole_Shutdown(void) { }
 void jkQuakeConsole_Startup(void) { }
 /* jkCutscene_* and jkSmack_* are real implementations now. */
 /* rdMath_CalcSurfaceNormal, ClampVector, ClampVectorRange — now in rdMath.c */
 /* rdPrimit3_ClearFrameCounters/ClipFace/ClipFaceRGB/ClipFaceRGBLevel/NoClipFace/NoClipFaceRGB — now in rdPrimit3.c */
-void rdPrimit2_DrawCircle(struct rdCanvas *a0, int a1, int a2, float a3, float a4, unsigned short a5, int a6) { }
+/* rdPrimit2_* is now provided by the real 2D primitive implementation. */
+//void rdPrimit2_DrawCircle(struct rdCanvas *a0, int a1, int a2, float a3, float a4, unsigned short a5, int a6) { }
 void rdRaster_Startup(void) { }
 /* rdThing_AccumulateMatrices — now in rdThing.c */
 /* rdThing_FreeEntry — now in rdThing.c */
@@ -154,6 +166,7 @@ int     __cdecl _fputs(const char* s, FILE* f)                       { return fp
 size_t  __cdecl _fwrite(const void* p, size_t a, size_t b, FILE* f)  { return fwrite(p,a,b,f); }
 void*   __cdecl _malloc(size_t n)                                    { return malloc(n); }
 void    __cdecl _free(void* p)                                       { free(p); }
+int     __cdecl stdFileUtil_Deltree(const char* p)                   { (void)p; return 0; }
 }
 
 /* Variables with C++ mangled references (?name@@3type) — keep as C++ linkage. */

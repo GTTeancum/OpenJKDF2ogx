@@ -13,7 +13,6 @@
 #define QOL_IMPROVEMENTS     1
 
 /* ── Suppress unavailable features ────────────────────────────── */
-#define TARGET_NO_MULTIPLAYER_MENUS  1
 #define LINUX_TMP                    1
 
 /* ── Sound backend selection ───────────────────────────────────── */

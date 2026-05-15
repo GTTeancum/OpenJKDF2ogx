@@ -57,13 +57,26 @@ static jkGuiElement jkGuiMain_elements[11] = {
     {ELEMENT_TEXTBUTTON, 10, 5, "GUI_SINGLEPLAYER", 3, {0, 220, 640, 60}, 1, 0, 0, 0, 0, 0, {0}, 0},
     {ELEMENT_TEXT, 11, 5, NULL, 3, {0, 0, 0, 0}, 1, 0, 0, 0, 0, 0, {0}, 0},
 #endif
+#ifdef TARGET_XBOX
+    {ELEMENT_TEXTBUTTON, 13, 5, "GUI_SETUP", 3, {0, 280, 640, 60}, 1, 0, 0, 0, 0, 0, {0}, 0},
+#else
     {ELEMENT_TEXTBUTTON, 12, 5, "GUI_QUIT", 3, {0, 280, 640, 60}, 1, 0, 0, 0, 0, 0, {0}, 0},
+#endif
     {ELEMENT_TEXTBUTTON, 14, 2, "GUI_CHOOSEPLAYER", 3, {20, 380, 150, 40}, 1, 0, 0, 0, 0, 0, {0}, 0},
     {ELEMENT_TEXTBUTTON, 15, 2, "GUI_VIEWCUTSCENES", 3, {250, 380, 150, 40}, 1, 0, 0, 0, 0, 0, {0}, 0},
+#ifdef TARGET_XBOX
+    {ELEMENT_TEXTBUTTON, 16, 2, "GUI_CREDITS", 3, {470, 380, 150, 40}, 1, 0, 0, 0, 0, 0, {0}, 0},
+#else
     {ELEMENT_TEXTBUTTON, 13, 2, "GUI_SETUP", 3, {470, 380, 150, 40}, 1, 0, 0, 0, 0, 0, {0}, 0},
+#endif
 #ifdef QOL_IMPROVEMENTS
+#ifdef TARGET_XBOX
+    {ELEMENT_TEXT, 0, 0, NULL, 3, {0, 0, 0, 0}, 0, 0, 0, 0, 0, 0, {0}, 0},
+    {ELEMENT_TEXTBUTTON, 17, 2, L"Expansions & Mods", 3, {170, 430, 300, 40}, 1, 0, 0, 0, 0, 0, {0}, 0},
+#else
     {ELEMENT_TEXTBUTTON, 16, 2, "GUI_CREDITS", 3, {130, 430, 150, 40}, 1, 0, 0, 0, 0, 0, {0}, 0},
     {ELEMENT_TEXTBUTTON, 17, 2, L"Expansions & Mods", 3, {370, 430, 150, 40}, 1, 0, 0, 0, 0, 0, {0}, 0},
+#endif
     {ELEMENT_TEXT,  0,  0,  NULL,  3, {560, 440, 70, 15},  1,  0,  0,  0,  0,  0, {0},  0},
     {ELEMENT_TEXT,  0,  0,  NULL,  3, {560, 455, 70, 15},  1,  0,  0,  0,  0,  0, {0},  0},
 #else
@@ -157,7 +170,9 @@ void jkGuiMain_Show()
         {
             if (g_should_exit) return; // Added
 
+#ifndef TARGET_XBOX
             jkGuiRend_MenuSetEscapeKeyShortcutElement(&jkGuiMain_menu, &jkGuiMain_elements[2]);
+#endif
             v1 = jkGuiRend_DisplayAndReturnClicked(&jkGuiMain_menu);
             switch ( v1 )
             {
@@ -166,11 +181,7 @@ void jkGuiMain_Show()
                     break;
 #if !defined(TARGET_NO_MULTIPLAYER_MENUS) || defined(TARGET_XBOX)
                 case 11:
-#ifdef TARGET_XBOX
-                    v1 = -1;
-#else
                     v1 = jkGuiMultiplayer_Show();
-#endif
                     break;
 #endif
                 case 12:

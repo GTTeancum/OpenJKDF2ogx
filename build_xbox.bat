@@ -49,7 +49,7 @@ set CFLAGS=%CFLAGS% /I"%~dp0src" /I"%~dp0src\Platform\Xbox" /I"%~dp03rdparty" /I
 set CFLAGS=%CFLAGS% /I"%~dp0src\external\libsmacker" /I"%~dp0src\external\libsmusher\src"
 set CFLAGS=%CFLAGS% /DTARGET_XBOX=1 /DSDL2_RENDER=1 /DSTDSOUND_XBOX=1 /D_XBOX=1
 set CFLAGS=%CFLAGS% /DPLATFORM_NOSOCKETS=1 /DQOL_IMPROVEMENTS=1
-set CFLAGS=%CFLAGS% /DTARGET_NO_MULTIPLAYER_MENUS=1 /DLINUX_TMP=1
+set CFLAGS=%CFLAGS% /DLINUX_TMP=1
 set CFLAGS=%CFLAGS% /D_CRT_SECURE_NO_WARNINGS /D_CRT_NONSTDC_NO_WARNINGS
 set CFLAGS=%CFLAGS% /DWIN32 /DNDEBUG
 set CFLAGS=%CFLAGS% /FI"platform_xbox.h"
@@ -175,6 +175,7 @@ for %%F in (
     src\Primitives\rdModel3.c
     src\Primitives\rdParticle.c
     src\Primitives\rdPolyLine.c
+    src\Primitives\rdPrimit2.c
     src\Primitives\rdPrimit3.c
     src\Primitives\rdSprite.c
     src\Primitives\rdMath.c
@@ -225,6 +226,7 @@ for %%F in (
     src\Dss\sithDSSThing.c
     src\Gameplay\jkSaber.c
     src\Main\jkAI.c
+    src\Main\jkDev.c
     src\Main\jkEpisode.c
     src\Main\jkGame.c
     src\Main\jkHud.c
@@ -232,16 +234,28 @@ for %%F in (
     src\Main\jkHudScope.c
     src\Main\jkHudCameraView.c
     src\Main\jkStrings.c
+    src\Main\jkCredits.c
     src\Gui\jkGUI.c
     src\Gui\jkGUIRend.c
     src\Gui\jkGUIMain.c
+    src\Gui\jkGUIPlayer.c
     src\Gui\jkGUISingleplayer.c
+    src\Gui\jkGUIMultiplayer.c
+    src\Gui\jkGUINetHost.c
+    src\Gui\jkGUIBuildMulti.c
     src\Gui\jkGUIDialog.c
     src\Gui\jkGUIEsc.c
     src\Gui\jkGUIForce.c
+    src\Gui\jkGUIMap.c
     src\Gui\jkGUIObjectives.c
     src\Gui\jkGUISaveLoad.c
+    src\Gui\jkGUISetup.c
+    src\Gui\jkGUIGeneral.c
+    src\Gui\jkGUIGameplay.c
+    src\Gui\jkGUISound.c
+    src\Gui\jkGUIMods.c
     src\Gui\jkGUISingleTally.c
+    src\Gui\jkGUIMultiTally.c
     src\Gui\jkGUITitle.c
     src\Platform\Xbox\std3D.c
     src\Platform\Xbox\std3D_draw.cpp

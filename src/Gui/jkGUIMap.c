@@ -76,6 +76,28 @@ void jkGuiMap_DrawMapScreen(jkGuiElement *element, jkGuiMenu *menu, stdVBuffer *
         stdDisplay_VBufferFill(jkGuiMap_pVbuffer, 0, 0);
         rdAdvanceFrame();
         sithMap_DrawCircle(jkGuiMap_pCamera, &jkGuiMap_matTmp);
+#ifdef TARGET_XBOX
+        {
+            static int mapDbgCount = 0;
+            int nonzero = 0;
+            int total = jkGuiMap_pVbuffer->format.width_in_bytes * jkGuiMap_pVbuffer->format.height;
+            unsigned char *pixels = (unsigned char *)jkGuiMap_pVbuffer->surface_lock_alloc;
+            for (int i = 0; i < total; i++)
+            {
+                if (pixels[i])
+                    nonzero++;
+            }
+            if (mapDbgCount < 20 || nonzero > 0)
+            {
+                stdPlatform_Printf("GuiMap: draw redraw=%d nonzero=%d size=%dx%d\n",
+                    redraw,
+                    nonzero,
+                    jkGuiMap_pVbuffer->format.width,
+                    jkGuiMap_pVbuffer->format.height);
+                mapDbgCount++;
+            }
+        }
+#endif
 #if !defined(SDL2_RENDER) && !defined(TARGET_TWL)
         rdFinishFrame();
 #endif
