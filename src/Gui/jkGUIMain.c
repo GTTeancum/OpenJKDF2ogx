@@ -88,9 +88,49 @@ static jkGuiElement jkGuiMain_elements[11] = {
 static jkGuiMenu jkGuiMain_menu = {jkGuiMain_elements, -1, 0xFFFF, 0xFFFF, 0xF, 0, 0, jkGui_stdBitmaps, jkGui_stdFonts, 0, 0, "thermloop01.wav", "thrmlpu2.wav", 0, 0, 0, 0, 0, 0};
 
 #ifdef TARGET_XBOX
+static jkGuiElement jkGuiMain_xboxMultiplayerElements[7] = {
+    {ELEMENT_TEXT, 0, 5, L"Multiplayer", 3, {0, 50, 640, 60}, 1, 0, 0, 0, 0, 0, {0}, 0},
+    {ELEMENT_TEXTBUTTON, 20, 5, L"Split Screen", 3, {0, 150, 640, 50}, 1, 0, 0, 0, 0, 0, {0}, 0},
+    {ELEMENT_TEXTBUTTON, 21, 5, L"Character", 3, {0, 210, 640, 50}, 1, 0, 0, 0, 0, 0, {0}, 0},
+    {ELEMENT_TEXTBUTTON, 22, 5, L"System Link", 3, {0, 270, 640, 50}, 1, 0, 0, 0, 0, 0, {0}, 0},
+    {ELEMENT_TEXTBUTTON, 23, 5, L"Combo", 3, {0, 330, 640, 50}, 1, 0, 0, 0, 0, 0, {0}, 0},
+    {ELEMENT_TEXTBUTTON, -1, 2, "GUI_CANCEL", 3, {230, 410, 180, 40}, 1, 0, 0, 0, 0, 0, {0}, 0},
+    {ELEMENT_END, 0, 0, 0, 0, {0}, 0, 0, 0, 0, 0, 0, {0}, 0}
+};
+
+static jkGuiMenu jkGuiMain_xboxMultiplayerMenu = {jkGuiMain_xboxMultiplayerElements, -1, 0xFFFF, 0xFFFF, 0xF, 0, 0, jkGui_stdBitmaps, jkGui_stdFonts, 0, 0, "thermloop01.wav", "thrmlpu2.wav", 0, 0, 0, 0, 0, 0};
+
 static int jkGuiMain_XboxStartLocalMultiplayerTest(void)
 {
     return jkMain_loadFile2("JK1MP", "m10.jkl") ? 1 : -1;
+}
+
+static int jkGuiMain_XboxShowMultiplayer(void)
+{
+    int result;
+
+    stdBitmap_EnsureData(jkGui_stdBitmaps[JKGUI_BM_BK_MULTI]);
+    jkGui_SetModeMenu(jkGui_stdBitmaps[JKGUI_BM_BK_MULTI]->palette);
+
+    do
+    {
+        jkGuiRend_MenuSetReturnKeyShortcutElement(&jkGuiMain_xboxMultiplayerMenu, &jkGuiMain_xboxMultiplayerElements[1]);
+        jkGuiRend_MenuSetEscapeKeyShortcutElement(&jkGuiMain_xboxMultiplayerMenu, &jkGuiMain_xboxMultiplayerElements[5]);
+        result = jkGuiRend_DisplayAndReturnClicked(&jkGuiMain_xboxMultiplayerMenu);
+
+        if (result == 20)
+            return jkGuiMain_XboxStartLocalMultiplayerTest();
+
+        if (result == 21 || result == 22 || result == 23)
+        {
+            jkGuiDialog_ErrorDialog(L"Multiplayer", L"Coming soon");
+            stdBitmap_EnsureData(jkGui_stdBitmaps[JKGUI_BM_BK_MULTI]);
+            jkGui_SetModeMenu(jkGui_stdBitmaps[JKGUI_BM_BK_MULTI]->palette);
+            result = -2;
+        }
+    } while (result == -2);
+
+    return -1;
 }
 #endif
 
@@ -189,7 +229,7 @@ void jkGuiMain_Show()
 #if !defined(TARGET_NO_MULTIPLAYER_MENUS) || defined(TARGET_XBOX)
                 case 11:
 #ifdef TARGET_XBOX
-                    v1 = jkGuiMain_XboxStartLocalMultiplayerTest();
+                    v1 = jkGuiMain_XboxShowMultiplayer();
 #else
                     v1 = jkGuiMultiplayer_Show();
 #endif
@@ -321,6 +361,9 @@ void jkGuiMain_Startup()
     stdPlatform_Printf("OpenJKDF2: %s\n", __func__); // Added
     
     jkGui_InitMenu(&jkGuiMain_menu, jkGui_stdBitmaps[JKGUI_BM_BK_MAIN]);
+#ifdef TARGET_XBOX
+    jkGui_InitMenu(&jkGuiMain_xboxMultiplayerMenu, jkGui_stdBitmaps[JKGUI_BM_BK_MULTI]);
+#endif
 
     // Added: clean reset
     jkGuiMain_bIdk = 1;
