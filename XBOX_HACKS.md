@@ -13,9 +13,17 @@ history is useful.
 
 # Known Bugs
 
-## Cutscene volume needs a separate mixer setting
+## Cutscene volume needs a separate mixer setting — [FIXED]
 
-**Status:** Open.
+**Status:** FIXED — `jkGuiSound_cutsceneVolume` is now provided by the
+real sound setup menu, persisted through `wuRegistry` as `cutsceneVolume`,
+and passed into both SMK audio paths in `src/Main/jkCutscene.c` before
+the Xbox streaming buffer applies DirectSound volume. Fixed as part of
+the Xbox scaffolding/menu work (`7959b4bf`).
+
+(original entry preserved below for history)
+
+**Status (original):** Open.
 **Severity:** Audio balance. SMK cutscenes now play in sync on Xbox, but
 their decoded PCM is roughly 30% quieter than in-game sound effects and
 music when routed through the Xbox streaming buffer.
@@ -88,9 +96,18 @@ distinction is lost.
 plus per-bind filter selection inside `std3D_DrawRenderList` at the
 texture-bind site (`std3D.c:1076`).
 
-## Translucent windows render opaque
+## Translucent windows render opaque — [FIXED]
 
-**Status:** Open.
+**Status:** FIXED — Xbox render-list staging now carries the upstream alpha
+state through `rdCache` into `std3D_DrawRenderList`, and the Xbox GL path
+enables `GL_BLEND` for translucent surfaces while keeping opaque geometry
+solid. The material alpha path is active through `std3D_HasAlpha()` and the
+per-face blend setup in `src/Platform/Xbox/std3D.c`. Fixed during the
+surface-flag/render-list scaffolding work (`7959b4bf`).
+
+(original entry preserved below for history)
+
+**Status (original):** Open.
 **Severity:** Cosmetic. Doesn't block gameplay but breaks visual fidelity
 on every level with glass/window surfaces (most JK levels — bartop windows
 in narshadda, observation windows, etc.).
@@ -119,9 +136,17 @@ solid-color/textured path instead of the translucent path.
 
 # Hacks & Tech Debt
 
-## sithGamesave_Load hijacked into a soft respawn — REVERTED
+## sithGamesave_Load hijacked into a soft respawn — [FIXED]
 
-**Status:** REVERTED. Engine froze after one frame post-`Present` on boot. Cause
+**Status:** FIXED — the reverted soft-respawn hijack is no longer needed.
+The real `src/Dss/sithGamesave.c` load/write path is wired for Xbox, so
+`sithGamesave_Load` and `sithGamesave_Write` are not auto-stubs and no
+longer need to fake death recovery through a checkpoint reset. Fixed in
+the Xbox save/scaffolding work (`7959b4bf`).
+
+(original reverted entry preserved below for history)
+
+**Status (original):** REVERTED. Engine froze after one frame post-`Present` on boot. Cause
 not yet identified — could be a C++/C linkage mismatch on
 `sithPlayer_pLocalPlayerThing` (declared `struct sithThing*` in xbox_stubs.c
 but defined in sithPlayer.c which is compiled as C++), a stale link artifact
