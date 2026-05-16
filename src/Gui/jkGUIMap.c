@@ -15,6 +15,8 @@
 #include "Platform/stdControl.h"
 #include "Engine/rdroid.h"
 
+#include <string.h>
+
 static int32_t jkGuiMap_idk2[12] = { 24, 25, 26, 18, 10, 19, 27, 28, 20, 21, 22, 0 };
 static int32_t jkGuiMap_idk[5] = {0, 0x38, 1, 0x37, 0x18};
 
@@ -76,28 +78,6 @@ void jkGuiMap_DrawMapScreen(jkGuiElement *element, jkGuiMenu *menu, stdVBuffer *
         stdDisplay_VBufferFill(jkGuiMap_pVbuffer, 0, 0);
         rdAdvanceFrame();
         sithMap_DrawCircle(jkGuiMap_pCamera, &jkGuiMap_matTmp);
-#ifdef TARGET_XBOX
-        {
-            static int mapDbgCount = 0;
-            int nonzero = 0;
-            int total = jkGuiMap_pVbuffer->format.width_in_bytes * jkGuiMap_pVbuffer->format.height;
-            unsigned char *pixels = (unsigned char *)jkGuiMap_pVbuffer->surface_lock_alloc;
-            for (int i = 0; i < total; i++)
-            {
-                if (pixels[i])
-                    nonzero++;
-            }
-            if (mapDbgCount < 20 || nonzero > 0)
-            {
-                stdPlatform_Printf("GuiMap: draw redraw=%d nonzero=%d size=%dx%d\n",
-                    redraw,
-                    nonzero,
-                    jkGuiMap_pVbuffer->format.width,
-                    jkGuiMap_pVbuffer->format.height);
-                mapDbgCount++;
-            }
-        }
-#endif
 #if !defined(SDL2_RENDER) && !defined(TARGET_TWL)
         rdFinishFrame();
 #endif
@@ -293,6 +273,7 @@ int jkGuiMap_Show()
     rdVector3 a2; // [esp+4h] [ebp-58h] BYREF
     stdVBufferTexFmt v3; // [esp+10h] [ebp-4Ch] BYREF
 
+    memset(&v3, 0, sizeof(v3));
     v3.width = 520;
     v3.height = 320;
     v3.format.bpp = 8;
@@ -302,6 +283,10 @@ int jkGuiMap_Show()
     v3.width = (int)(520*0.4);
     v3.height = (int)(320*0.4);
 #endif
+
+    v3.width_in_pixels = v3.width;
+    v3.width_in_bytes = v3.width;
+    v3.texture_size_in_bytes = v3.width * v3.height;
 
 #ifdef QOL_IMPROVEMENTS
     jkGuiRend_MenuSetReturnKeyShortcutElement(&jkGuiMap_menu, &jkGuiMap_aElements[14]);
