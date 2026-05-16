@@ -506,3 +506,21 @@ int stdControl_XboxGetConnectedMask(void)
     }
     return mask;
 }
+
+int stdControl_XboxGetControllerKeyPress(int port, int keyNum)
+{
+    if (port < 0 || port >= XBOX_MAX_CONTROLLERS)
+        return 0;
+    if (keyNum < 0 || keyNum >= XBOX_NUM_KEYS)
+        return 0;
+    return (int)g_pads[port].keyPress[keyNum];
+}
+
+int stdControl_XboxGetControllerKeyDown(int port, int keyNum)
+{
+    if (port < 0 || port >= XBOX_MAX_CONTROLLERS)
+        return 0;
+    if (keyNum < 0 || keyNum >= XBOX_NUM_KEYS)
+        return 0;
+    return (int)g_pads[port].keyDown[keyNum];
+}

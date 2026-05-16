@@ -118,7 +118,7 @@ static int jkMain_CreateLocalMultiplayerHost(const char *pGobPath, const char *p
     multiModeFlags = jkMain_MultiplayerFlagsForEpisodeType(type);
     sithNet_scorelimit = 0;
     sithNet_multiplayer_timelimit = 0;
-    result = sithMulti_CreatePlayer(L"OpenJKDF2 Xbox", L"", pGobPath, pEpisodeName, 4, 0, multiModeFlags, 180, 0);
+    result = sithMulti_CreatePlayer(L"OpenJKDF2 Xbox", L"", pGobPath, pEpisodeName, xboxSplitScreen_GetRequestedLocalPlayerCount(), 8, multiModeFlags, 180, 0);
     if ( result )
     {
         XDBG("Xbox MP debug: sithMulti_CreatePlayer failed\n");

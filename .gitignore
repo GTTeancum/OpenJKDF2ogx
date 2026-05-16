@@ -9,7 +9,10 @@ Movie
 episode
 DroidWorks.*
 .qmake.stash
-player
+player/*
+!player/
+!player/Xbox/
+!player/Xbox/*.mpc
 openjkdf2
 openjkdf2-64
 moc*.h

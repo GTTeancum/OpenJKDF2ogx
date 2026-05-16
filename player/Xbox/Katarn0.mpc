@@ -1,0 +1,23 @@
+version 1
+model: ky.3do
+soundclass: ky.snd
+sidemat: sabergreen1.mat
+tipmat: sabergreen0.mat
+
+forcepowers:
+bin: 20 value: 8.000000
+bin: 21 value: 4.000000
+bin: 22 value: 4.000000
+bin: 23 value: 4.000000
+bin: 24 value: 4.000000
+bin: 25 value: 4.000000
+bin: 26 value: 4.000000
+bin: 27 value: 4.000000
+bin: 28 value: 4.000000
+bin: 29 value: 4.000000
+bin: 30 value: 4.000000
+bin: 31 value: 4.000000
+bin: 32 value: 4.000000
+bin: 33 value: 4.000000
+bin: 34 value: 4.000000
+spendable stars: 0.000000

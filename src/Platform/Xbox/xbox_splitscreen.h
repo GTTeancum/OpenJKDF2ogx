@@ -1,6 +1,8 @@
 #ifndef _XBOX_SPLITSCREEN_H
 #define _XBOX_SPLITSCREEN_H
 
+#include "types.h"
+
 #ifdef __cplusplus
 extern "C" {
 #endif
@@ -9,7 +11,10 @@ extern "C" {
 
 int  xboxSplitScreen_IsEnabled(void);
 int  xboxSplitScreen_GetLocalPlayerCount(void);
+int  xboxSplitScreen_GetRequestedLocalPlayerCount(void);
 void xboxSplitScreen_Enable(void);
+void xboxSplitScreen_SetRequestedLocalPlayerCount(int count);
+void xboxSplitScreen_SetPendingMpc(int slot, const wchar_t *name);
 void xboxSplitScreen_OnMultiplayerServerStarted(void);
 void xboxSplitScreen_Disable(void);
 void xboxSplitScreen_BeginControlFrame(void);

@@ -3,6 +3,7 @@
 #include "xbox_debug.h"
 #include "Devices/sithControl.h"
 #include "Dss/sithMulti.h"
+#include "Gameplay/jkSaber.h"
 #include "Gameplay/sithInventory.h"
 #include "Gameplay/sithPlayer.h"
 #include "General/stdPalEffects.h"
@@ -17,6 +18,10 @@
 #include "Win95/Video.h"
 #include "Win95/stdDisplay.h"
 #include "World/jkPlayer.h"
+#include "World/sithModel.h"
+#include "World/sithSoundClass.h"
+#include "World/sithTemplate.h"
+#include "World/sithThing.h"
 #include "World/sithWeapon.h"
 #include "World/sithWorld.h"
 #include "Engine/rdroid.h"
@@ -39,6 +44,10 @@ void std3D_XboxResetViewport(void);
 static int g_xboxSplitScreenEnabled = 0;
 static int g_xboxSplitScreenRequested = 0;
 static int g_xboxSplitScreenLocalCount = 1;
+static int g_xboxSplitScreenRequestedLocalCount = XBOX_SPLITSCREEN_MAX_LOCAL_PLAYERS;
+static wchar_t g_xboxSplitScreenPendingMpcNames[XBOX_SPLITSCREEN_MAX_LOCAL_PLAYERS][32] = {{0}};
+static int g_xboxSplitScreenPendingMpcSet[XBOX_SPLITSCREEN_MAX_LOCAL_PLAYERS] = {0};
+static wchar_t g_xboxSplitScreenLocalNames[XBOX_SPLITSCREEN_MAX_LOCAL_PLAYERS][32] = {{0}};
 static int g_xboxSplitScreenLoggedViewports = 0;
 static int g_xboxSplitScreenLoggedSlots = 0;
 static unsigned int g_xboxSplitScreenFrameCount = 0;
@@ -78,6 +87,19 @@ static void xboxSplitScreen_ClearLocalInvulnerability(void)
     }
 }
 
+static void xboxSplitScreen_RestoreLocalName(int slot)
+{
+    if (slot < 0 || slot >= XBOX_SPLITSCREEN_MAX_LOCAL_PLAYERS)
+        return;
+    if (!g_xboxSplitScreenLocalNames[slot][0])
+        return;
+
+    _wcsncpy(jkPlayer_playerInfos[slot].player_name, g_xboxSplitScreenLocalNames[slot], 31);
+    jkPlayer_playerInfos[slot].player_name[31] = 0;
+    _wcsncpy(jkPlayer_playerInfos[slot].multi_name, g_xboxSplitScreenLocalNames[slot], 31);
+    jkPlayer_playerInfos[slot].multi_name[31] = 0;
+}
+
 int xboxSplitScreen_IsEnabled(void)
 {
     return g_xboxSplitScreenEnabled;
@@ -86,6 +108,69 @@ int xboxSplitScreen_IsEnabled(void)
 int xboxSplitScreen_GetLocalPlayerCount(void)
 {
     return g_xboxSplitScreenLocalCount;
+}
+
+static void xboxSplitScreen_ApplyMpcInfo(sithThing *player, jkPlayerMpcInfo *info)
+{
+    rdModel3 *model;
+    sithSoundClass *soundclass;
+    sithThing *saberSparks;
+    sithThing *bloodSparks;
+    sithThing *wallSparks;
+
+    if (!player || !info)
+        return;
+
+    model = sithModel_LoadEntry(info->model, 1);
+    if (model)
+        sithThing_SetNewModel(player, model);
+
+    soundclass = sithSoundClass_LoadFile(info->soundClass);
+    if (soundclass)
+        sithSoundClass_SetThingSoundClass(player, soundclass);
+
+    if (player->playerInfo)
+    {
+        saberSparks = sithTemplate_GetEntryByName("+ssparks_saber");
+        bloodSparks = sithTemplate_GetEntryByName("+ssparks_blood");
+        wallSparks = sithTemplate_GetEntryByName("+ssparks_wall");
+        jkSaber_InitializeSaberInfo(player, info->sideMat, info->tipMat, 0.0032f, 0.0018f, 0.12f, wallSparks, bloodSparks, saberSparks);
+    }
+}
+
+int xboxSplitScreen_GetRequestedLocalPlayerCount(void)
+{
+    int count = g_xboxSplitScreenRequestedLocalCount;
+
+    if (count < 1)
+        count = 1;
+    if (count > XBOX_SPLITSCREEN_MAX_LOCAL_PLAYERS)
+        count = XBOX_SPLITSCREEN_MAX_LOCAL_PLAYERS;
+    return count;
+}
+
+void xboxSplitScreen_SetRequestedLocalPlayerCount(int count)
+{
+    if (count < 1)
+        count = 1;
+    if (count > XBOX_SPLITSCREEN_MAX_LOCAL_PLAYERS)
+        count = XBOX_SPLITSCREEN_MAX_LOCAL_PLAYERS;
+    g_xboxSplitScreenRequestedLocalCount = count;
+}
+
+void xboxSplitScreen_SetPendingMpc(int slot, const wchar_t *name)
+{
+    if (slot < 0 || slot >= XBOX_SPLITSCREEN_MAX_LOCAL_PLAYERS)
+        return;
+
+    g_xboxSplitScreenPendingMpcSet[slot] = 0;
+    g_xboxSplitScreenPendingMpcNames[slot][0] = 0;
+    if (!name || !name[0])
+        return;
+
+    _wcsncpy(g_xboxSplitScreenPendingMpcNames[slot], name, 31);
+    g_xboxSplitScreenPendingMpcNames[slot][31] = 0;
+    g_xboxSplitScreenPendingMpcSet[slot] = 1;
 }
 
 void xboxSplitScreen_Enable(void)
@@ -103,11 +188,15 @@ void xboxSplitScreen_Disable(void)
     g_xboxSplitScreenRequested = 0;
     g_xboxSplitScreenEnabled = 0;
     g_xboxSplitScreenLocalCount = 1;
+    g_xboxSplitScreenRequestedLocalCount = XBOX_SPLITSCREEN_MAX_LOCAL_PLAYERS;
     g_xboxSplitScreenLoggedViewports = 0;
     g_xboxSplitScreenLoggedSlots = 0;
     g_xboxSplitScreenFrameCount = 0;
     for (i = 0; i < XBOX_SPLITSCREEN_MAX_LOCAL_PLAYERS; i++)
+    {
         g_xboxSplitScreenRespawnAt[i] = 0;
+        g_xboxSplitScreenLocalNames[i][0] = 0;
+    }
 
     stdControl_XboxSetActiveController(0);
     std3D_XboxResetViewport();
@@ -116,7 +205,7 @@ void xboxSplitScreen_Disable(void)
 void xboxSplitScreen_OnMultiplayerServerStarted(void)
 {
     int i;
-    int count = jkPlayer_maxPlayers;
+    int count = xboxSplitScreen_GetRequestedLocalPlayerCount();
 
     if (!g_xboxSplitScreenRequested)
     {
@@ -130,8 +219,8 @@ void xboxSplitScreen_OnMultiplayerServerStarted(void)
         return;
     }
 
-    if (count > XBOX_SPLITSCREEN_MAX_LOCAL_PLAYERS)
-        count = XBOX_SPLITSCREEN_MAX_LOCAL_PLAYERS;
+    if (count > jkPlayer_maxPlayers)
+        count = jkPlayer_maxPlayers;
     if (count < 1)
         count = 1;
 
@@ -140,18 +229,40 @@ void xboxSplitScreen_OnMultiplayerServerStarted(void)
 
     for (i = 0; i < count; i++)
     {
+        int haveMpc = 0;
+        jkPlayerMpcInfo mpcInfo;
+
         if (!jkPlayer_playerInfos[i].playerThing)
             continue;
 
         sithPlayer_sub_4C87C0(i, i + 1);
-        jk_snwprintf(jkPlayer_playerInfos[i].player_name, 32, L"Xbox P%d", i + 1);
-        jk_snwprintf(jkPlayer_playerInfos[i].multi_name, 32, L"Xbox P%d", i + 1);
         jkPlayer_playerInfos[i].teamNum = 0;
         xboxSplitScreen_SetContextForLocalSlot(i);
+        if (g_xboxSplitScreenPendingMpcSet[i])
+            haveMpc = jkPlayer_MPCParse(&mpcInfo, &jkPlayer_playerInfos[i], jkPlayer_playerShortName, g_xboxSplitScreenPendingMpcNames[i], 1);
+
+        if (haveMpc)
+        {
+            _wcsncpy(jkPlayer_playerInfos[i].player_name, mpcInfo.name, 31);
+            jkPlayer_playerInfos[i].player_name[31] = 0;
+            _wcsncpy(jkPlayer_playerInfos[i].multi_name, mpcInfo.name, 31);
+            jkPlayer_playerInfos[i].multi_name[31] = 0;
+            _wcsncpy(g_xboxSplitScreenLocalNames[i], mpcInfo.name, 31);
+            g_xboxSplitScreenLocalNames[i][31] = 0;
+            xboxSplitScreen_ApplyMpcInfo(jkPlayer_playerInfos[i].playerThing, &mpcInfo);
+        }
+        else
+        {
+            jk_snwprintf(jkPlayer_playerInfos[i].player_name, 32, L"Xbox P%d", i + 1);
+            jk_snwprintf(jkPlayer_playerInfos[i].multi_name, 32, L"Xbox P%d", i + 1);
+            jk_snwprintf(g_xboxSplitScreenLocalNames[i], 32, L"Xbox P%d", i + 1);
+        }
+
         xboxSplitScreen_SeedPlayerWeapon(jkPlayer_playerInfos[i].playerThing);
-        XDBGF("SplitScreenInit: slot=%d thing=%p sector=%p curW=%d pov=%p flags=0x%X tf=0x%X\n",
+        XDBGF("SplitScreenInit: slot=%d thing=%p mpc=%d sector=%p curW=%d pov=%p flags=0x%X tf=0x%X\n",
               i,
               (void*)jkPlayer_playerInfos[i].playerThing,
+              haveMpc,
               jkPlayer_playerInfos[i].playerThing ? (void*)jkPlayer_playerInfos[i].playerThing->sector : 0,
               jkPlayer_playerInfos[i].playerThing ? sithInventory_GetCurWeapon(jkPlayer_playerInfos[i].playerThing) : -1,
               jkPlayer_playerInfos[i].playerThing && jkPlayer_playerInfos[i].playerThing->playerInfo
@@ -160,8 +271,7 @@ void xboxSplitScreen_OnMultiplayerServerStarted(void)
               jkPlayer_playerInfos[i].playerThing ? jkPlayer_playerInfos[i].playerThing->thingflags : 0);
     }
 
-    sithPlayer_idk(0);
-    sithCamera_SetsFocus();
+    xboxSplitScreen_SetContextForLocalSlot(0);
     sithPlayer_ResetPalEffects();
     xboxSplitScreen_ClearLocalInvulnerability();
 
@@ -181,6 +291,7 @@ void xboxSplitScreen_SetContextForLocalSlot(int slot)
     if (jkPlayer_playerInfos[slot].playerThing)
     {
         sithPlayer_idk(slot);
+        xboxSplitScreen_RestoreLocalName(slot);
         sithCamera_SetsFocus();
         xboxSplitScreen_ClearLocalInvulnerability();
     }

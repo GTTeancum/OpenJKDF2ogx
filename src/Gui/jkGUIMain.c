@@ -26,11 +26,13 @@
 #include "Main/jkMain.h"
 #include "Main/jkRes.h"
 #include "General/stdString.h"
+#include "Platform/stdControl.h"
 #include "General/util.h"
 #include "General/stdFnames.h"
 #include "Main/sithCvar.h"
 #include "stdPlatform.h"
 #ifdef TARGET_XBOX
+#include "Platform/Xbox/xbox_debug.h"
 #include "Platform/Xbox/xbox_splitscreen.h"
 #endif
 
@@ -104,9 +106,287 @@ static jkGuiElement jkGuiMain_xboxMultiplayerElements[7] = {
 
 static jkGuiMenu jkGuiMain_xboxMultiplayerMenu = {jkGuiMain_xboxMultiplayerElements, -1, 0xFFFF, 0xFFFF, 0xF, 0, 0, jkGui_stdBitmaps, jkGui_stdFonts, 0, 0, "thermloop01.wav", "thrmlpu2.wav", 0, 0, 0, 0, 0, 0};
 
+enum
+{
+    JKGUI_XBOX_READY_P1_LABEL = 1,
+    JKGUI_XBOX_READY_P1_LIST = 2,
+    JKGUI_XBOX_READY_P1_NAME = 3,
+    JKGUI_XBOX_READY_P2_LABEL = 4,
+    JKGUI_XBOX_READY_P2_LIST = 5,
+    JKGUI_XBOX_READY_P2_NAME = 6,
+    JKGUI_XBOX_READY_P3_LABEL = 7,
+    JKGUI_XBOX_READY_P3_LIST = 8,
+    JKGUI_XBOX_READY_P3_NAME = 9,
+    JKGUI_XBOX_READY_P4_LABEL = 10,
+    JKGUI_XBOX_READY_P4_LIST = 11,
+    JKGUI_XBOX_READY_P4_NAME = 12,
+    JKGUI_XBOX_READY_STATUS = 13,
+    JKGUI_XBOX_READY_START = 14,
+    JKGUI_XBOX_READY_CANCEL = 15
+};
+
+static int32_t jkGuiMain_xboxReadyListboxIdk[2] = {0xd, 0xe};
+static Darray jkGuiMain_xboxReadyCharacters;
+static int jkGuiMain_xboxReadyNumChars;
+static int jkGuiMain_xboxReadyLocked[XBOX_SPLITSCREEN_MAX_LOCAL_PLAYERS];
+static wchar_t jkGuiMain_xboxReadyNames[XBOX_SPLITSCREEN_MAX_LOCAL_PLAYERS][32];
+static wchar_t jkGuiMain_xboxReadyStatus[64];
+
+static jkGuiElement jkGuiMain_xboxReadyElements[17] = {
+    {ELEMENT_TEXT, 0, 5, L"Split Screen Ready", 3, {0, 18, 640, 42}, 1, 0, 0, 0, 0, 0, {0}, 0},
+    {ELEMENT_TEXT, 0, 2, L"Player 1", 3, {35, 66, 250, 25}, 1, 0, 0, 0, 0, 0, {0}, 0},
+    {ELEMENT_LISTBOX, 1, 0, 0, 0, {35, 100, 250, 128}, 1, 0, 0, 0, 0, jkGuiMain_xboxReadyListboxIdk, {0}, 0},
+    {ELEMENT_TEXT, 0, 2, jkGuiMain_xboxReadyNames[0], 3, {35, 135, 250, 42}, 0, 0, 0, 0, 0, 0, {0}, 0},
+    {ELEMENT_TEXT, 0, 2, L"Player 2", 3, {355, 66, 250, 25}, 1, 0, 0, 0, 0, 0, {0}, 0},
+    {ELEMENT_LISTBOX, 1, 0, 0, 0, {355, 100, 250, 128}, 1, 0, 0, 0, 0, jkGuiMain_xboxReadyListboxIdk, {0}, 0},
+    {ELEMENT_TEXT, 0, 2, jkGuiMain_xboxReadyNames[1], 3, {355, 135, 250, 42}, 0, 0, 0, 0, 0, 0, {0}, 0},
+    {ELEMENT_TEXT, 0, 2, L"Player 3", 3, {35, 246, 250, 25}, 1, 0, 0, 0, 0, 0, {0}, 0},
+    {ELEMENT_LISTBOX, 1, 0, 0, 0, {35, 280, 250, 128}, 1, 0, 0, 0, 0, jkGuiMain_xboxReadyListboxIdk, {0}, 0},
+    {ELEMENT_TEXT, 0, 2, jkGuiMain_xboxReadyNames[2], 3, {35, 315, 250, 42}, 0, 0, 0, 0, 0, 0, {0}, 0},
+    {ELEMENT_TEXT, 0, 2, L"Player 4", 3, {355, 246, 250, 25}, 1, 0, 0, 0, 0, 0, {0}, 0},
+    {ELEMENT_LISTBOX, 1, 0, 0, 0, {355, 280, 250, 128}, 1, 0, 0, 0, 0, jkGuiMain_xboxReadyListboxIdk, {0}, 0},
+    {ELEMENT_TEXT, 0, 2, jkGuiMain_xboxReadyNames[3], 3, {355, 315, 250, 42}, 0, 0, 0, 0, 0, 0, {0}, 0},
+    {ELEMENT_TEXT, 0, 0, jkGuiMain_xboxReadyStatus, 3, {150, 414, 340, 18}, 1, 0, 0, 0, 0, 0, {0}, 0},
+    {ELEMENT_TEXTBUTTON, 20, 2, L"Start", 3, {360, 430, 180, 38}, 1, 0, 0, 0, 0, 0, {0}, 0},
+    {ELEMENT_TEXTBUTTON, -1, 2, "GUI_CANCEL", 3, {100, 430, 180, 38}, 1, 0, 0, 0, 0, 0, {0}, 0},
+    {ELEMENT_END, 0, 0, 0, 0, {0}, 0, 0, 0, 0, 0, 0, {0}, 0}
+};
+
+static jkGuiMenu jkGuiMain_xboxReadyMenu = {jkGuiMain_xboxReadyElements, -1, 0xFFFF, 0xFFFF, 0xF, 0, 0, jkGui_stdBitmaps, jkGui_stdFonts, 0, 0, "thermloop01.wav", "thrmlpu2.wav", 0, 0, 0, 0, 0, 0};
+
+static const int jkGuiMain_xboxReadyLists[XBOX_SPLITSCREEN_MAX_LOCAL_PLAYERS] = {
+    JKGUI_XBOX_READY_P1_LIST,
+    JKGUI_XBOX_READY_P2_LIST,
+    JKGUI_XBOX_READY_P3_LIST,
+    JKGUI_XBOX_READY_P4_LIST
+};
+
+static const int jkGuiMain_xboxReadyNameElems[XBOX_SPLITSCREEN_MAX_LOCAL_PLAYERS] = {
+    JKGUI_XBOX_READY_P1_NAME,
+    JKGUI_XBOX_READY_P2_NAME,
+    JKGUI_XBOX_READY_P3_NAME,
+    JKGUI_XBOX_READY_P4_NAME
+};
+
+static void jkGuiMain_XboxReadyBindList(int elemIdx, int selection, int numChars)
+{
+    jkGuiRend_SetClickableString(&jkGuiMain_xboxReadyElements[elemIdx], &jkGuiMain_xboxReadyCharacters);
+    if (numChars <= 0)
+        jkGuiMain_xboxReadyElements[elemIdx].selectedTextEntry = 0;
+    else
+        jkGuiMain_xboxReadyElements[elemIdx].selectedTextEntry = selection % numChars;
+}
+
+static int jkGuiMain_XboxReadyCount(void)
+{
+    int i;
+    int count = 0;
+    for (i = 0; i < XBOX_SPLITSCREEN_MAX_LOCAL_PLAYERS; i++)
+        count += jkGuiMain_xboxReadyLocked[i] ? 1 : 0;
+    return count;
+}
+
+static void jkGuiMain_XboxReadySetStatus(jkGuiMenu *menu)
+{
+    int count = jkGuiMain_XboxReadyCount();
+    if (count < 2)
+        jk_snwprintf(jkGuiMain_xboxReadyStatus, 64, L"%d ready - need 2", count);
+    else
+        jk_snwprintf(jkGuiMain_xboxReadyStatus, 64, L"%d ready", count);
+    if (menu)
+        jkGuiRend_UpdateAndDrawClickable(&jkGuiMain_xboxReadyElements[JKGUI_XBOX_READY_STATUS], menu, 1);
+}
+
+static void jkGuiMain_XboxReadySetLocked(jkGuiMenu *menu, int slot, int locked)
+{
+    int listIdx;
+    int nameIdx;
+    int selected;
+    wchar_t *name;
+
+    if (slot < 0 || slot >= XBOX_SPLITSCREEN_MAX_LOCAL_PLAYERS)
+        return;
+    listIdx = jkGuiMain_xboxReadyLists[slot];
+    nameIdx = jkGuiMain_xboxReadyNameElems[slot];
+    selected = jkGuiMain_xboxReadyElements[listIdx].selectedTextEntry;
+    name = (selected >= 0 && selected < jkGuiMain_xboxReadyNumChars)
+        ? jkGuiRend_GetString(&jkGuiMain_xboxReadyCharacters, selected)
+        : 0;
+
+    if (locked && name)
+    {
+        _wcsncpy(jkGuiMain_xboxReadyNames[slot], name, 31);
+        jkGuiMain_xboxReadyNames[slot][31] = 0;
+        jkGuiMain_xboxReadyLocked[slot] = 1;
+        jkGuiMain_xboxReadyElements[listIdx].bIsVisible = 0;
+        jkGuiMain_xboxReadyElements[nameIdx].bIsVisible = 1;
+        if (menu && menu->focusedElement == &jkGuiMain_xboxReadyElements[listIdx])
+            menu->focusedElement = 0;
+    }
+    else
+    {
+        jkGuiMain_xboxReadyLocked[slot] = 0;
+        jkGuiMain_xboxReadyElements[listIdx].bIsVisible = 1;
+        jkGuiMain_xboxReadyElements[nameIdx].bIsVisible = 0;
+    }
+
+    if (menu)
+    {
+        jkGuiRend_UpdateAndDrawClickable(&jkGuiMain_xboxReadyElements[listIdx], menu, 1);
+        jkGuiRend_UpdateAndDrawClickable(&jkGuiMain_xboxReadyElements[nameIdx], menu, 1);
+        jkGuiMain_XboxReadySetStatus(menu);
+    }
+}
+
+static void jkGuiMain_XboxReadyMoveSelection(jkGuiMenu *menu, int slot, int delta)
+{
+    jkGuiElement *list;
+    int selected;
+
+    if (slot < 0 || slot >= XBOX_SPLITSCREEN_MAX_LOCAL_PLAYERS || jkGuiMain_xboxReadyNumChars <= 0)
+        return;
+    list = &jkGuiMain_xboxReadyElements[jkGuiMain_xboxReadyLists[slot]];
+    selected = list->selectedTextEntry + delta;
+    while (selected < 0)
+        selected += jkGuiMain_xboxReadyNumChars;
+    selected %= jkGuiMain_xboxReadyNumChars;
+    list->selectedTextEntry = selected;
+    if (list->texInfo.maxTextEntries > 0)
+    {
+        if (list->selectedTextEntry < list->texInfo.textScrollY)
+            list->texInfo.textScrollY = list->selectedTextEntry;
+        if (list->selectedTextEntry >= list->texInfo.textScrollY + list->texInfo.maxTextEntries)
+            list->texInfo.textScrollY = list->selectedTextEntry - list->texInfo.maxTextEntries + 1;
+    }
+    jkGuiRend_UpdateAndDrawClickable(list, menu, 1);
+}
+
+static void jkGuiMain_XboxReadyTick(jkGuiMenu *menu)
+{
+    int slot;
+    int mask;
+
+    stdControl_ReadControls();
+    mask = stdControl_XboxGetConnectedMask();
+    for (slot = 0; slot < XBOX_SPLITSCREEN_MAX_LOCAL_PLAYERS; slot++)
+    {
+        if (!(mask & (1 << slot)))
+            continue;
+        if (jkGuiMain_xboxReadyLocked[slot])
+        {
+            if (stdControl_XboxGetControllerKeyPress(slot, KEY_JOY1_B2))
+                jkGuiMain_XboxReadySetLocked(menu, slot, 0);
+            continue;
+        }
+
+        if (stdControl_XboxGetControllerKeyPress(slot, KEY_JOY1_HUP))
+            jkGuiMain_XboxReadyMoveSelection(menu, slot, -1);
+        if (stdControl_XboxGetControllerKeyPress(slot, KEY_JOY1_HDOWN))
+            jkGuiMain_XboxReadyMoveSelection(menu, slot, 1);
+        if (stdControl_XboxGetControllerKeyPress(slot, KEY_JOY1_B1))
+            jkGuiMain_XboxReadySetLocked(menu, slot, 1);
+    }
+}
+
+static int jkGuiMain_XboxShowSplitReady(void)
+{
+    int i;
+    int result;
+    int numChars;
+    int menuModePushed = 0;
+
+    stdBitmap_EnsureData(jkGui_stdBitmaps[JKGUI_BM_BK_MULTI]);
+    jkGui_SetModeMenu(jkGui_stdBitmaps[JKGUI_BM_BK_MULTI]->palette);
+    menuModePushed = 1;
+    _memset(&jkGuiMain_xboxReadyCharacters, 0, sizeof(jkGuiMain_xboxReadyCharacters));
+    if (!jkGuiRend_DarrayNewStr(&jkGuiMain_xboxReadyCharacters, 32, 1))
+    {
+        if (menuModePushed)
+            jkGui_SetModeGame();
+        return -1;
+    }
+
+    numChars = jkGuiBuildMulti_Show2(&jkGuiMain_xboxReadyCharacters, &jkGuiMain_xboxReadyElements[JKGUI_XBOX_READY_P1_LIST], 0, 8, 0);
+    if (numChars <= 0)
+    {
+        jkGuiRend_DarrayFree(&jkGuiMain_xboxReadyCharacters);
+        jkGuiDialog_ErrorDialog(L"Split Screen", L"No Xbox multiplayer character profiles were found.");
+        if (menuModePushed)
+            jkGui_SetModeGame();
+        return -1;
+    }
+
+    jkGuiMain_xboxReadyNumChars = numChars;
+    for (i = 0; i < XBOX_SPLITSCREEN_MAX_LOCAL_PLAYERS; i++)
+    {
+        jkGuiMain_XboxReadyBindList(jkGuiMain_xboxReadyLists[i], i, numChars);
+        jkGuiMain_xboxReadyLocked[i] = 0;
+        jkGuiMain_xboxReadyNames[i][0] = 0;
+        jkGuiMain_xboxReadyElements[jkGuiMain_xboxReadyLists[i]].bIsVisible = 1;
+        jkGuiMain_xboxReadyElements[jkGuiMain_xboxReadyNameElems[i]].bIsVisible = 0;
+    }
+    jkGuiMain_XboxReadySetStatus(0);
+
+    jkGuiRend_MenuSetReturnKeyShortcutElement(&jkGuiMain_xboxReadyMenu, &jkGuiMain_xboxReadyElements[JKGUI_XBOX_READY_START]);
+    jkGuiRend_MenuSetEscapeKeyShortcutElement(&jkGuiMain_xboxReadyMenu, &jkGuiMain_xboxReadyElements[JKGUI_XBOX_READY_CANCEL]);
+    jkGuiMain_xboxReadyMenu.idkFunc = jkGuiMain_XboxReadyTick;
+    do
+    {
+        result = jkGuiRend_DisplayAndReturnClicked(&jkGuiMain_xboxReadyMenu);
+        if (result == 20 && jkGuiMain_XboxReadyCount() < 2)
+        {
+            jkGuiDialog_ErrorDialog(L"Split Screen", L"At least two players must ready up.");
+            result = 0;
+        }
+    } while (result == 0);
+
+    if (result == 20)
+    {
+        int outSlot = 0;
+        int readyCount = jkGuiMain_XboxReadyCount();
+        xboxSplitScreen_SetRequestedLocalPlayerCount(readyCount);
+        for (i = 0; i < XBOX_SPLITSCREEN_MAX_LOCAL_PLAYERS; i++)
+        {
+            int selected = jkGuiMain_xboxReadyElements[jkGuiMain_xboxReadyLists[i]].selectedTextEntry;
+            wchar_t *name = 0;
+            char nameA[32];
+
+            if (!jkGuiMain_xboxReadyLocked[i])
+                continue;
+            if (selected >= 0 && selected < numChars)
+                name = jkGuiRend_GetString(&jkGuiMain_xboxReadyCharacters, selected);
+            xboxSplitScreen_SetPendingMpc(outSlot, name);
+            if (name)
+            {
+                stdString_WcharToChar(nameA, name, 31);
+                nameA[31] = 0;
+            }
+            else
+            {
+                _strcpy(nameA, "(null)");
+            }
+            XDBGF("SplitReady: controller=%d slot=%d selected=%d name='%s'\n", i, outSlot, selected, nameA);
+            outSlot++;
+        }
+        while (outSlot < XBOX_SPLITSCREEN_MAX_LOCAL_PLAYERS)
+        {
+            xboxSplitScreen_SetPendingMpc(outSlot, 0);
+            outSlot++;
+        }
+    }
+
+    jkGuiRend_DarrayFree(&jkGuiMain_xboxReadyCharacters);
+    if (menuModePushed)
+        jkGui_SetModeGame();
+    return result == 20 ? 1 : -1;
+}
+
 static int jkGuiMain_XboxStartLocalMultiplayerTest(void)
 {
     int result;
+
+    if (jkGuiMain_XboxShowSplitReady() != 1)
+        return -1;
 
     xboxSplitScreen_Enable();
     result = jkMain_loadFile2("JK1MP", "m10.jkl") ? 1 : -1;
@@ -380,6 +660,7 @@ void jkGuiMain_Startup()
     jkGui_InitMenu(&jkGuiMain_menu, jkGui_stdBitmaps[JKGUI_BM_BK_MAIN]);
 #ifdef TARGET_XBOX
     jkGui_InitMenu(&jkGuiMain_xboxMultiplayerMenu, jkGui_stdBitmaps[JKGUI_BM_BK_MULTI]);
+    jkGui_InitMenu(&jkGuiMain_xboxReadyMenu, jkGui_stdBitmaps[JKGUI_BM_BK_MULTI]);
 #endif
 
     // Added: clean reset

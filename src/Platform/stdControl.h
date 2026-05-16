@@ -81,6 +81,8 @@ int stdControl_XboxGetInvertLook(void);
 int stdControl_XboxGetVibration(void);
 void stdControl_XboxSetActiveController(int port);
 int stdControl_XboxGetConnectedMask(void);
+int stdControl_XboxGetControllerKeyPress(int port, int keyNum);
+int stdControl_XboxGetControllerKeyDown(int port, int keyNum);
 #endif
 
 extern const stdControlDikStrToNum stdControl_aDikNumToStr[JK_TOTAL_NUM_KEYS];
