@@ -14,6 +14,7 @@
 #include "Gui/jkGUITitle.h"
 #include "Gui/jkGUISingleplayer.h"
 #include "Gui/jkGUIMultiplayer.h"
+#include "Gui/jkGUIBuildMulti.h"
 #include "Gui/jkGUIDialog.h"
 #include "Gui/jkGUIPlayer.h"
 #include "Gui/jkGUISetup.h"
@@ -130,7 +131,14 @@ static int jkGuiMain_XboxShowMultiplayer(void)
         if (result == 20)
             return jkGuiMain_XboxStartLocalMultiplayerTest();
 
-        if (result == 21 || result == 22 || result == 23)
+        if (result == 21)
+        {
+            jkGuiBuildMulti_Show();
+            stdBitmap_EnsureData(jkGui_stdBitmaps[JKGUI_BM_BK_MULTI]);
+            jkGui_SetModeMenu(jkGui_stdBitmaps[JKGUI_BM_BK_MULTI]->palette);
+            result = -2;
+        }
+        else if (result == 22 || result == 23)
         {
             jkGuiDialog_ErrorDialog(L"Multiplayer", L"Coming soon");
             stdBitmap_EnsureData(jkGui_stdBitmaps[JKGUI_BM_BK_MULTI]);

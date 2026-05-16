@@ -328,8 +328,22 @@ int sithRender_Open()
         rdLight_NewEntry(&sithRender_aLights[i]);
     }
 
+    rdColormap_ResetIdentity();
     rdColormap_SetCurrent(sithWorld_pCurrentWorld->colormaps);
     rdColormap_SetIdentity(sithWorld_pCurrentWorld->colormaps);
+#ifdef TARGET_XBOX
+    XDBGF("RenderOpen: world=%p cmap0=%p cur=%p ident=%p accel=%d multi=%d split=%d first=(%02X,%02X,%02X)\n",
+          (void*)sithWorld_pCurrentWorld,
+          sithWorld_pCurrentWorld ? (void*)sithWorld_pCurrentWorld->colormaps : 0,
+          (void*)rdColormap_pCurMap,
+          (void*)rdColormap_pIdentityMap,
+          rdroid_curAcceleration,
+          sithNet_isMulti,
+          xboxSplitScreen_IsEnabled(),
+          sithWorld_pCurrentWorld && sithWorld_pCurrentWorld->colormaps ? sithWorld_pCurrentWorld->colormaps[0].colors[0].r : 0,
+          sithWorld_pCurrentWorld && sithWorld_pCurrentWorld->colormaps ? sithWorld_pCurrentWorld->colormaps[0].colors[0].g : 0,
+          sithWorld_pCurrentWorld && sithWorld_pCurrentWorld->colormaps ? sithWorld_pCurrentWorld->colormaps[0].colors[0].b : 0);
+#endif
 
     sithRenderSky_Open(sithWorld_pCurrentWorld->horizontalPixelsPerRev, sithWorld_pCurrentWorld->horizontalDistance, sithWorld_pCurrentWorld->ceilingSky);
 
@@ -410,16 +424,69 @@ void sithRender_SetTexMode(rdTexMode_t texMode)
 
 void sithRender_SetPalette(const void *palette)
 {
+#ifdef TARGET_XBOX
+    const rdColor24 *uploadPalette;
+#endif
     if (!sithWorld_pCurrentWorld || !sithWorld_pCurrentWorld->colormaps)
         return;
+#ifdef TARGET_XBOX
+    uploadPalette = sithWorld_pCurrentWorld->colormaps[0].colors;
+    XDBGF("SetPal: enter world=%p cmap0=%p cur=%p ident=%p accel=%d multi=%d split=%d pal=%p pal0=(%02X,%02X,%02X) cmap0c0=(%02X,%02X,%02X)\n",
+          (void*)sithWorld_pCurrentWorld,
+          (void*)sithWorld_pCurrentWorld->colormaps,
+          (void*)rdColormap_pCurMap,
+          (void*)rdColormap_pIdentityMap,
+          rdroid_curAcceleration,
+          sithNet_isMulti,
+          xboxSplitScreen_IsEnabled(),
+          palette,
+          palette ? ((const rdColor24*)palette)[0].r : 0,
+          palette ? ((const rdColor24*)palette)[0].g : 0,
+          palette ? ((const rdColor24*)palette)[0].b : 0,
+          sithWorld_pCurrentWorld->colormaps[0].colors[0].r,
+          sithWorld_pCurrentWorld->colormaps[0].colors[0].g,
+          sithWorld_pCurrentWorld->colormaps[0].colors[0].b);
+#endif
+    rdColormap_ResetIdentity();
     rdColormap_SetCurrent(sithWorld_pCurrentWorld->colormaps);
     rdColormap_SetIdentity(sithWorld_pCurrentWorld->colormaps);
     if ( rdroid_curAcceleration > 0 )
     {
+#ifdef TARGET_XBOX
+        XDBGF("SetPal: hw-reset world=%p cmap0=%p cur=%p ident=%p materials=%d loaded=%d requestedPal=%p uploadPal=%p uploadP1=(%02X,%02X,%02X)\n",
+              (void*)sithWorld_pCurrentWorld,
+              (void*)sithWorld_pCurrentWorld->colormaps,
+              (void*)rdColormap_pCurMap,
+              (void*)rdColormap_pIdentityMap,
+              sithWorld_pCurrentWorld->numMaterials,
+              sithWorld_pCurrentWorld->numMaterialsLoaded,
+              palette,
+              uploadPalette,
+              uploadPalette ? uploadPalette[1].r : 0,
+              uploadPalette ? uploadPalette[1].g : 0,
+              uploadPalette ? uploadPalette[1].b : 0);
+#endif
         sithMaterial_UnloadAll();
         std3D_UnloadAllTextures();
+#ifdef TARGET_XBOX
+        std3D_SetCurrentPalette((rdColor24 *)uploadPalette, 90);
+#else
         std3D_SetCurrentPalette((rdColor24 *)palette, 90);
+#endif
+#ifdef TARGET_XBOX
+        std3D_XboxDebugLogPaletteState("SetPal-after-upload");
+#endif
     }
+#ifdef TARGET_XBOX
+    else
+    {
+        XDBGF("SetPal: skipped hw reset because accel=%d world=%p multi=%d split=%d\n",
+              rdroid_curAcceleration,
+              (void*)sithWorld_pCurrentWorld,
+              sithNet_isMulti,
+              xboxSplitScreen_IsEnabled());
+    }
+#endif
 }
 
 void sithRender_Draw()

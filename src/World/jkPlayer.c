@@ -1367,26 +1367,32 @@ void jkPlayer_MpcInitBins(sithPlayerInfo* unk)
     }
 }
 
+void jkPlayer_MPCMakePath(char *out, int outLen, wchar_t *profileName, wchar_t *characterName)
+{
+    char profileNameChar[32];
+    char characterNameChar[32];
+
+    stdString_WcharToChar(profileNameChar, profileName, 31);
+    profileNameChar[31] = 0;
+    stdString_WcharToChar(characterNameChar, characterName, 31);
+    characterNameChar[31] = 0;
+    stdString_snprintf(out, outLen, "player\\%s\\%s.mpc", profileNameChar, characterNameChar);
+}
+
 // MOTS altered TODO
-int jkPlayer_MPCParse(jkPlayerMpcInfo *info, sithPlayerInfo* unk, wchar_t *fname, wchar_t *name, int hasBins)
+int jkPlayer_MPCParse(jkPlayerMpcInfo *info, sithPlayerInfo* unk, wchar_t *profileName, wchar_t *characterName, int hasBins)
 {
     int v6; // edi
     flex_t a2; // [esp+Ch] [ebp-CCh] BYREF
     int v8; // [esp+10h] [ebp-C8h] BYREF
     char v9; // [esp+14h] [ebp-C4h] BYREF
-    char a1a[32]; // [esp+18h] [ebp-C0h] BYREF
-    char v11[32]; // [esp+38h] [ebp-A0h] BYREF
     char jkl_fname[128]; // [esp+58h] [ebp-80h] BYREF
 
-    stdString_WcharToChar(a1a, fname, 31);
-    a1a[31] = 0;
-    stdString_WcharToChar(v11, name, 31);
-    v11[31] = 0;
-    _wcsncpy(jkPlayer_name, name, 0x1Fu);
+    _wcsncpy(jkPlayer_name, characterName, 0x1Fu);
     jkPlayer_name[31] = 0;
-    _wcsncpy(info->name, name, 0x1Fu);
+    _wcsncpy(info->name, characterName, 0x1Fu);
     info->name[31] = 0;
-    _sprintf(jkl_fname, "player\\%s\\%s.mpc", a1a, v11);
+    jkPlayer_MPCMakePath(jkl_fname, 128, profileName, characterName);
 
     if (!stdConffile_OpenReadBypass(jkl_fname))
         return 0;
@@ -1443,18 +1449,12 @@ int jkPlayer_MPCParse(jkPlayerMpcInfo *info, sithPlayerInfo* unk, wchar_t *fname
     return 0;
 }
 
-int jkPlayer_MPCWrite(sithPlayerInfo* unk, wchar_t *mpcName, wchar_t *playerName)
+int jkPlayer_MPCWrite(sithPlayerInfo* unk, wchar_t *profileName, wchar_t *characterName)
 {
     int v4; // esi
-    char mpcNameChar[32]; // [esp+10h] [ebp-C0h] BYREF
-    char playerNameChar[32]; // [esp+30h] [ebp-A0h] BYREF
     char fpath[128]; // [esp+50h] [ebp-80h] BYREF
 
-    stdString_WcharToChar(playerNameChar, playerName, 31);
-    playerNameChar[31] = 0;
-    stdString_WcharToChar(mpcNameChar, mpcName, 31);
-    mpcNameChar[31] = 0;
-    stdString_snprintf(fpath, 128, "player\\%s\\%s.mpc", mpcNameChar, playerNameChar);
+    jkPlayer_MPCMakePath(fpath, 128, profileName, characterName);
 
     if (!stdConffile_OpenWriteBypass(fpath))
         return 0;

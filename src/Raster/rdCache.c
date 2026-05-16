@@ -350,7 +350,7 @@ int rdCache_SendFaceListToHardware()
     }
     /* Xbox-textured pipeline doesn't consume the per-vertex .color field
      * (std3D.c emits glColor4f(lightLevel,...) instead — see comment in
-     * std3D_DrawRenderList).  But the engine's pal-effect tint code below
+     * std3D_DrawRenderList).  But the PC pal-effect tint code
      * sets `flags_idk |= 0x8000` AND scales vertex_r/g/b in a way that, on
      * the upstream PC build, multiplies through the colormap then re-packs
      * .color.  On JK1 sectors where the lit color is 0xFF000000 (identity
@@ -360,27 +360,13 @@ int rdCache_SendFaceListToHardware()
      * Xbox.  std3D's lightLevel path keeps geometry visible; the damage
      * flash will need to be re-implemented later as a full-screen overlay
      * if we want the red tint back. */
-    if ( rdroid_curColorEffects.tint.x > 0.0 || rdroid_curColorEffects.tint.y > 0.0 || rdroid_curColorEffects.tint.z > 0.0 )
-    {
-        v2 = rdroid_curColorEffects.tint.y * 0.5;
-        v3 = rdroid_curColorEffects.tint.z * 0.5;
-        v0 = 1;
-        v130 = 1;
-        red_scalar = rdroid_curColorEffects.tint.x - (v3 + v2);
-        v4 = rdroid_curColorEffects.tint.x * 0.5;
-        green_scalar = rdroid_curColorEffects.tint.y - (v4 + v3);
-        blue_scalar = rdroid_curColorEffects.tint.z - (v4 + v2);
-    }
-    else
-    {
-        v0 = 0;
-        v130 = 0;
-        red_scalar   = 0.0;
-        green_scalar = 0.0;
-        blue_scalar  = 0.0;
-    }
-    v1   = 0;
+    v0 = 0;
+    v1 = 0;
     v129 = 0;
+    v130 = 0;
+    red_scalar = 0.0;
+    green_scalar = 0.0;
+    blue_scalar = 0.0;
 #else
     if ( rdroid_curColorEffects.tint.x > 0.0 || rdroid_curColorEffects.tint.y > 0.0 || rdroid_curColorEffects.tint.z > 0.0 )
     {

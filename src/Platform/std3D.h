@@ -130,6 +130,9 @@ void std3D_DrawUIBitmap(stdBitmap* pBmp, int mipIdx, flex_t dstX, flex_t dstY, r
 void std3D_DrawUIClearedRect(uint8_t palIdx, rdRect* dstRect);
 void std3D_DrawUIClearedRectRGBA(uint8_t color_r, uint8_t color_g, uint8_t color_b, uint8_t color_a, rdRect* dstRect);
 int std3D_IsReady();
+#ifdef TARGET_XBOX
+void std3D_XboxDebugLogPaletteState(const char *tag);
+#endif
 
 #ifdef __cplusplus
 }

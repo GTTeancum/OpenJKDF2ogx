@@ -44,7 +44,7 @@ static jkGuiElement jkGuiBuildMulti_buttons[17] =
   { ELEMENT_TEXT, 0, 2, NULL, 3, { 310, 90, 270, 20 }, 1, 0, NULL, NULL, NULL, NULL, { 0, 0, 0, 0, 0, { 0, 0, 0, 0 } }, 0 },
   { ELEMENT_PICBUTTON, 105, 0, NULL, 33, { 6, 90, 24, 24 }, 1, 0, NULL, NULL, jkGuiBuildMulti_SaberButtonClicked, NULL, { 0, 0, 0, 0, 0, { 0, 0, 0, 0 } }, 0 },
   { ELEMENT_PICBUTTON, 104, 0, NULL, 34, { 170, 90, 24, 24 }, 1, 0, NULL, NULL, jkGuiBuildMulti_SaberButtonClicked, NULL, { 0, 0, 0, 0, 0, { 0, 0, 0, 0 } }, 0 },
-  { ELEMENT_CUSTOM, 0, 0, NULL, 0, { 315, 115, 260, 260 }, 1, 0, NULL, jkGuiBuildMulti_ModelDrawer, NULL, NULL, { 0, 0, 0, 0, 0, { 0, 0, 0, 0 } }, 0 },
+  { ELEMENT_TEXT, 0, 0, NULL, 0, { 0, 0, 0, 0 }, 0, 0, NULL, NULL, NULL, NULL, { 0, 0, 0, 0, 0, { 0, 0, 0, 0 } }, 0 },
   { ELEMENT_CUSTOM, 0, 0, NULL, 0, { 80, 115, 50, 260 }, 1, 0, NULL, jkGuiBuildMulti_SaberDrawer, NULL, NULL, { 0, 0, 0, 0, 0, { 0, 0, 0, 0 } }, 0 },
   { ELEMENT_TEXT, 0, 0, "GUI_MODEL", 3, { 336, 380, 216, 30 }, 1, 0, NULL, NULL, NULL, NULL, { 0, 0, 0, 0, 0, { 0, 0, 0, 0 } }, 0 },
   { ELEMENT_PICBUTTON, 100, 0, NULL, 33, { 312, 380, 24, 24 }, 1, 0, NULL, NULL, jkGuiBuildMulti_SaberButtonClicked, NULL, { 0, 0, 0, 0, 0, { 0, 0, 0, 0 } }, 0 },
@@ -61,7 +61,7 @@ static jkGuiElement jkGuiBuildMulti_buttons[17] =
 
 jkGuiMenu jkGuiBuildMulti_menu =
 {
-    jkGuiBuildMulti_buttons, -1, 65535, 65535, 15, NULL, NULL, jkGui_stdBitmaps, jkGui_stdFonts, 0, jkGuiBuildMulti_sub_41A120, "thermloop01.wav", "thrmlpu2.wav", NULL, NULL, NULL, 0, NULL, NULL
+    jkGuiBuildMulti_buttons, -1, 65535, 65535, 15, NULL, NULL, jkGui_stdBitmaps, jkGui_stdFonts, 0, NULL, "thermloop01.wav", "thrmlpu2.wav", NULL, NULL, NULL, 0, NULL, NULL
 };
 
 
@@ -269,6 +269,29 @@ static rdRect jkGuiBuildMulti_rect_5353C8 = {315, 115, 260, 260};
 // Added
 int32_t jkGuiBuildMulti_bRendering = 0;
 
+static void jkGuiBuildMulti_MakeGeneratedCharacterName(wchar_t *out, int outLen)
+{
+    char modelShortName[16];
+    wchar_t *modelName;
+
+    if (outLen <= 0)
+        return;
+
+    if (jkGuiBuildMulti_aModels && jkGuiBuildMulti_modelIdx >= 0 && jkGuiBuildMulti_modelIdx < jkGuiBuildMulti_numModels)
+    {
+        stdFnames_CopyShortName(modelShortName, 16, jkGuiBuildMulti_aModels[jkGuiBuildMulti_modelIdx].modelFpath);
+        jkGuiTitle_sub_4189A0(modelShortName);
+        modelName = jkStrings_GetUniStringWithFallback(modelShortName);
+    }
+    else
+    {
+        modelName = L"Character";
+    }
+
+    jk_snwprintf(out, outLen, L"%s%d", modelName, jkPlayer_GetJediRank());
+    out[outLen - 1] = 0;
+}
+
 void jkGuiBuildMulti_StartupEditCharacter()
 {
     jkGui_InitMenu(&jkGuiBuildMulti_menu, jkGui_stdBitmaps[JKGUI_BM_BK_BUILD_MULTI]);
@@ -328,16 +351,31 @@ void jkGuiBuildMulti_CloseRender()
     rdMaterial_RegisterLoader(jkGuiBuildMulti_fnMatLoader);
     rdModel3_RegisterLoader(jkGuiBuildMulti_fnModelLoader);
     rdKeyframe_RegisterLoader(jkGuiBuildMulti_fnKeyframeLoader);
-    rdThing_Free(jkGuiBuildMulti_pThingGun);
-    rdModel3_Free(jkGuiBuildMulti_pModelGun);
+    if (jkGuiBuildMulti_pThingGun)
+        rdThing_Free(jkGuiBuildMulti_pThingGun);
+    if (jkGuiBuildMulti_pModelGun)
+        rdModel3_Free(jkGuiBuildMulti_pModelGun);
     rdLight_FreeEntry(&jkGuiBuildMulti_light);
-    rdThing_Free(jkGuiBuildMulti_pThingCamera);
-    rdCanvas_Free(jkGuiBuildMulti_pCanvas);
-    rdCamera_Free(jkGuiBuildMulti_pCamera);
-    stdDisplay_VBufferFree(jkGuiBuildMulti_pVBuf1);
-    stdDisplay_VBufferFree(jkGuiBuildMulti_pVBuf2);
+    if (jkGuiBuildMulti_pThingCamera)
+        rdThing_Free(jkGuiBuildMulti_pThingCamera);
+    if (jkGuiBuildMulti_pCanvas)
+        rdCanvas_Free(jkGuiBuildMulti_pCanvas);
+    if (jkGuiBuildMulti_pCamera)
+        rdCamera_Free(jkGuiBuildMulti_pCamera);
+    if (jkGuiBuildMulti_pVBuf1)
+        stdDisplay_VBufferFree(jkGuiBuildMulti_pVBuf1);
+    if (jkGuiBuildMulti_pVBuf2)
+        stdDisplay_VBufferFree(jkGuiBuildMulti_pVBuf2);
     rdColormap_FreeEntry(&jkGuiBuildMulti_colormap);
     rdClose();
+
+    jkGuiBuildMulti_pThingGun = NULL;
+    jkGuiBuildMulti_pModelGun = NULL;
+    jkGuiBuildMulti_pThingCamera = NULL;
+    jkGuiBuildMulti_pCanvas = NULL;
+    jkGuiBuildMulti_pCamera = NULL;
+    jkGuiBuildMulti_pVBuf1 = NULL;
+    jkGuiBuildMulti_pVBuf2 = NULL;
 }
 
 void jkGuiBuildMulti_ThingInit(char *pModelFpath)
@@ -370,10 +408,17 @@ void jkGuiBuildMulti_ThingCleanup()
     // Added
     //std3D_PurgeTextureCache();
 
-    rdPuppet_ResetTrack(jkGuiBuildMulti_thing->puppet, jkGuiBuildMulti_trackNum);
-    rdKeyframe_FreeEntry(jkGuiBuildMulti_keyframe);
-    rdThing_Free(jkGuiBuildMulti_thing);
-    rdModel3_Free(jkGuiBuildMulti_model);
+    if (jkGuiBuildMulti_thing && jkGuiBuildMulti_thing->puppet)
+        rdPuppet_ResetTrack(jkGuiBuildMulti_thing->puppet, jkGuiBuildMulti_trackNum);
+    if (jkGuiBuildMulti_keyframe)
+        rdKeyframe_FreeEntry(jkGuiBuildMulti_keyframe);
+    if (jkGuiBuildMulti_thing)
+        rdThing_Free(jkGuiBuildMulti_thing);
+    if (jkGuiBuildMulti_model)
+        rdModel3_Free(jkGuiBuildMulti_model);
+    jkGuiBuildMulti_keyframe = NULL;
+    jkGuiBuildMulti_thing = NULL;
+    jkGuiBuildMulti_model = NULL;
 
     jkGuiBuildMulti_bRendering = tmp; // Added
 }
@@ -553,9 +598,7 @@ LABEL_16:
         jkGuiBuildMulti_modelIdx = 0;
     }
 LABEL_32:
-    jkGuiBuildMulti_DisplayModel();
-
-    jkGuiBuildMulti_ThingInit(jkGuiBuildMulti_aModels[jkGuiBuildMulti_modelIdx].modelFpath); // inlined
+    jkGuiBuildMulti_lastModelDrawMs = 0;
 
     stdFnames_CopyShortName(v24, 16, jkGuiBuildMulti_aModels[jkGuiBuildMulti_modelIdx].modelFpath);
     jkGuiTitle_sub_4189A0(v24);
@@ -577,6 +620,13 @@ LABEL_32:
                 }
                 break;
             case 106:
+#ifdef TARGET_XBOX
+                if (bIdk)
+                {
+                    jkGuiBuildMulti_MakeGeneratedCharacterName(&jkGuiBuildMulti_waTmp[32], 32);
+                    jkGuiBuildMulti_buttons[3].wstr = &jkGuiBuildMulti_waTmp[32];
+                }
+#endif
                 jkPlayer_SetMpcInfo(
                     &jkGuiBuildMulti_waTmp[32],
                     jkGuiBuildMulti_aModels[jkGuiBuildMulti_modelIdx].modelFpath,
@@ -600,10 +650,6 @@ LABEL_32:
         }
     }
     while ( v16 );
-    jkGuiBuildMulti_ThingCleanup(); // inlined
-
-    jkGuiBuildMulti_CloseRender(); // inlined
-
     jkGuiBuildMulti_bSabersLoaded = 0;
     if ( jkGuiBuildMulti_aModels )
         pHS->free(jkGuiBuildMulti_aModels);
@@ -700,8 +746,12 @@ void jkGuiBuildMulti_ModelDrawer(jkGuiElement *pElement, jkGuiMenu *pMenu, stdVB
     flex_t v9; // [esp+8h] [ebp-14h]
     rdVector3 rot; // [esp+10h] [ebp-Ch] BYREF
     flex_t a2a; // [esp+24h] [ebp+8h]
+    rdRect bgRect;
 
     jkGuiBuildMulti_bRendering = 1;
+
+    if (!jkGuiBuildMulti_thing || !jkGuiBuildMulti_pVBuf1)
+        return;
 
     if ( jkGuiBuildMulti_lastModelDrawMs )
     {
@@ -712,19 +762,25 @@ void jkGuiBuildMulti_ModelDrawer(jkGuiElement *pElement, jkGuiMenu *pMenu, stdVB
             }
 
             if (pMenu->pBgBitmap && pMenu->pBgBitmap->mipSurfaces[0]) {
-                stdDisplay_VBufferCopy(pVbuf, pMenu->pBgBitmap->mipSurfaces[0], 315u, 115, &jkGuiBuildMulti_rect_5353C8, 0);
+                bgRect = pElement->rect;
+                stdDisplay_VBufferCopy(pVbuf, pMenu->pBgBitmap->mipSurfaces[0], pElement->rect.x, pElement->rect.y, &bgRect, 0);
             }
             else if (pMenu->pTextureOverride) {
-                stdDisplay_VBufferCopy(pVbuf, pMenu->pTextureOverride, 315u, 115, &jkGuiBuildMulti_rect_5353C8, 0);
+                bgRect = pElement->rect;
+                stdDisplay_VBufferCopy(pVbuf, pMenu->pTextureOverride, pElement->rect.x, pElement->rect.y, &bgRect, 0);
             }
 #else
-            stdDisplay_VBufferCopy(pVbuf, pMenu->texture, 315u, 115, &jkGuiBuildMulti_rect_5353C8, 0);
+            bgRect = pElement->rect;
+            stdDisplay_VBufferCopy(pVbuf, pMenu->texture, pElement->rect.x, pElement->rect.y, &bgRect, 0);
 #endif
             return;
         }
         jkGuiBuildMulti_ThingCleanup(); // inlined
 
-        jkGuiBuildMulti_ThingInit(jkGuiBuildMulti_aModels[jkGuiBuildMulti_modelIdx].modelFpath); // inlined
+        if (jkGuiBuildMulti_aModels && jkGuiBuildMulti_modelIdx >= 0 && jkGuiBuildMulti_modelIdx < jkGuiBuildMulti_numModels)
+            jkGuiBuildMulti_ThingInit(jkGuiBuildMulti_aModels[jkGuiBuildMulti_modelIdx].modelFpath); // inlined
+        else
+            return;
         jkGuiBuildMulti_lastModelDrawMs = 0;
     }
 
@@ -760,7 +816,7 @@ void jkGuiBuildMulti_ModelDrawer(jkGuiElement *pElement, jkGuiMenu *pMenu, stdVB
         rot.z = 0.0;
         rot.y = a2a * 20.0;
         rdMatrix_PostRotate34(&jkGuiBuildMulti_matrix, &rot);
-        stdDisplay_VBufferCopy(pVbuf, jkGuiBuildMulti_pVBuf1, 0x13Bu, 115, 0, 0);
+        stdDisplay_VBufferCopy(pVbuf, jkGuiBuildMulti_pVBuf1, pElement->rect.x, pElement->rect.y, 0, 0);
         stdControl_ShowCursor(0);
     }
 }
@@ -773,6 +829,12 @@ void jkGuiBuildMulti_SaberDrawer(jkGuiElement *pElement, jkGuiMenu *pMenu, stdVB
     rdRect rect; // [esp+4h] [ebp-10h] BYREF
 
     pSabBm = jkGuiBuildMulti_apSaberBitmaps[jkGuiBuildMulti_saberIdx];
+#ifdef STDBITMAP_PARTIAL_LOAD
+    if (pSabBm)
+        stdBitmap_EnsureData(pSabBm);
+#endif
+    if (!pSabBm || !pSabBm->mipSurfaces || !*pSabBm->mipSurfaces)
+        return;
     rect.x = 0;
     rect.y = 0;
     bmWidth = (*pSabBm->mipSurfaces)->format.width;
@@ -932,16 +994,13 @@ void jkGuiBuildMulti_Shutdown()
 void jkGuiBuildMulti_Load(char *pPathOut, int pathOutLen, wchar_t *pPlayerName, wchar_t *pCharName, int bCharPath)
 {
     char tmp1[128]; // [esp+8h] [ebp-100h] BYREF
-    char tmp2[128]; // [esp+88h] [ebp-80h] BYREF
 
     stdString_WcharToChar(tmp1, pPlayerName, 127);
     tmp1[127] = 0;
     stdFnames_MakePath(pPathOut, pathOutLen, "player", tmp1);
     if ( bCharPath )
     {
-        stdString_WcharToChar(tmp2, pCharName, 127);
-        tmp2[127] = 0;
-        stdString_snprintf(pPathOut, pathOutLen, "player\\%s\\%s.mpc", tmp1, tmp2);
+        jkPlayer_MPCMakePath(pPathOut, pathOutLen, pPlayerName, pCharName);
     }
     else
     {
@@ -962,9 +1021,7 @@ int jkGuiBuildMulti_Show()
     int v9; // [esp+10h] [ebp-3DCh]
     Darray darr; // [esp+14h] [ebp-3D8h] BYREF
     wchar_t wPlayerName[32]; // [esp+2Ch] [ebp-3C0h] BYREF
-    char aPlayerName[128]; // [esp+6Ch] [ebp-380h] BYREF
     char aMpcFPath[128]; // [esp+ECh] [ebp-300h] BYREF
-    char tmp1[128]; // [esp+16Ch] [ebp-280h] BYREF
     wchar_t wtmp1[256]; // [esp+1ECh] [ebp-200h] BYREF
 
 #ifdef JKGUI_SMOL_SCREEN
@@ -1059,12 +1116,7 @@ LABEL_8:
                 v8 = jkStrings_GetUniStringWithFallback("GUI_REMOVE");
                 if ( jkGuiDialog_YesNoDialog(v8, wtmp1) )
                 {
-                    stdString_WcharToChar(aPlayerName, jkPlayer_playerShortName, 127);
-                    aPlayerName[127] = 0;
-                    stdFnames_MakePath(aMpcFPath, 128, "player", aPlayerName);
-                    stdString_WcharToChar(tmp1, v6, 127);
-                    tmp1[127] = 0;
-                    stdString_snprintf(aMpcFPath, 128, "player\\%s\\%s.mpc", aPlayerName, tmp1);
+                    jkPlayer_MPCMakePath(aMpcFPath, 128, jkPlayer_playerShortName, v6);
                     stdFileUtil_DelFile(aMpcFPath);
                 }
                 v3 = 1;
@@ -1148,9 +1200,27 @@ int jkGuiBuildMulti_ShowNewCharacter(int rank, int bGameFormatIsJK, int bHasNoVa
     wchar_t *a2a; // [esp+0h] [ebp-1A8h]
     wchar_t *a2b; // [esp+0h] [ebp-1A8h]
     char v15[32]; // [esp+18h] [ebp-190h] BYREF
-    char v16[128]; // [esp+28h] [ebp-180h] BYREF
-    char v17[128]; // [esp+A8h] [ebp-100h] BYREF
     char v18[128]; // [esp+128h] [ebp-80h] BYREF
+
+#ifdef TARGET_XBOX
+    int saveResult;
+
+    jkPlayer_SetRank(rank < 0 ? 0 : rank);
+    sithPlayer_SetBinAmt(SITHBIN_SPEND_STARS, (flex_d_t)jkPlayer_GetJediRank() * 3.0);
+    sithPlayer_SetBinAmt(SITHBIN_NEW_STARS, 0.0);
+    jkPlayer_personality = 1;
+    jkPlayer_SetAmmoMaximums(jkPlayer_personality);
+    jkPlayer_ResetPowers();
+    jk_snwprintf(jkGuiBuildMulti_aWchar_5594C8, 48, L"Character");
+    jkPlayer_SetPlayerName(jkGuiBuildMulti_aWchar_5594C8);
+    jkPlayer_mpcInfoSet = 0;
+
+    saveResult = jkGuiBuildMulti_ShowEditCharacter(1);
+    if (saveResult == 106)
+        jkPlayer_MPCWrite(&jkPlayer_playerInfos[playerThingIdx], jkPlayer_playerShortName, jkPlayer_name);
+
+    return saveResult;
+#endif
 
     // MOTS added
     Darray daPersonalities;
@@ -1276,12 +1346,7 @@ int jkGuiBuildMulti_ShowNewCharacter(int rank, int bGameFormatIsJK, int bHasNoVa
         {
             if ( jkPlayer_VerifyWcharName(jkGuiBuildMulti_aWchar_5594C8) )
             {
-                stdString_WcharToChar(v16, jkPlayer_playerShortName, 127);
-                v16[127] = 0;
-                stdFnames_MakePath(v18, 128, "player", v16);
-                stdString_WcharToChar(v17, jkGuiBuildMulti_aWchar_5594C8, 127);
-                v17[127] = 0;
-                stdString_snprintf(v18, 128, "player\\%s\\%s.mpc", v16, v17);
+                jkPlayer_MPCMakePath(v18, 128, jkPlayer_playerShortName, jkGuiBuildMulti_aWchar_5594C8);
                 if ( !util_FileExistsLowLevel(v18) ) // Added: util_FileExists -> util_FileExistsLowLevel
                     goto LABEL_16;
                 v7 = 1;
@@ -1446,9 +1511,7 @@ int jkGuiBuildMulti_ShowLoad(jkPlayerMpcInfo *pPlayerMpcInfo, char *pStrEpisode,
     wchar_t name[32]; // [esp+2Ch] [ebp-3F0h] BYREF
     char tmp5[32]; // [esp+6Ch] [ebp-3B0h] BYREF
     stdStrTable strtable; // [esp+8Ch] [ebp-390h] BYREF
-    char tmp1[128]; // [esp+9Ch] [ebp-380h] BYREF
     char tmp2[128]; // [esp+11Ch] [ebp-300h] BYREF
-    char tmp3[128]; // [esp+19Ch] [ebp-280h] BYREF
     wchar_t wtmp1[256]; // [esp+21Ch] [ebp-200h] BYREF
 
     if (!Main_bMotsCompat) {
@@ -1594,12 +1657,7 @@ LABEL_18:
                 v19 = jkStrings_GetUniStringWithFallback("GUI_REMOVE");
                 if ( jkGuiDialog_YesNoDialog(v19, wtmp1) )
                 {
-                    stdString_WcharToChar(tmp1, jkPlayer_playerShortName, 127);
-                    tmp1[127] = 0;
-                    stdFnames_MakePath(tmp2, 128, "player", tmp1);
-                    stdString_WcharToChar(tmp3, v17, 127);
-                    tmp3[127] = 0;
-                    stdString_snprintf(tmp2, 128, "player\\%s\\%s.mpc", tmp1, tmp3);
+                    jkPlayer_MPCMakePath(tmp2, 128, jkPlayer_playerShortName, v17);
                     stdFileUtil_DelFile(tmp2);
                 }
                 v14 = 1;

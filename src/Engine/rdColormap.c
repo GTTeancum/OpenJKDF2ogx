@@ -27,6 +27,11 @@ int rdColormap_SetIdentity(rdColormap *colormap)
     return 1;
 }
 
+void rdColormap_ResetIdentity(void)
+{
+    rdColormap_pIdentityMap = NULL;
+}
+
 rdColormap* rdColormap_Load(char *colormap_fname)
 {
     rdColormap *colormap;

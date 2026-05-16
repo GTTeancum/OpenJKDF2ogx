@@ -1256,12 +1256,12 @@ void std3D_DrawRenderList(void)
              * red, sky polys get their colour, and any color-only .mat
              * surface gets its tint.  USE .color in this case.
              *
-             * Textured faces: rdCache may leave .color at 0xFF000000 on JK1
-             * because the palette tint path doesn't bump R/G/B for identity
-             * colormaps (long comment at rdCache.c:351-362 explains).  In
-             * that case, fall back to monochrome lightLevel so texture
-             * modulation produces a lit colour.  If .color does carry real
-             * lighting (MOTS JKM_LIGHTING, coloured lights), use that.
+             * Textured faces: the texture is already palette-expanded to
+             * RGB at upload.  Applying vertex.color here multiplies the
+             * palette-lit colour over the texture a second time, which
+             * crushes JK1 split-screen scenes into brown/black.  Use the
+             * scalar lightLevel for textured geometry and reserve .color for
+             * untextured polys that need an actual resolved palette colour.
              *
              * Decode: vertex.color is ARGB8888 — see rdCache.c:1345 packing.
              */
@@ -1271,16 +1271,13 @@ void std3D_DrawRenderList(void)
 #define V_COLOR_A(v) (float)((((v)->color >> 24) & 0xFF) ? (((v)->color >> 24) & 0xFF) : 0xFF) / 255.0f
 #define V_COLOR_RGB_NONZERO(v) (((v)->color & 0x00FFFFFFu) != 0u)
             if (textured) {
-                if (V_COLOR_RGB_NONZERO(a)) glColor4f(V_COLOR_R(a), V_COLOR_G(a), V_COLOR_B(a), V_COLOR_A(a));
-                else                        glColor4f(a->lightLevel, a->lightLevel, a->lightLevel, V_COLOR_A(a));
+                glColor4f(a->lightLevel, a->lightLevel, a->lightLevel, V_COLOR_A(a));
                 glTexCoord2f(a->tu, a->tv);
                 V3F_ENGINE_TO_GL(a);
-                if (V_COLOR_RGB_NONZERO(b)) glColor4f(V_COLOR_R(b), V_COLOR_G(b), V_COLOR_B(b), V_COLOR_A(b));
-                else                        glColor4f(b->lightLevel, b->lightLevel, b->lightLevel, V_COLOR_A(b));
+                glColor4f(b->lightLevel, b->lightLevel, b->lightLevel, V_COLOR_A(b));
                 glTexCoord2f(b->tu, b->tv);
                 V3F_ENGINE_TO_GL(b);
-                if (V_COLOR_RGB_NONZERO(c)) glColor4f(V_COLOR_R(c), V_COLOR_G(c), V_COLOR_B(c), V_COLOR_A(c));
-                else                        glColor4f(c->lightLevel, c->lightLevel, c->lightLevel, V_COLOR_A(c));
+                glColor4f(c->lightLevel, c->lightLevel, c->lightLevel, V_COLOR_A(c));
                 glTexCoord2f(c->tu, c->tv);
                 V3F_ENGINE_TO_GL(c);
             } else {
@@ -1402,6 +1399,10 @@ static unsigned int    g_nextTexId      = 2;   /* id 1 = diag checkerboard */
 static unsigned int    g_texUploaded    = 0;
 static unsigned int    g_texFailed      = 0;
 static rdColor24_local *g_pCurrentPalette = 0;
+static int             g_atcLogBudget   = 24;
+static rdDDrawSurface *g_loadedSurfaces[STD3D_MAX_TEXTURES];
+static unsigned int    g_loadedTextureIds[STD3D_MAX_TEXTURES];
+static int             g_loadedTextureSlots = 0;
 
 /* Scratch buffer for per-texture RGBA conversion.  Max source we expect
  * is 256x256 (most JK textures ≤ 128x128).  Buffer is scratch — FakeGL's
@@ -1410,6 +1411,48 @@ static rdColor24_local *g_pCurrentPalette = 0;
 #define STD3D_TEX_SCRATCH_W  1024
 #define STD3D_TEX_SCRATCH_H  512
 static unsigned char g_texScratch[STD3D_TEX_SCRATCH_W * STD3D_TEX_SCRATCH_H * 4];
+
+static int std3D_XboxTrackTexture(rdDDrawSurface *texture, unsigned int id)
+{
+    int i;
+
+    for (i = 0; i < STD3D_MAX_TEXTURES; i++) {
+        if (!g_loadedSurfaces[i]) {
+            g_loadedSurfaces[i] = texture;
+            g_loadedTextureIds[i] = id;
+            if (i >= g_loadedTextureSlots)
+                g_loadedTextureSlots = i + 1;
+            return 1;
+        }
+    }
+
+    XDBGF("ATC fail cachefull: tex=%p id=%u slots=%d\n",
+          (void*)texture, id, STD3D_MAX_TEXTURES);
+    return 0;
+}
+
+static void std3D_XboxClearSurface(rdDDrawSurface *texture)
+{
+    if (!texture)
+        return;
+
+    texture->texture_id = 0;
+    texture->texture_loaded = 0;
+    texture->emissive_texture_id = 0;
+    texture->displacement_texture_id = 0;
+    texture->emissive_factor[0] = 0.0f;
+    texture->emissive_factor[1] = 0.0f;
+    texture->emissive_factor[2] = 0.0f;
+    texture->albedo_factor[0] = 1.0f;
+    texture->albedo_factor[1] = 1.0f;
+    texture->albedo_factor[2] = 1.0f;
+    texture->albedo_factor[3] = 1.0f;
+    texture->displacement_factor = 0.0f;
+    texture->emissive_data = 0;
+    texture->albedo_data = 0;
+    texture->displacement_data = 0;
+    texture->pDataDepthConverted = 0;
+}
 
 int std3D_AddToTextureCache(stdVBuffer *vbuf, rdDDrawSurface *texture,
                              int is_alpha_tex, int no_mip)
@@ -1604,6 +1647,12 @@ std3D_atc_do_upload:
         return 0;
     }
 
+    if (!std3D_XboxTrackTexture(texture, id)) {
+        fail_nobind++; g_texFailed++;
+        std3D_DebugLineKV(0, "TFAIL", g_texFailed);
+        return 0;
+    }
+
     texture->texture_id     = (int)id;
     texture->texture_loaded = 1;
     texture->is_16bit       = 0;
@@ -1613,15 +1662,14 @@ std3D_atc_do_upload:
     g_texUploaded++;
     std3D_DebugLineKV(1, "TUP", g_texUploaded);
 
-    /* Log first N uploads so we can verify on hardware that pixel +
-     * palette pointers look sane. */
-    { static int _first = 0;
-      if (_first < 24) {
-          XDBGF("ATC[%u]: id=%u w=%u h=%u src=%p pal=%p alpha=%d first=(%02X,%02X,%02X)\n",
-                _first, id, w, h, vbuf->surface_lock_alloc, pal,
-                is_alpha_tex, pal[0].r, pal[0].g, pal[0].b);
-          _first++;
-      } }
+    if (g_atcLogBudget > 0) {
+        XDBGF("ATC[pal-reset-%d]: id=%u w=%u h=%u src=%p vbufPal=%p curPal=%p pal=%p alpha=%d first=(%02X,%02X,%02X) uploaded=%u failed=%u\n",
+              g_atcLogBudget, id, w, h, vbuf->surface_lock_alloc,
+              vbuf ? vbuf->palette : 0, g_pCurrentPalette, pal,
+              is_alpha_tex, pal[0].r, pal[0].g, pal[0].b,
+              g_texUploaded, g_texFailed);
+        g_atcLogBudget--;
+    }
 
     return 1;
 }
@@ -2285,20 +2333,43 @@ void std3D_DrawUIClearedRect(unsigned char palIdx, rdRect_local *dstRect)
     std3D_DrawUIClearedRectRGBA(r, g, b, 0xFF, dstRect);
 }
 
-void std3D_UnloadAllTextures(void)              {}
+void std3D_PurgeEntireTextureCache(void);
+
+void std3D_UnloadAllTextures(void)
+{
+    std3D_PurgeEntireTextureCache();
+}
 int  std3D_SetCurrentPalette(void *p, int a)
 {
-    static int _logN = 0;
     (void)a;
     g_pCurrentPalette = (rdColor24_local *)p;
-    if (_logN < 5) {
-        XDBGF("SetCurrentPalette: p=%p (first=%02X,%02X,%02X)\n", p,
-              p ? ((unsigned char*)p)[0] : 0,
-              p ? ((unsigned char*)p)[1] : 0,
-              p ? ((unsigned char*)p)[2] : 0);
-        _logN++;
+    g_atcLogBudget = 24;
+    if (g_pCurrentPalette) {
+        XDBGF("std3D_SetCurrentPalette: pal=%p first=(%02X,%02X,%02X) p1=(%02X,%02X,%02X) uploaded=%u failed=%u nextTex=%u\n",
+              (void*)g_pCurrentPalette,
+              g_pCurrentPalette[0].r, g_pCurrentPalette[0].g, g_pCurrentPalette[0].b,
+              g_pCurrentPalette[1].r, g_pCurrentPalette[1].g, g_pCurrentPalette[1].b,
+              g_texUploaded, g_texFailed, g_nextTexId);
+    } else {
+        XDBGF("std3D_SetCurrentPalette: pal=NULL uploaded=%u failed=%u nextTex=%u\n",
+              g_texUploaded, g_texFailed, g_nextTexId);
     }
     return 1;
+}
+
+void std3D_XboxDebugLogPaletteState(const char *tag)
+{
+    if (g_pCurrentPalette) {
+        XDBGF("std3D_PalState[%s]: curPal=%p first=(%02X,%02X,%02X) p1=(%02X,%02X,%02X) uploaded=%u failed=%u nextTex=%u logBudget=%d\n",
+              tag ? tag : "(null)",
+              (void*)g_pCurrentPalette,
+              g_pCurrentPalette[0].r, g_pCurrentPalette[0].g, g_pCurrentPalette[0].b,
+              g_pCurrentPalette[1].r, g_pCurrentPalette[1].g, g_pCurrentPalette[1].b,
+              g_texUploaded, g_texFailed, g_nextTexId, g_atcLogBudget);
+    } else {
+        XDBGF("std3D_PalState[%s]: curPal=NULL uploaded=%u failed=%u nextTex=%u logBudget=%d\n",
+              tag ? tag : "(null)", g_texUploaded, g_texFailed, g_nextTexId, g_atcLogBudget);
+    }
 }
 void std3D_GetValidDimension(unsigned int inW, unsigned int inH,
                               unsigned int *outW, unsigned int *outH)
@@ -2333,9 +2404,60 @@ void std3D_RemoveTextureFromCacheList(rdDDrawSurface *p)
                                               { (void)p; }
 void std3D_AddTextureToCacheList(rdDDrawSurface *p)
                                               { (void)p; }
-void std3D_PurgeEntireTextureCache(void)      {}
+void std3D_PurgeTextureEntry(int i)
+{
+    rdDDrawSurface *surface;
+
+    if (i < 0 || i >= STD3D_MAX_TEXTURES)
+        return;
+
+    surface = g_loadedSurfaces[i];
+    if (surface)
+        std3D_XboxClearSurface(surface);
+
+    g_loadedSurfaces[i] = 0;
+    g_loadedTextureIds[i] = 0;
+    if (i == g_loadedTextureSlots - 1) {
+        while (g_loadedTextureSlots > 0
+               && !g_loadedSurfaces[g_loadedTextureSlots - 1]) {
+            g_loadedTextureSlots--;
+        }
+    }
+}
+
+void std3D_PurgeEntireTextureCache(void)
+{
+    int i;
+    int purged = 0;
+
+    for (i = 0; i < g_loadedTextureSlots; i++) {
+        if (!g_loadedSurfaces[i])
+            continue;
+        std3D_PurgeTextureEntry(i);
+        purged++;
+    }
+
+    g_loadedTextureSlots = 0;
+    if (purged) {
+        XDBGF("std3D_PurgeEntireTextureCache: invalidated %d Xbox texture refs uploaded=%u nextTex=%u\n",
+              purged, g_texUploaded, g_nextTexId);
+    }
+}
 void std3D_PurgeUIEntry(int i, int idx)       { (void)i; (void)idx; }
-void std3D_PurgeSurfaceRefs(rdDDrawSurface *p) { (void)p; }
+void std3D_PurgeSurfaceRefs(rdDDrawSurface *p)
+{
+    int i;
+
+    if (!p)
+        return;
+
+    for (i = 0; i < g_loadedTextureSlots; i++) {
+        if (g_loadedSurfaces[i] == p)
+            std3D_PurgeTextureEntry(i);
+    }
+
+    std3D_XboxClearSurface(p);
+}
 void std3D_UpdateSettings(void)               {}
 /* Engine asks us to wipe the depth buffer mid-frame.  In FakeGL that's
  * just glClear(GL_DEPTH_BUFFER_BIT); the surrounding scene state stays

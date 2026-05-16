@@ -2,6 +2,7 @@
 
 #ifdef TARGET_XBOX
 #include "xbox_debug.h"
+#include "Platform/Xbox/xbox_splitscreen.h"
 #define JKTRACE(msg) xbox_debug_Print(msg)
 #define JKTRACEF xbox_debug_Printf
 #else
@@ -11,6 +12,7 @@
 
 #include "../jk.h"
 #include "Engine/rdroid.h"
+#include "Engine/rdColormap.h"
 #include "Main/sithMain.h"
 #include "Devices/sithControl.h"
 #include "Devices/sithSoundMixer.h"
@@ -47,6 +49,7 @@
 #include "Gameplay/jkSaber.h"
 #include "World/sithWorld.h"
 #include "Platform/stdControl.h"
+#include "Platform/std3D.h"
 #include "Win95/Windows.h"
 #include "Win95/Video.h"
 #include "Win95/stdComm.h"
@@ -1837,9 +1840,34 @@ int jkMain_SetVideoMode()
     
     Window_AddMsgHandler((WindowHandler_t)Windows_GdiHandler);
 
+    rdroid_curAcceleration = 1;
     stdPalEffects_RefreshPalette();
     JKTRACE("SetVideoMode: sithRender_SetPalette\n");
+#ifdef TARGET_XBOX
+    JKTRACEF("SetVideoMode: pre SetPalette mode=%d multi=%d split=%d world=%p cmap0=%p cur=%p ident=%p accel=%d pal=%p\n",
+             jkSmack_gameMode,
+             sithNet_isMulti,
+             xboxSplitScreen_IsEnabled(),
+             (void*)sithWorld_pCurrentWorld,
+             sithWorld_pCurrentWorld ? (void*)sithWorld_pCurrentWorld->colormaps : 0,
+             (void*)rdColormap_pCurMap,
+             (void*)rdColormap_pIdentityMap,
+             rdroid_curAcceleration,
+             (void*)stdDisplay_GetPalette());
+#endif
     sithRender_SetPalette(stdDisplay_GetPalette());
+#ifdef TARGET_XBOX
+    JKTRACEF("SetVideoMode: post SetPalette mode=%d multi=%d split=%d world=%p cmap0=%p cur=%p ident=%p accel=%d\n",
+             jkSmack_gameMode,
+             sithNet_isMulti,
+             xboxSplitScreen_IsEnabled(),
+             (void*)sithWorld_pCurrentWorld,
+             sithWorld_pCurrentWorld ? (void*)sithWorld_pCurrentWorld->colormaps : 0,
+             (void*)rdColormap_pCurMap,
+             (void*)rdColormap_pIdentityMap,
+             rdroid_curAcceleration);
+    std3D_XboxDebugLogPaletteState("SetVideoMode-post");
+#endif
 
     JKTRACE("SetVideoMode: jkHudInv_LoadItemRes\n");
     jkHudInv_LoadItemRes();
@@ -1858,7 +1886,6 @@ int jkMain_SetVideoMode()
     }
     jkDev_Open();
 
-    rdroid_curAcceleration = 1;
     JKTRACEF("SetVideoMode: rdCanvas_New pMenuBuffer=%p pVbufIdk=%p\n", (void*)Video_pMenuBuffer, (void*)Video_pVbufIdk);
     Video_pCanvas = rdCanvas_New(2, Video_pMenuBuffer, Video_pVbufIdk, 0, 0, newW, newH, 6);
     JKTRACEF("SetVideoMode: rdCanvas_New returned %p\n", (void*)Video_pCanvas);

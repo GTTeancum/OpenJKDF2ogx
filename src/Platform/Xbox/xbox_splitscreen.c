@@ -20,6 +20,7 @@
 #include "World/sithWeapon.h"
 #include "World/sithWorld.h"
 #include "Engine/rdroid.h"
+#include "Engine/rdColormap.h"
 #include "Engine/sithCamera.h"
 #include "Engine/sithRender.h"
 #include "Main/sithMain.h"
@@ -338,6 +339,22 @@ static void xboxSplitScreen_DrawHudForCurrentPlayer(void)
     }
 }
 
+static void xboxSplitScreen_ApplyColorEffects(void)
+{
+    stdPalEffects_UpdatePalette(stdDisplay_GetPalette());
+
+    if (stdPalEffects_state.bEnabled)
+    {
+        rdSetColorEffects(&stdPalEffects_state.effect);
+    }
+    else
+    {
+        stdPalEffect neutral;
+        stdPalEffects_ResetEffect(&neutral);
+        rdSetColorEffects(&neutral);
+    }
+}
+
 int xboxSplitScreen_RenderGameplayFrame(void)
 {
     int i;
@@ -372,6 +389,14 @@ int xboxSplitScreen_RenderGameplayFrame(void)
               stdPalEffects_state.effect.add.y,
               stdPalEffects_state.effect.add.z,
               (double)stdPalEffects_state.effect.fade);
+        XDBGF("SplitFrame: cmap frame=%u world=%p cmap0=%p cur=%p ident=%p accel=%d\n",
+              g_xboxSplitScreenFrameCount,
+              (void*)sithWorld_pCurrentWorld,
+              sithWorld_pCurrentWorld ? (void*)sithWorld_pCurrentWorld->colormaps : 0,
+              (void*)rdColormap_pCurMap,
+              (void*)rdColormap_pIdentityMap,
+              rdroid_curAcceleration);
+        std3D_XboxDebugLogPaletteState("SplitFrame-begin");
     }
 
     Video_modeStruct.b3DAccel = (HKEY)1;
@@ -380,8 +405,7 @@ int xboxSplitScreen_RenderGameplayFrame(void)
     jkHudInv_ClearRects();
     jkHud_ClearRects(0);
 
-    stdPalEffects_UpdatePalette(stdDisplay_GetPalette());
-    rdSetColorEffects(&stdPalEffects_state.effect);
+    xboxSplitScreen_ApplyColorEffects();
     rdAdvanceFrame();
 
     for (i = 0; i < g_xboxSplitScreenLocalCount; i++)

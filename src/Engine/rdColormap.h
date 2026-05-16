@@ -24,6 +24,7 @@ extern "C" {
 
 int rdColormap_SetCurrent(rdColormap *colormap);
 int rdColormap_SetIdentity(rdColormap *colormap);
+void rdColormap_ResetIdentity(void);
 rdColormap* rdColormap_Load(char *colormap_fname);
 int rdColormap_LoadEntry(char *colormap_fname, rdColormap *colormap);
 void rdColormap_Free(rdColormap *colormap);
