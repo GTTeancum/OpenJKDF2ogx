@@ -131,6 +131,9 @@ void std3D_DrawUIClearedRect(uint8_t palIdx, rdRect* dstRect);
 void std3D_DrawUIClearedRectRGBA(uint8_t color_r, uint8_t color_g, uint8_t color_b, uint8_t color_a, rdRect* dstRect);
 int std3D_IsReady();
 #ifdef TARGET_XBOX
+void std3D_XboxSetViewport(int x, int y, int w, int h);
+void std3D_XboxResetViewport(void);
+void std3D_XboxSetScreenSpaceRenderList(int enable);
 void std3D_XboxDebugLogPaletteState(const char *tag);
 #endif
 

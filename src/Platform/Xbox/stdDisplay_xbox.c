@@ -22,6 +22,14 @@ rdColor24 stdDisplay_masterPalette[256];
 
 static int stdDisplay_xboxModeSet = 0;
 int stdDisplay_xboxCreditsDebug = 0;
+static stdDisplayXboxPostMenuDrawFunc stdDisplay_xboxPostMenuDrawFunc = NULL;
+static void *stdDisplay_xboxPostMenuDrawCtx = NULL;
+
+void stdDisplay_XboxSetPostMenuDrawCallback(stdDisplayXboxPostMenuDrawFunc fn, void *ctx)
+{
+    stdDisplay_xboxPostMenuDrawFunc = fn;
+    stdDisplay_xboxPostMenuDrawCtx = ctx;
+}
 
 void stdDisplay_XboxSetCreditsDebug(int enabled)
 {
@@ -224,10 +232,10 @@ int stdDisplay_DDrawGdiSurfaceFlip()
               Video_menuBuffer.format.width_in_bytes);
     }
 
-    if (jkCutscene_isRendering)
-        std3D_StartScene();
-
+    std3D_StartScene();
     std3D_DrawMenuVBuffer8(&Video_menuBuffer, stdDisplay_masterPalette);
+    if (stdDisplay_xboxPostMenuDrawFunc)
+        stdDisplay_xboxPostMenuDrawFunc(stdDisplay_xboxPostMenuDrawCtx);
     std3D_EndScene();
     std3D_Present();
 

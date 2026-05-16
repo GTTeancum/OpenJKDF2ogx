@@ -28,6 +28,9 @@
 #include "Win95/Window.h"
 #include "Engine/rdKeyframe.h"
 #include "General/stdConffile.h"
+#ifdef TARGET_XBOX
+#include "Platform/Xbox/xbox_debug.h"
+#endif
 
 #include "jk.h"
 #include "types.h"
@@ -44,7 +47,7 @@ static jkGuiElement jkGuiBuildMulti_buttons[17] =
   { ELEMENT_TEXT, 0, 2, NULL, 3, { 310, 90, 270, 20 }, 1, 0, NULL, NULL, NULL, NULL, { 0, 0, 0, 0, 0, { 0, 0, 0, 0 } }, 0 },
   { ELEMENT_PICBUTTON, 105, 0, NULL, 33, { 6, 90, 24, 24 }, 1, 0, NULL, NULL, jkGuiBuildMulti_SaberButtonClicked, NULL, { 0, 0, 0, 0, 0, { 0, 0, 0, 0 } }, 0 },
   { ELEMENT_PICBUTTON, 104, 0, NULL, 34, { 170, 90, 24, 24 }, 1, 0, NULL, NULL, jkGuiBuildMulti_SaberButtonClicked, NULL, { 0, 0, 0, 0, 0, { 0, 0, 0, 0 } }, 0 },
-  { ELEMENT_TEXT, 0, 0, NULL, 0, { 0, 0, 0, 0 }, 0, 0, NULL, NULL, NULL, NULL, { 0, 0, 0, 0, 0, { 0, 0, 0, 0 } }, 0 },
+  { ELEMENT_CUSTOM, 0, 0, NULL, 0, { 315, 115, 260, 260 }, 1, 0, NULL, jkGuiBuildMulti_ModelDrawer, NULL, NULL, { 0, 0, 0, 0, 0, { 0, 0, 0, 0 } }, 0 },
   { ELEMENT_CUSTOM, 0, 0, NULL, 0, { 80, 115, 50, 260 }, 1, 0, NULL, jkGuiBuildMulti_SaberDrawer, NULL, NULL, { 0, 0, 0, 0, 0, { 0, 0, 0, 0 } }, 0 },
   { ELEMENT_TEXT, 0, 0, "GUI_MODEL", 3, { 336, 380, 216, 30 }, 1, 0, NULL, NULL, NULL, NULL, { 0, 0, 0, 0, 0, { 0, 0, 0, 0 } }, 0 },
   { ELEMENT_PICBUTTON, 100, 0, NULL, 33, { 312, 380, 24, 24 }, 1, 0, NULL, NULL, jkGuiBuildMulti_SaberButtonClicked, NULL, { 0, 0, 0, 0, 0, { 0, 0, 0, 0 } }, 0 },
@@ -61,7 +64,7 @@ static jkGuiElement jkGuiBuildMulti_buttons[17] =
 
 jkGuiMenu jkGuiBuildMulti_menu =
 {
-    jkGuiBuildMulti_buttons, -1, 65535, 65535, 15, NULL, NULL, jkGui_stdBitmaps, jkGui_stdFonts, 0, NULL, "thermloop01.wav", "thrmlpu2.wav", NULL, NULL, NULL, 0, NULL, NULL
+    jkGuiBuildMulti_buttons, -1, 65535, 65535, 15, NULL, NULL, jkGui_stdBitmaps, jkGui_stdFonts, 0, jkGuiBuildMulti_sub_41A120, "thermloop01.wav", "thrmlpu2.wav", NULL, NULL, NULL, 0, NULL, NULL
 };
 
 
@@ -255,6 +258,12 @@ static stdVBufferTexFmt jkGuiBuildMulti_texFmt;
 static rdMatrix34 jkGuiBuildMulti_orthoProjection;
 static rdVector3 jkGuiBuildMulti_lightPos;
 static uint32_t jkGuiBuildMulti_lastModelDrawMs;
+static int32_t jkGuiBuildMulti_savedAcceleration;
+static int32_t jkGuiBuildMulti_renderOpen;
+#ifdef TARGET_XBOX
+static unsigned int jkGuiBuildMulti_xboxPostDrawCalls;
+static unsigned int jkGuiBuildMulti_xboxModelDrawerCalls;
+#endif
 
 static wchar_t jkGuiBuildMulti_waTmpRankLabel[128+1];
 
@@ -348,6 +357,12 @@ rdKeyframe* jkGuiBuildMulti_KeyframeLoader(const char *pKeyframeFname)
 
 void jkGuiBuildMulti_CloseRender()
 {
+    if (!jkGuiBuildMulti_renderOpen)
+        return;
+
+#ifdef TARGET_XBOX
+    stdDisplay_XboxSetPostMenuDrawCallback(NULL, NULL);
+#endif
     rdMaterial_RegisterLoader(jkGuiBuildMulti_fnMatLoader);
     rdModel3_RegisterLoader(jkGuiBuildMulti_fnModelLoader);
     rdKeyframe_RegisterLoader(jkGuiBuildMulti_fnKeyframeLoader);
@@ -368,6 +383,7 @@ void jkGuiBuildMulti_CloseRender()
         stdDisplay_VBufferFree(jkGuiBuildMulti_pVBuf2);
     rdColormap_FreeEntry(&jkGuiBuildMulti_colormap);
     rdClose();
+    rdroid_curAcceleration = jkGuiBuildMulti_savedAcceleration;
 
     jkGuiBuildMulti_pThingGun = NULL;
     jkGuiBuildMulti_pModelGun = NULL;
@@ -376,6 +392,11 @@ void jkGuiBuildMulti_CloseRender()
     jkGuiBuildMulti_pCamera = NULL;
     jkGuiBuildMulti_pVBuf1 = NULL;
     jkGuiBuildMulti_pVBuf2 = NULL;
+    jkGuiBuildMulti_renderOpen = 0;
+#ifdef TARGET_XBOX
+    jkGuiBuildMulti_xboxPostDrawCalls = 0;
+    jkGuiBuildMulti_xboxModelDrawerCalls = 0;
+#endif
 }
 
 void jkGuiBuildMulti_ThingInit(char *pModelFpath)
@@ -423,6 +444,81 @@ void jkGuiBuildMulti_ThingCleanup()
     jkGuiBuildMulti_bRendering = tmp; // Added
 }
 
+#ifdef TARGET_XBOX
+static void jkGuiBuildMulti_XboxPostMenuDraw(void *ctx)
+{
+    jkGuiElement *pElement = &jkGuiBuildMulti_buttons[6];
+    uint32_t v5;
+    flex_d_t v6;
+    flex_t a2a;
+    rdVector3 rot;
+
+    (void)ctx;
+
+    jkGuiBuildMulti_xboxPostDrawCalls++;
+
+    if (!g_app_suspended || !jkGuiBuildMulti_renderOpen || !jkGuiBuildMulti_bRendering)
+        return;
+
+    if (jkGuiBuildMulti_lastModelDrawMs)
+    {
+        if (stdPlatform_GetTimeMsec() - (uint32_t)jkGuiBuildMulti_lastModelDrawMs <= BUILDMULTI_SWITCH_DELAY_MS)
+            return;
+
+        jkGuiBuildMulti_ThingCleanup();
+        if (jkGuiBuildMulti_aModels && jkGuiBuildMulti_modelIdx >= 0 && jkGuiBuildMulti_modelIdx < jkGuiBuildMulti_numModels)
+            jkGuiBuildMulti_ThingInit(jkGuiBuildMulti_aModels[jkGuiBuildMulti_modelIdx].modelFpath);
+        else
+        {
+            XDBGF("BuildMulti3D: PostDraw no model after switch idx=%d num=%d models=%p\n",
+                  jkGuiBuildMulti_modelIdx,
+                  jkGuiBuildMulti_numModels,
+                  jkGuiBuildMulti_aModels);
+            return;
+        }
+        jkGuiBuildMulti_lastModelDrawMs = 0;
+    }
+
+    if (!jkGuiBuildMulti_thing || !jkGuiBuildMulti_thing->puppet || !jkGuiBuildMulti_pVBuf1 || !jkGuiBuildMulti_pCamera)
+        return;
+
+    stdControl_ShowCursor(1);
+    std3D_XboxSetScreenSpaceRenderList(1);
+    rdAdvanceFrame();
+    std3D_XboxSetViewport(
+        pElement->rect.x,
+        480 - pElement->rect.y - pElement->rect.height,
+        pElement->rect.width,
+        pElement->rect.height);
+    std3D_ClearZBuffer();
+
+    v5 = stdPlatform_GetTimeMsec();
+    v6 = (v5 - jkGuiBuildMulti_startTimeSecs) * 0.001;
+    if (v6 < 0.0)
+        a2a = 0.0;
+    else if (v6 > 1.0)
+        a2a = 1.0;
+    else
+        a2a = v6;
+
+    rdCamera_SetCurrent(jkGuiBuildMulti_pCamera);
+    rdPuppet_UpdateTracks(jkGuiBuildMulti_thing->puppet, a2a);
+    jkGuiBuildMulti_startTimeSecs = v5;
+    rdThing_Draw(jkGuiBuildMulti_thing, &jkGuiBuildMulti_matrix);
+    if (jkGuiBuildMulti_pThingGun && jkGuiBuildMulti_thing->hierarchyNodeMatrices)
+        rdThing_Draw(jkGuiBuildMulti_pThingGun, jkGuiBuildMulti_thing->hierarchyNodeMatrices + 12);
+    rdFinishFrame();
+    std3D_XboxSetScreenSpaceRenderList(0);
+    std3D_XboxResetViewport();
+
+    rot.x = 0.0;
+    rot.z = 0.0;
+    rot.y = a2a * 20.0;
+    rdMatrix_PostRotate34(&jkGuiBuildMulti_matrix, &rot);
+    stdControl_ShowCursor(0);
+}
+#endif
+
 // MOTS altered
 int jkGuiBuildMulti_ShowEditCharacter(BOOL bIdk)
 {
@@ -445,6 +541,7 @@ int jkGuiBuildMulti_ShowEditCharacter(BOOL bIdk)
     int32_t v17; // eax
     int32_t v18; // edi
     int32_t i; // esi
+    int32_t previewStarted; // Added
     wchar_t *v21; // [esp-4h] [ebp-190h]
     int32_t idx; // [esp+10h] [ebp-17Ch] BYREF
     int32_t _v23;
@@ -461,6 +558,7 @@ int jkGuiBuildMulti_ShowEditCharacter(BOOL bIdk)
 
     // Added
     stdBitmap_EnsureData(jkGui_stdBitmaps[JKGUI_BM_BK_BUILD_MULTI]);
+    previewStarted = 0;
 
     memset(v28, 0, sizeof(v28));
     jkGui_SetModeMenu(jkGui_stdBitmaps[JKGUI_BM_BK_BUILD_MULTI]->palette);
@@ -599,6 +697,11 @@ LABEL_16:
     }
 LABEL_32:
     jkGuiBuildMulti_lastModelDrawMs = 0;
+    if (jkGuiBuildMulti_numModels > 0 && jkGuiBuildMulti_DisplayModel())
+    {
+        jkGuiBuildMulti_ThingInit(jkGuiBuildMulti_aModels[jkGuiBuildMulti_modelIdx].modelFpath);
+        previewStarted = 1;
+    }
 
     stdFnames_CopyShortName(v24, 16, jkGuiBuildMulti_aModels[jkGuiBuildMulti_modelIdx].modelFpath);
     jkGuiTitle_sub_4189A0(v24);
@@ -650,6 +753,9 @@ LABEL_32:
         }
     }
     while ( v16 );
+    if (previewStarted)
+        jkGuiBuildMulti_ThingCleanup();
+    jkGuiBuildMulti_CloseRender();
     jkGuiBuildMulti_bSabersLoaded = 0;
     if ( jkGuiBuildMulti_aModels )
         pHS->free(jkGuiBuildMulti_aModels);
@@ -684,7 +790,10 @@ int jkGuiBuildMulti_DisplayModel()
     int32_t tmp = jkGuiBuildMulti_bRendering; // Added
     jkGuiBuildMulti_bRendering = 1; // Added
 
-    rdOpen(0);
+    jkGuiBuildMulti_savedAcceleration = rdroid_curAcceleration;
+    rdOpen(1);
+    rdroid_curAcceleration = 1;
+    jkGuiBuildMulti_renderOpen = 1;
     rdColormap_LoadEntry("misc\\cmp\\UIColormap.cmp", &jkGuiBuildMulti_colormap);
     rdColormap_SetCurrent(&jkGuiBuildMulti_colormap);
     rdSetRenderOptions(jkGuiBuildMulti_renderOptions);
@@ -694,17 +803,32 @@ int jkGuiBuildMulti_DisplayModel()
     rdSetZBufferMethod(RD_ZBUFFER_READ_WRITE);
     rdSetSortingMethod(0);
     rdSetOcclusionMethod(0);
+    memset(&v1, 0, sizeof(v1));
     v1.format.bpp = 8;
     v1.width = 260;
     v1.height = 260;
+    v1.width_in_pixels = 260;
+    v1.width_in_bytes = 260;
+    v1.texture_size_in_bytes = 260 * 260;
     v1.format.is16bit = 0;
     jkGuiBuildMulti_pVBuf1 = stdDisplay_VBufferNew(&v1, 0, 0, 0);
-    stdDisplay_VBufferFill(jkGuiBuildMulti_pVBuf1, 0, 0);
+    if (jkGuiBuildMulti_pVBuf1)
+        stdDisplay_VBufferFill(jkGuiBuildMulti_pVBuf1, 0, 0);
     _memcpy(&jkGuiBuildMulti_texFmt, &stdDisplay_pCurVideoMode->format, sizeof(jkGuiBuildMulti_texFmt));
     jkGuiBuildMulti_texFmt.format.bpp = 16;
+    jkGuiBuildMulti_texFmt.format.is16bit = 1;
+    if (jkGuiBuildMulti_texFmt.width_in_pixels <= 0)
+        jkGuiBuildMulti_texFmt.width_in_pixels = jkGuiBuildMulti_texFmt.width;
+    if (jkGuiBuildMulti_texFmt.width_in_bytes <= 0 || jkGuiBuildMulti_texFmt.width_in_bytes < (uint32_t)(jkGuiBuildMulti_texFmt.width * 2))
+        jkGuiBuildMulti_texFmt.width_in_bytes = jkGuiBuildMulti_texFmt.width * 2;
+    jkGuiBuildMulti_texFmt.texture_size_in_bytes = jkGuiBuildMulti_texFmt.width_in_bytes * jkGuiBuildMulti_texFmt.height;
     jkGuiBuildMulti_pVBuf2 = stdDisplay_VBufferNew(&jkGuiBuildMulti_texFmt, 0, 0, 0);
     jkGuiBuildMulti_pCanvas = rdCanvas_New(3, jkGuiBuildMulti_pVBuf1, jkGuiBuildMulti_pVBuf2, 0, 0, 259, 259, 6);
+#ifdef TARGET_XBOX
+    jkGuiBuildMulti_pCamera = rdCamera_New(60.0, 0.0, 0.08, 256.0, 1.0);
+#else
     jkGuiBuildMulti_pCamera = rdCamera_New(60.0, 0.0, 0.08, 15.0, 1.0);
+#endif
     rdCamera_SetCanvas(jkGuiBuildMulti_pCamera, jkGuiBuildMulti_pCanvas);
     jkGuiBuildMulti_pThingCamera = rdThing_New(0);
     rdThing_SetCamera(jkGuiBuildMulti_pThingCamera, jkGuiBuildMulti_pCamera);
@@ -733,6 +857,29 @@ int jkGuiBuildMulti_DisplayModel()
     jkGuiBuildMulti_pThingGun = rdThing_New(0);
     int32_t ret = rdThing_SetModel3(jkGuiBuildMulti_pThingGun, jkGuiBuildMulti_pModelGun);
 
+#ifdef TARGET_XBOX
+    if (!jkGuiBuildMulti_pVBuf1 || !jkGuiBuildMulti_pVBuf2 || !jkGuiBuildMulti_pCanvas || !jkGuiBuildMulti_pCamera)
+    {
+        XDBGF("BuildMulti3D: DisplayModel resource miss vbuf1=%p vbuf2=%p canvas=%p camera=%p fmt1=(%dx%d pitch=%u size=%u) fmt2=(%dx%d pitch=%u size=%u)\n",
+              jkGuiBuildMulti_pVBuf1,
+              jkGuiBuildMulti_pVBuf2,
+              jkGuiBuildMulti_pCanvas,
+              jkGuiBuildMulti_pCamera,
+              v1.width,
+              v1.height,
+              v1.width_in_bytes,
+              v1.texture_size_in_bytes,
+              jkGuiBuildMulti_texFmt.width,
+              jkGuiBuildMulti_texFmt.height,
+              jkGuiBuildMulti_texFmt.width_in_bytes,
+              jkGuiBuildMulti_texFmt.texture_size_in_bytes);
+    }
+    stdDisplay_XboxSetPostMenuDrawCallback(jkGuiBuildMulti_XboxPostMenuDraw, NULL);
+    XDBGF("BuildMulti3D: DisplayModel ready ret=%d accel=%d modelIdx=%d\n",
+          ret,
+          rdroid_curAcceleration,
+          jkGuiBuildMulti_modelIdx);
+#endif
     jkGuiBuildMulti_bRendering = tmp; // Added
     return ret;
 }
@@ -749,6 +896,13 @@ void jkGuiBuildMulti_ModelDrawer(jkGuiElement *pElement, jkGuiMenu *pMenu, stdVB
     rdRect bgRect;
 
     jkGuiBuildMulti_bRendering = 1;
+
+#ifdef TARGET_XBOX
+    (void)pVbuf;
+    (void)redraw;
+    jkGuiBuildMulti_xboxModelDrawerCalls++;
+    return;
+#endif
 
     if (!jkGuiBuildMulti_thing || !jkGuiBuildMulti_pVBuf1)
         return;
@@ -787,9 +941,18 @@ void jkGuiBuildMulti_ModelDrawer(jkGuiElement *pElement, jkGuiMenu *pMenu, stdVB
     if ( g_app_suspended )
     {
         stdControl_ShowCursor(1);
+#ifndef TARGET_XBOX
         stdDisplay_VBufferFill(jkGuiBuildMulti_pVBuf1, 0, 0);
         stdDisplay_VBufferLock(jkGuiBuildMulti_pVBuf1);
+#endif
         rdAdvanceFrame();
+#ifdef TARGET_XBOX
+        std3D_XboxSetViewport(
+            pElement->rect.x,
+            480 - pElement->rect.y - pElement->rect.height,
+            pElement->rect.width,
+            pElement->rect.height);
+#endif
 
         // Added: switched around the order of casting for this...
         v5 = stdPlatform_GetTimeMsec();
@@ -809,14 +972,21 @@ void jkGuiBuildMulti_ModelDrawer(jkGuiElement *pElement, jkGuiMenu *pMenu, stdVB
         rdPuppet_UpdateTracks(jkGuiBuildMulti_thing->puppet, a2a);
         jkGuiBuildMulti_startTimeSecs = v5;
         rdThing_Draw(jkGuiBuildMulti_thing, &jkGuiBuildMulti_matrix);
-        rdThing_Draw(jkGuiBuildMulti_pThingGun, jkGuiBuildMulti_thing->hierarchyNodeMatrices + 12);
+        if (jkGuiBuildMulti_pThingGun && jkGuiBuildMulti_thing->hierarchyNodeMatrices)
+            rdThing_Draw(jkGuiBuildMulti_pThingGun, jkGuiBuildMulti_thing->hierarchyNodeMatrices + 12);
         rdFinishFrame();
+#ifdef TARGET_XBOX
+        std3D_XboxResetViewport();
+#else
         stdDisplay_VBufferUnlock(jkGuiBuildMulti_pVBuf1);
+#endif
         rot.x = 0.0;
         rot.z = 0.0;
         rot.y = a2a * 20.0;
         rdMatrix_PostRotate34(&jkGuiBuildMulti_matrix, &rot);
+#ifndef TARGET_XBOX
         stdDisplay_VBufferCopy(pVbuf, jkGuiBuildMulti_pVBuf1, pElement->rect.x, pElement->rect.y, 0, 0);
+#endif
         stdControl_ShowCursor(0);
     }
 }

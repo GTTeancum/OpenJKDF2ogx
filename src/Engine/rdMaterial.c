@@ -775,19 +775,9 @@ int rdMaterial_AddToTextureCache(rdMaterial *pMaterial, rdTexture *texture, int 
 #endif
     stdVBuffer* mipmap = texture->texture_struct[mipmap_level];
 
-#ifdef TARGET_XBOX
-    { static int _rm0=0; if(_rm0<3){ XDBGF("RDMAT: tex=%p mip=%p lv=%d no_alpha=%d\n", (void*)texture, (void*)mipmap, mipmap_level, no_alpha); _rm0++; } }
-#endif
-
 #ifdef SDL2_RENDER
     if (mipmap) {
-#ifdef TARGET_XBOX
-        { static int _rm1=0; if(_rm1<3){ XDBGF("RDMAT: palette assign mipmap=%p pal=%p\n", (void*)mipmap, (void*)pMaterial->palette_alloc); _rm1++; } }
-#endif
         mipmap->palette = pMaterial->palette_alloc;
-#ifdef TARGET_XBOX
-        { static int _rm2=0; if(_rm2<3){ XDBGF("RDMAT: palette assigned ok\n"); _rm2++; } }
-#endif
     }
 #endif
 

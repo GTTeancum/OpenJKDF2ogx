@@ -123,6 +123,7 @@ static int g_xboxViewportX = 0;
 static int g_xboxViewportY = 0;
 static int g_xboxViewportW = 640;
 static int g_xboxViewportH = 480;
+static int g_xboxScreenSpaceRenderList = 0;
 
 static void std3D_XboxApplyViewport(void)
 {
@@ -144,6 +145,11 @@ extern "C" void std3D_XboxSetViewport(int x, int y, int w, int h)
 extern "C" void std3D_XboxResetViewport(void)
 {
     std3D_XboxSetViewport(0, 0, 640, 480);
+}
+
+extern "C" void std3D_XboxSetScreenSpaceRenderList(int enable)
+{
+    g_xboxScreenSpaceRenderList = enable != 0;
 }
 
 #define GL_ONE                 1
@@ -882,8 +888,7 @@ void std3D_Present(void)
 
     { static int _sw=0; if(_sw<3){ XDBG("std3D_Present: FakeSwapBuffers\n"); } _sw++; }
     FakeSwapBuffers();
-    { static int _sr=0; if(_sr<3){ XDBG("std3D_Present: returned\n"); } _sr++;
-      if(_sr==100||_sr==1000||(_sr%5000)==0){ XDBGF("std3D_Present: milestone tick %d\n",_sr); } }
+    { static int _sr=0; if(_sr<3){ XDBG("std3D_Present: returned\n"); } _sr++; }
 }
 
 /* ====================================================================== */
@@ -892,7 +897,6 @@ void std3D_Present(void)
 int std3D_AddRenderListVertices(D3DVERTEX *verts, int count)
 {
     int i;
-    { static int _av=0; if(_av<5){ XDBGF("ARV: count=%d GL_nverts=%d\n", count, GL_numVertices); _av++; } }
     if (!verts || count <= 0) return 1;
     if (GL_numVertices + count >= STD3D_MAX_VERTICES) return 0;
     memcpy(&GL_tmpVertices[GL_numVertices], verts, count * sizeof(D3DVERTEX));
@@ -925,7 +929,6 @@ int std3D_AddRenderListVertices(D3DVERTEX *verts, int count)
 
 void std3D_RenderListVerticesFinish(void)
 {
-    { static int _vf=0; if(_vf<5){ XDBGF("VF: done nverts=%d\n", GL_numVertices); _vf++; } }
     GL_verticesDone = 1;
 }
 
@@ -1054,7 +1057,17 @@ void std3D_DrawRenderList(void)
     /*   right = znear * tan_h ; top = znear * tan_v                     */
     /*   glFrustum(-right, right, -top, top, znear, zfar)                */
     /* ---------------------------------------------------------------- */
-    {
+    if (g_xboxScreenSpaceRenderList) {
+        std3D_XboxApplyViewport();
+        glMatrixMode(GL_PROJECTION);
+        glLoadIdentity();
+        glOrtho(0.0, (GLdouble)g_xboxViewportW, (GLdouble)g_xboxViewportH, 0.0, -1.0, 1.0);
+        glMatrixMode(GL_MODELVIEW);
+        glLoadIdentity();
+
+        /* Menu preview vertices are already projected by the software camera.
+         * Keep their projected Z so overlapping model parts resolve normally. */
+    } else {
         float cam_fov = 90.0f, cam_aspect = 0.75f;
         float cam_znear = 1.0f/64.0f, cam_zfar = 128.0f;
         float tan_h, tan_v, half_w, half_h;
@@ -1071,8 +1084,8 @@ void std3D_DrawRenderList(void)
         glMatrixMode(GL_MODELVIEW);
         glLoadIdentity();
 
-        { static int _pl=0; if(_pl<16 || (_pl % 120) == 0){
-            XDBGF("DRLDbg: draw n=%d gotCam=%d tris=%d lines=%d nverts=%d viewport=(%d,%d %dx%d) fov=%.2f aspect=%.4f znear=%.6f zfar=%.2f half=(%.6f,%.6f) tan=(%.4f,%.4f)\n",
+        { static int _pl=0; if(0){
+            XDBGF("DRLDbg: draw n=%d gotCam=%d tris=%d lines=%d nverts=%d viewport=(%d,%d %dx%d) fov=%.2f aspect=%.4f znear=%.6f zfar=%.2f half=(%.6f,%.6f) tan=(%.4f,%.4f) bbox=(%.2f..%.2f,%.2f..%.2f,%.2f..%.2f)\n",
                   _pl,
                   got_cam,
                   GL_numTris,
@@ -1082,8 +1095,8 @@ void std3D_DrawRenderList(void)
                   g_xboxViewportY,
                   g_xboxViewportW,
                   g_xboxViewportH,
-                  cam_fov, cam_aspect, cam_znear, cam_zfar, half_w, half_h, tan_h, tan_v);
-            _pl++;
+                  cam_fov, cam_aspect, cam_znear, cam_zfar, half_w, half_h, tan_h, tan_v,
+                  g_bboxXmin, g_bboxXmax, g_bboxYmin, g_bboxYmax, g_bboxZmin, g_bboxZmax);
         }}
     }
 
@@ -1092,7 +1105,8 @@ void std3D_DrawRenderList(void)
      * and 0x10000 cull orientation for double-sided lit faces. */
     glEnable(GL_DEPTH_TEST);
     glEnable(GL_BLEND);
-    glEnable(GL_CULL_FACE);
+    if (g_xboxScreenSpaceRenderList) glDisable(GL_CULL_FACE);
+    else                            glEnable(GL_CULL_FACE);
     glDepthFunc(GL_LESS);
     glDepthMask(GL_TRUE);
     glCullFace(GL_FRONT);
@@ -1141,7 +1155,10 @@ void std3D_DrawRenderList(void)
  *   GL:     x=right, y=up,                          z=back (so -z=forward)
  * Reorder coords at the glVertex3f call site so the GPU's projection
  * matrix (set up via glFrustum above) does the right thing. */
-#define V3F_ENGINE_TO_GL(v) glVertex3f((v)->x, (v)->z, -(v)->y)
+#define V3F_ENGINE_TO_GL(v) do { \
+        if (g_xboxScreenSpaceRenderList) glVertex3f((v)->x, (v)->y, -(v)->z); \
+        else                            glVertex3f((v)->x, (v)->z, -(v)->y); \
+    } while (0)
     {
         int textured_tris = 0, untextured_tris = 0, bind_switches = 0;
         unsigned int last_id = 0;
@@ -1173,13 +1190,19 @@ void std3D_DrawRenderList(void)
             if (textured) {
                 if (t->flags != last_flags) {
                     glEnable(GL_BLEND);
-                    glEnable(GL_CULL_FACE);
+                    if (g_xboxScreenSpaceRenderList) glDisable(GL_CULL_FACE);
+                    else                            glEnable(GL_CULL_FACE);
 
-                    if (t->flags & 0x800) glDepthFunc(GL_LESS);
-                    else                  glDepthFunc(GL_ALWAYS);
+                    if (g_xboxScreenSpaceRenderList) {
+                        glDepthFunc(GL_LEQUAL);
+                        glDepthMask(GL_TRUE);
+                    } else {
+                        if (t->flags & 0x800) glDepthFunc(GL_LESS);
+                        else                  glDepthFunc(GL_ALWAYS);
 
-                    if (t->flags & 0x1000) glDepthMask(GL_TRUE);
-                    else                   glDepthMask(GL_FALSE);
+                        if (t->flags & 0x1000) glDepthMask(GL_TRUE);
+                        else                   glDepthMask(GL_FALSE);
+                    }
 
                     if (t->flags & 0x10000) glCullFace(GL_BACK);
                     else                    glCullFace(GL_FRONT);
@@ -1470,7 +1493,7 @@ int std3D_AddToTextureCache(stdVBuffer *vbuf, rdDDrawSurface *texture,
     static int          fail_logN   = 0;
     static unsigned int call_count  = 0;
     call_count++;
-    if ((call_count % 200) == 1) {
+    if (g_texFailed && (call_count % 200) == 1) {
         XDBGF("ATC stats: calls=%u TUP=%u TFAIL=%u (nullin=%u baddim=%u 16bit=%u nopal=%u nobind=%u)\n",
               call_count, g_texUploaded, g_texFailed,
               fail_nullin, fail_baddim, fail_16bit, fail_nopal, fail_nobind);
@@ -1662,7 +1685,7 @@ std3D_atc_do_upload:
     g_texUploaded++;
     std3D_DebugLineKV(1, "TUP", g_texUploaded);
 
-    if (g_atcLogBudget > 0) {
+    if (0 && g_atcLogBudget > 0) {
         XDBGF("ATC[pal-reset-%d]: id=%u w=%u h=%u src=%p vbufPal=%p curPal=%p pal=%p alpha=%d first=(%02X,%02X,%02X) uploaded=%u failed=%u\n",
               g_atcLogBudget, id, w, h, vbuf->surface_lock_alloc,
               vbuf ? vbuf->palette : 0, g_pCurrentPalette, pal,

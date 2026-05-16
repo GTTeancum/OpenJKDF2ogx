@@ -124,7 +124,6 @@ void rdCache_Flush()
     size_t v3; // edi
     rdProcEntry *face; // esi
 
-    { static int _cf=0; if(_cf<1){ XDBGF("rdCache_Flush: numProcFaces=%d pClipFrustum=%p\n", (int)rdCache_numProcFaces, (void*)rdCamera_pCurCamera->pClipFrustum); _cf++; } }
     if (!rdCache_numProcFaces)
         return;
 
@@ -391,9 +390,7 @@ int rdCache_SendFaceListToHardware()
         flags_idk |= 0x8000;
     }
 
-    { static int _sa=0; if(_sa<1){ XDBGF("SFTH: std3D_ResetRenderList\n"); _sa++; } }
     std3D_ResetRenderList();
-    { static int _sb=0; if(_sb<1){ XDBGF("SFTH: rdCache_ResetRenderList\n"); _sb++; } }
     rdCache_ResetRenderList();
     v7 = rdCamera_pCurCamera->pClipFrustum;
     invZFar = 1.0 / v7->zFar;
@@ -402,7 +399,6 @@ int rdCache_SendFaceListToHardware()
     for (rend_6c_current_idx = 0; rend_6c_current_idx < rdCache_numProcFaces; rend_6c_current_idx++)
     {
         active_6c = &rdCache_aProcFaces[rend_6c_current_idx];
-        { static int _sc=0; if(_sc<3){ XDBGF("SFTH face[%d]: nv=%d gm=%d lm=%d mat=%p\n", rend_6c_current_idx, active_6c->numVertices, active_6c->geometryMode, active_6c->lightingMode, (void*)active_6c->material); _sc++; } }
         mipmap_level = a3;
 
         flags_idk_ = flags_idk;
@@ -487,9 +483,7 @@ int rdCache_SendFaceListToHardware()
             rdMaterial_EnsureMetadata(v11.material);
         }
         else {
-            { static int _sd2=0; if(_sd2<3){ XDBGF("SFTH: EnsureData mat=%p numTex=%d ti0=%p\n", (void*)v11.material, v11.material->num_texinfo, (void*)v11.material->texinfos[0]); _sd2++; } }
             rdMaterial_EnsureData(v11.material);
-            { static int _sd3=0; if(_sd3<3){ XDBGF("SFTH: EnsureData done ti0=%p\n", (void*)v11.material->texinfos[0]); _sd3++; } }
 #ifdef TARGET_TWL
             // Added: fall back to colors with no data
             if (!v11.material->bDataLoaded) {
@@ -530,7 +524,6 @@ int rdCache_SendFaceListToHardware()
 
         v15 = v11.material->texinfos[v14];
         v137 = v15;
-        { static int _se=0; if(_se<3){ XDBGF("SFTH: v14=%d v15=%p mm=%d tex_type=%d tex_ptr=%p\n", v14, (void*)v15, mipmap_related, v15?(int)v15->header.texture_type:-1, v15?(void*)v15->texture_ptr:0); _se++; } }
         if ( v11.mipmap_related == 4 && (v15 && v15->header.texture_type & 8) == 0 ) // Added: v15 nullptr check
         {
             v11.mipmap_related = 3;
@@ -645,7 +638,6 @@ int rdCache_SendFaceListToHardware()
 #endif
             }
 
-            { static int _sf=0; if(_sf<3){ XDBGF("SFTH: calling AddToTextureCache sith_tex_sel=%p mip=%d\n", (void*)sith_tex_sel, mipmap_level); _sf++; } }
             if (!rdMaterial_AddToTextureCache(v11.material, sith_tex_sel, mipmap_level, alpha_is_opaque, v14) )
             {
 #if defined(RDMATERIAL_LRU_LOAD_UNLOAD)
@@ -726,7 +718,6 @@ int rdCache_SendFaceListToHardware()
             }
             else if ( lighting_capability == 3 && active_6c->numVertices )
             {
-                { static int _vi=0; if(_vi<3){ XDBGF("RCACHE lm3: nv=%d vintens=%p uvs=%p verts=%p\n", active_6c->numVertices, (void*)active_6c->vertexIntensities, (void*)active_6c->vertexUVs, (void*)active_6c->vertices); _vi++; } }
                 // MOTS added
 #ifdef JKM_LIGHTING
                 if (rdGetVertexColorMode() == 1) {
@@ -1453,7 +1444,6 @@ skip_colormap_deref:
 #endif
     }
 
-    { static int _fe=0; if(_fe<3){ XDBGF("SFTH done: totalVerts=%d normalTris=%d solidTris=%d\n", rdCache_totalVerts, rdCache_totalNormalTris, rdCache_totalSolidTris); _fe++; } }
     rdCache_DrawRenderList();
     //rdCache_ResetRenderList(); // Added
     return 1;
@@ -1479,7 +1469,6 @@ void rdCache_ResetRenderList()
 
 void rdCache_DrawRenderList()
 {
-    { static int _dr=0; if(_dr<3){ XDBGF("rdCache_DRL: verts=%d normTris=%d\n", rdCache_totalVerts, rdCache_totalNormalTris); _dr++; } }
     if ( rdCache_totalVerts )
     {
         if ( !std3D_AddRenderListVertices(rdCache_aHWVertices, rdCache_totalVerts) )
@@ -1488,13 +1477,10 @@ void rdCache_DrawRenderList()
             std3D_AddRenderListVertices(rdCache_aHWVertices, rdCache_totalVerts);
         }
         std3D_RenderListVerticesFinish();
-        { static int _dv=0; if(_dv<3){ XDBG("DRL2: VerticesFinish done\n"); _dv++; } }
 #ifndef TARGET_TWL
 #ifndef RDCACHE_RENDER_NGONS
-        { static int _dq=0; if(_dq<3){ XDBGF("DRL2: pre-qsort zbuf=%d ntris=%d\n", rdroid_curZBufferMethod, rdCache_totalNormalTris); _dq++; } }
         if ( rdroid_curZBufferMethod == RD_ZBUFFER_READ_WRITE )
             _qsort(rdCache_aHWNormalTris, rdCache_totalNormalTris, sizeof(rdTri), rdCache_TriCompare);
-        { static int _dq2=0; if(_dq2<3){ XDBG("DRL2: post-qsort\n"); _dq2++; } }
 #else
         if ( rdroid_curZBufferMethod == RD_ZBUFFER_READ_WRITE )
             _qsort(rdCache_aHWNormalNGons, rdCache_totalNormalNGons, sizeof(rdNGon), rdCache_NGonCompare);
@@ -1525,7 +1511,6 @@ void rdCache_DrawRenderList()
             std3D_AddRenderListLines(rdCache_aHWLines, rdCache_totalLines);
 #endif
 
-        { static int _dd=0; if(_dd<3){ XDBG("DRL2: calling DrawRenderList\n"); _dd++; } }
         std3D_DrawRenderList();
     }
 }

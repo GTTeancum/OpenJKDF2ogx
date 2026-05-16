@@ -328,7 +328,6 @@ static void stdControl_ReadController(int port)
         if (jkSmack_GetCurrentGuiState() != JK_GAMEMODE_GAMEPLAY)
             stdControl_SetKeydown(KEY_JOY1_B1, cur, tick); /* GUI confirm */
         stdControl_SetKeydown(DIK_X, cur, tick);  /* A = Jump (DIK_X = 0x2D bound to INPUT_FUNC_JUMP at sithControl.c:1916) */
-        { static int _ab=0; if(_ab<8){ XDBGF("ABtn A: cur=%d prev=%d -> jump=%d\n", cur, prev, cur); _ab++; } }
     }
     cur = (pad->bAnalogButtons[XB_BTN_X] > ANALOG_THRESHOLD); prev = (g_prevAnalog[XB_BTN_X] > ANALOG_THRESHOLD); if (cur != prev) { stdControl_SetKeydown(KEY_JOY1_B3, cur, tick); stdControl_SetKeydown(DIK_SPACE, cur, tick); }  /* X = GUI OK shortcut / Activate */
     cur = (pad->bAnalogButtons[XB_BTN_Y] > ANALOG_THRESHOLD); prev = (g_prevAnalog[XB_BTN_Y] > ANALOG_THRESHOLD); if (cur != prev) stdControl_SetKeydown(DIK_RETURN,   cur, tick);  /* Y = Use Inventory */
@@ -400,7 +399,7 @@ static void stdControl_ReadController(int port)
     /* Per-call axis log: first 3 calls only, just for boot sanity.  No
      * periodic spam — it floods D:\debug_openjkdf2.txt over time. */
     { static int _r = 0;
-      if (_r < 3) {
+      if (0) {
         XDBGF("ReadCtl: btns=%04X LX=%d LY=%d RX=%d RY=%d -> ax[%f %f %f %f]\n",
               (unsigned)pad->wButtons,
               (int)pad->sThumbLX, (int)pad->sThumbLY,

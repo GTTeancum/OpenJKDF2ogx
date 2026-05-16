@@ -487,7 +487,7 @@ int stdSound_XboxStreamWriteMaxLatency(const void *data, unsigned int bytes, uns
         {
             bytes -= drop;
             g_pcmStream.droppedWrites++;
-            if (g_pcmStream.droppedWrites <= 8 || (g_pcmStream.droppedWrites % 120) == 0)
+            if (0)
             {
                 XDBGF("stdSound_XboxStreamWriteMaxLatency: defer-tail keep=%lu write=%lu queued=%lu max=%lu defers=%u\n",
                       (unsigned long)drop, (unsigned long)bytes,

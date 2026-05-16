@@ -52,6 +52,11 @@ void stdDisplay_SetGammaTable(int len, flex_d_t *table);
 uint8_t* stdDisplay_GetPalette();
 void stdDisplay_GammaCorrect(const void *pPal);
 
+#ifdef TARGET_XBOX
+typedef void (*stdDisplayXboxPostMenuDrawFunc)(void *ctx);
+void stdDisplay_XboxSetPostMenuDrawCallback(stdDisplayXboxPostMenuDrawFunc fn, void *ctx);
+#endif
+
 #if !defined(SDL2_RENDER) && defined(WIN32)
 static int (*stdDisplay_DrawAndFlipGdi)(uint32_t) = (void*)stdDisplay_DrawAndFlipGdi_ADDR;
 static int (*stdDisplay_SetCooperativeLevel)(uint32_t) = (void*)stdDisplay_SetCooperativeLevel_ADDR;
