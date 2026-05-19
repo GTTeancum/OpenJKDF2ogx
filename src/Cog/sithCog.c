@@ -1565,6 +1565,19 @@ int sithCogScript_Load(sithWorld *lvl, int a2)
     numCogScripts = _atoi(stdConffile_entry.args[2].value);
     if ( !numCogScripts )
         return 1;
+#ifdef TARGET_XBOX
+    {
+        MEMORYSTATUS memStatus;
+        memStatus.dwLength = sizeof(memStatus);
+        GlobalMemoryStatus(&memStatus);
+        XDBGF("sithCogScript_Load: count=%d sizeof=%u bytes=%u memAvailPhys=%lu memAvailPage=%lu\n",
+              numCogScripts,
+              (unsigned int)sizeof(sithCogScript),
+              (unsigned int)(sizeof(sithCogScript) * numCogScripts),
+              memStatus.dwAvailPhys,
+              memStatus.dwAvailPageFile);
+    }
+#endif
     cogScripts = (sithCogScript *)pSithHS->alloc(sizeof(sithCogScript) * numCogScripts);
     lvl->cogScripts = cogScripts;
     if ( cogScripts )

@@ -68,6 +68,12 @@ typedef int BOOL;
 #define COG_DYNAMIC_STACKS
 #define COG_DYNAMIC_STACKS_INCREMENT (32)
 
+/* Keep per-script metadata dynamic too. platform_xbox.h is force-included
+   before types.h, so these must live here or sithCogScript falls back to
+   embedding every trigger/reference array in every script slot. */
+#define COG_DYNAMIC_IDK
+#define COG_DYNAMIC_TRIGGERS
+
 /* ── Missing POSIX types (satisfy struct declarations in headers) ── */
 struct dirent { char d_name[260]; unsigned char d_type; };
 
