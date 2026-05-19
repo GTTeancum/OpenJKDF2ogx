@@ -130,6 +130,7 @@ build_openjkdf2_venv/*
 .vs/
 build/xbox/debug/
 build/xbox/release/
+build/xbox/smoke_runs/
 build/xbox/chm_extract/
 build/xbox/chm_text/
 build/xbox/test/
