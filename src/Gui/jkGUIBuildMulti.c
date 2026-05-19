@@ -50,10 +50,10 @@ static jkGuiElement jkGuiBuildMulti_buttons[17] =
   { ELEMENT_CUSTOM, 0, 0, NULL, 0, { 315, 115, 260, 260 }, 1, 0, NULL, jkGuiBuildMulti_ModelDrawer, NULL, NULL, { 0, 0, 0, 0, 0, { 0, 0, 0, 0 } }, 0 },
   { ELEMENT_CUSTOM, 0, 0, NULL, 0, { 80, 115, 50, 260 }, 1, 0, NULL, jkGuiBuildMulti_SaberDrawer, NULL, NULL, { 0, 0, 0, 0, 0, { 0, 0, 0, 0 } }, 0 },
   { ELEMENT_TEXT, 0, 0, "GUI_MODEL", 3, { 336, 380, 216, 30 }, 1, 0, NULL, NULL, NULL, NULL, { 0, 0, 0, 0, 0, { 0, 0, 0, 0 } }, 0 },
-  { ELEMENT_PICBUTTON, 100, 0, NULL, 33, { 312, 380, 24, 24 }, 1, 0, NULL, NULL, jkGuiBuildMulti_SaberButtonClicked, NULL, { 0, 0, 0, 0, 0, { 0, 0, 0, 0 } }, 0 },
-  { ELEMENT_PICBUTTON, 101, 0, NULL, 34, { 552, 380, 24, 24 }, 1, 0, NULL, NULL, jkGuiBuildMulti_SaberButtonClicked, NULL, { 0, 0, 0, 0, 0, { 0, 0, 0, 0 } }, 0 },
-  { ELEMENT_PICBUTTON, 102, 0, NULL, 33, { 70, 380, 24, 24 }, 1, 0, NULL, NULL, jkGuiBuildMulti_SaberButtonClicked, NULL, { 0, 0, 0, 0, 0, { 0, 0, 0, 0 } }, 0 },
-  { ELEMENT_PICBUTTON, 103, 0, NULL, 34, { 113, 380, 24, 24 }, 1, 0, NULL, NULL, jkGuiBuildMulti_SaberButtonClicked, NULL, { 0, 0, 0, 0, 0, { 0, 0, 0, 0 } }, 0 },
+  { ELEMENT_TEXT, 0, 2, NULL, 3, { 300, 380, 36, 30 }, 1, 0, NULL, NULL, NULL, NULL, { 0, 0, 0, 0, 0, { 0, 0, 0, 0 } }, 0 },
+  { ELEMENT_TEXT, 0, 2, NULL, 3, { 552, 380, 36, 30 }, 1, 0, NULL, NULL, NULL, NULL, { 0, 0, 0, 0, 0, { 0, 0, 0, 0 } }, 0 },
+  { ELEMENT_TEXT, 0, 2, NULL, 3, { 52, 380, 40, 30 }, 1, 0, NULL, NULL, NULL, NULL, { 0, 0, 0, 0, 0, { 0, 0, 0, 0 } }, 0 },
+  { ELEMENT_TEXT, 0, 2, NULL, 3, { 112, 380, 40, 30 }, 1, 0, NULL, NULL, NULL, NULL, { 0, 0, 0, 0, 0, { 0, 0, 0, 0 } }, 0 },
   { ELEMENT_TEXTBUTTON, -1, 2, "GUI_CANCEL", 3, { 20, 430, 170, 40 }, 1, 0, NULL, NULL, NULL, NULL, { 0, 0, 0, 0, 0, { 0, 0, 0, 0 } }, 0 },
   { ELEMENT_TEXTBUTTON, 109, 2, "GUI_FORCEPOWERS", 3, { 290, 430, 170, 40 }, 1, 0, NULL, NULL, NULL, NULL, { 0, 0, 0, 0, 0, { 0, 0, 0, 0 } }, 0 },
   { ELEMENT_TEXTBUTTON, 106, 2, "GUI_SAVE", 3, { 470, 430, 170, 40 }, 1, 0, NULL, NULL, NULL, NULL, { 0, 0, 0, 0, 0, { 0, 0, 0, 0 } }, 0 },
@@ -215,6 +215,10 @@ static jkGuiMenu jkGuiBuildMulti_menuLoadCharacter =
 };
 
 static int32_t jkGuiBuildMulti_bInitted = 0;
+static const wchar_t jkGuiBuildMulti_wLtLabel[] = L"LT";
+static const wchar_t jkGuiBuildMulti_wRtLabel[] = L"RT";
+static const wchar_t jkGuiBuildMulti_wLbLabel[] = L"LB";
+static const wchar_t jkGuiBuildMulti_wRbLabel[] = L"RB";
 static wchar_t jkGuiBuildMulti_wPlayerShortName[64];
 static jkPlayerMpcInfo jkGuiBuildMulti_aMpcInfo[32];
 static wchar_t jkGuiBuildMulti_wTmp[128];
@@ -582,6 +586,10 @@ int jkGuiBuildMulti_ShowEditCharacter(BOOL bIdk)
     v4 = jkPlayer_GetMpcInfo(&jkGuiBuildMulti_waTmp[32], v28, v34, v33, v32);
     _v23 = v4;
     jkGuiBuildMulti_buttons[3].wstr = &jkGuiBuildMulti_waTmp[32];
+    jkGuiBuildMulti_buttons[9].wstr = jkGuiBuildMulti_wLtLabel;
+    jkGuiBuildMulti_buttons[10].wstr = jkGuiBuildMulti_wRtLabel;
+    jkGuiBuildMulti_buttons[11].wstr = jkGuiBuildMulti_wLbLabel;
+    jkGuiBuildMulti_buttons[12].wstr = jkGuiBuildMulti_wRbLabel;
     jkGuiRend_MenuSetReturnKeyShortcutElement(&jkGuiBuildMulti_menu, &jkGuiBuildMulti_buttons[15]);
     jkGuiRend_MenuSetEscapeKeyShortcutElement(&jkGuiBuildMulti_menu, &jkGuiBuildMulti_buttons[13]);
     jkGuiRend_SetVisibleAndDraw(&jkGuiBuildMulti_buttons[4], &jkGuiBuildMulti_menu, 0);
@@ -1080,6 +1088,96 @@ LABEL_9:
             return 0;
     }
 }
+
+#ifdef TARGET_XBOX
+static int jkGuiBuildMulti_XboxReadEdge(int key, int *prevDown)
+{
+    int val = 0;
+    int down = (stdControl_ReadKey(key, &val) && val) ? 1 : 0;
+    int pressed = down && !*prevDown;
+    *prevDown = down;
+    return pressed;
+}
+
+static void jkGuiBuildMulti_XboxFocusBottom(jkGuiMenu *pMenu, int dir)
+{
+    static const int bottomButtons[] = {13, 14, 15};
+    int cur = 1;
+    int i;
+
+    for (i = 0; i < 3; i++)
+    {
+        if (pMenu->lastMouseOverClickable == &jkGuiBuildMulti_buttons[bottomButtons[i]])
+        {
+            cur = i;
+            break;
+        }
+    }
+
+    if (dir == FOCUS_LEFT && cur > 0)
+        cur--;
+    else if (dir == FOCUS_RIGHT && cur < 2)
+        cur++;
+
+    pMenu->focusedElement = NULL;
+    jkGuiRend_ClickableMouseover(pMenu, &jkGuiBuildMulti_buttons[bottomButtons[cur]]);
+}
+
+int jkGuiBuildMulti_HandleXboxController(jkGuiMenu *pMenu, int focusDir)
+{
+    static int prevLb = 0;
+    static int prevRb = 0;
+    static int prevLt = 0;
+    static int prevRt = 0;
+    jkGuiElement selector;
+
+    if (pMenu != &jkGuiBuildMulti_menu)
+    {
+        prevLb = prevRb = prevLt = prevRt = 0;
+        return 0;
+    }
+
+    if (focusDir != FOCUS_NONE)
+        jkGuiBuildMulti_XboxFocusBottom(pMenu, focusDir);
+
+    selector = jkGuiBuildMulti_buttons[9];
+    if (jkGuiBuildMulti_XboxReadEdge(KEY_JOY1_B16, &prevLt))
+    {
+        selector.hoverId = 100;
+        jkGuiBuildMulti_SaberButtonClicked(&selector, pMenu, 0, 0, 1);
+    }
+
+    selector = jkGuiBuildMulti_buttons[10];
+    if (jkGuiBuildMulti_XboxReadEdge(KEY_JOY1_B17, &prevRt))
+    {
+        selector.hoverId = 101;
+        jkGuiBuildMulti_SaberButtonClicked(&selector, pMenu, 0, 0, 1);
+    }
+
+    selector = jkGuiBuildMulti_buttons[11];
+    if (jkGuiBuildMulti_XboxReadEdge(KEY_JOY1_B10, &prevLb))
+    {
+        selector.hoverId = 102;
+        jkGuiBuildMulti_SaberButtonClicked(&selector, pMenu, 0, 0, 1);
+    }
+
+    selector = jkGuiBuildMulti_buttons[12];
+    if (jkGuiBuildMulti_XboxReadEdge(KEY_JOY1_B11, &prevRb))
+    {
+        selector.hoverId = 103;
+        jkGuiBuildMulti_SaberButtonClicked(&selector, pMenu, 0, 0, 1);
+    }
+
+    return 1;
+}
+#else
+int jkGuiBuildMulti_HandleXboxController(jkGuiMenu *pMenu, int focusDir)
+{
+    (void)pMenu;
+    (void)focusDir;
+    return 0;
+}
+#endif
 
 void jkGuiBuildMulti_sub_41A120(jkGuiMenu *pMenu)
 {

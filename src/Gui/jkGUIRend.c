@@ -16,6 +16,7 @@
 #include "Primitives/rdRect.h"
 #include "Gui/jkGUI.h"
 #include "Gui/jkGUIEsc.h"
+#include "Gui/jkGUIBuildMulti.h"
 #include "stdPlatform.h"
 #include "jk.h"
 #include "types.h"
@@ -2912,30 +2913,46 @@ void jkGuiRend_UpdateController()
     flex_t joyYDown = stdMath_Max(stdControl_ReadAxis(AXIS_JOY1_Y), stdControl_ReadAxis(AXIS_JOY1_R));
     flex_t joyXLeft = stdMath_Min(stdControl_ReadAxis(AXIS_JOY1_X), stdControl_ReadAxis(AXIS_JOY1_Z));
     flex_t joyYUp = stdMath_Min(stdControl_ReadAxis(AXIS_JOY1_Y), stdControl_ReadAxis(AXIS_JOY1_R));
+    int focusDir = FOCUS_NONE;
 
     //stdPlatform_Printf("%f %f, %d\n", joyX, joyY, (joyY < -0.5 && lastJoyY >= -0.5));
 
     int val = 0;
     int valB1 = 0;
-    if ((stdControl_ReadKey(KEY_JOY1_HLEFT, &val) && val) 
+    if ((stdControl_ReadKey(KEY_JOY1_HLEFT, &val) && val)
         || (joyXLeft < -0.5 && lastJoyXLeft >= -0.5)) {
-        jkGuiRend_FocusElementDir(jkGuiRend_activeMenu, FOCUS_LEFT);
-        stdPlatform_Printf("left\n");
+        focusDir = FOCUS_LEFT;
     }
     else if ((stdControl_ReadKey(KEY_JOY1_HRIGHT, &val) && val)
             || (joyXRight > 0.5 && lastJoyXRight <= 0.5)) {
-        jkGuiRend_FocusElementDir(jkGuiRend_activeMenu, FOCUS_RIGHT);
-        stdPlatform_Printf("right\n");
+        focusDir = FOCUS_RIGHT;
     }
     if ((stdControl_ReadKey(KEY_JOY1_HUP, &val) && val)
         || (joyYUp < -0.5 && lastJoyYUp >= -0.5)) {
-        jkGuiRend_FocusElementDir(jkGuiRend_activeMenu, FOCUS_UP);
-        stdPlatform_Printf("up\n");
+        focusDir = FOCUS_UP;
     }
     else if ((stdControl_ReadKey(KEY_JOY1_HDOWN, &val) && val)
         || (joyYDown > 0.5 && lastJoyYDown <= 0.5)) {
-        jkGuiRend_FocusElementDir(jkGuiRend_activeMenu, FOCUS_DOWN);
-        stdPlatform_Printf("down\n");
+        focusDir = FOCUS_DOWN;
+    }
+
+    if (!jkGuiBuildMulti_HandleXboxController(jkGuiRend_activeMenu, focusDir)) {
+        if (focusDir == FOCUS_LEFT) {
+            jkGuiRend_FocusElementDir(jkGuiRend_activeMenu, FOCUS_LEFT);
+            stdPlatform_Printf("left\n");
+        }
+        else if (focusDir == FOCUS_RIGHT) {
+            jkGuiRend_FocusElementDir(jkGuiRend_activeMenu, FOCUS_RIGHT);
+            stdPlatform_Printf("right\n");
+        }
+        else if (focusDir == FOCUS_UP) {
+            jkGuiRend_FocusElementDir(jkGuiRend_activeMenu, FOCUS_UP);
+            stdPlatform_Printf("up\n");
+        }
+        else if (focusDir == FOCUS_DOWN) {
+            jkGuiRend_FocusElementDir(jkGuiRend_activeMenu, FOCUS_DOWN);
+            stdPlatform_Printf("down\n");
+        }
     }
 
     lastJoyXRight = joyXRight;

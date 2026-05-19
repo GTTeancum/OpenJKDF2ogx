@@ -77,7 +77,7 @@ typedef struct XboxControllerState
     int   sprintToggle;
     int   walkToggle;       /* L3 toggle: 1 = walk (DIK_CAPITAL held) */
     int   connected;
-    int   openAttempted;    /* deferred XInputOpen: tried once from ReadControls */
+    unsigned int nextOpenAttemptMs; /* deferred XInputOpen retry throttle */
     HANDLE hController;
     unsigned char keyDown[XBOX_NUM_KEYS];      /* current held state */
     unsigned int  keyTime[XBOX_NUM_KEYS];
@@ -95,7 +95,7 @@ static int g_pollController = 0;
 #define g_sprintToggle  (g_pads[g_pollController].sprintToggle)
 #define g_walkToggle    (g_pads[g_pollController].walkToggle)
 #define g_connected     (g_pads[g_pollController].connected)
-#define g_openAttempted (g_pads[g_pollController].openAttempted)
+#define g_nextOpenAttemptMs (g_pads[g_pollController].nextOpenAttemptMs)
 #define g_hController   (g_pads[g_pollController].hController)
 #define g_keyDown       (g_pads[g_pollController].keyDown)
 #define g_keyTime       (g_pads[g_pollController].keyTime)
@@ -252,20 +252,27 @@ static void stdControl_ReadController(int port)
      * detection during the analog/digital button pass below. */
     memset(g_keyPress, 0, sizeof(g_keyPress));
 
-    /* Lazy-open controller on first call.  XInputOpen may block if USB
-     * enumeration is not yet complete; deferring to the game loop (after
-     * level load) guarantees it is. Attempt only once — if it returns NULL
-     * (no controller present) we run forever without input rather than
-     * retrying every tick. */
-    if (g_hController == NULL && !g_openAttempted)
+    tick = (unsigned int)GetTickCount();
+
+    /* Lazy-open controller, but keep retrying slowly.  Retail Xbox code
+     * checks the present-device mask before XInputOpen and handles removals
+     * before insertions in the outer ReadControls loop. */
+    if (g_hController == NULL && tick >= g_nextOpenAttemptMs)
     {
-        g_openAttempted = 1;
-        XDBG("stdControl: lazy XInputOpen\n");
-        g_hController = XInputOpen(XDEVICE_TYPE_GAMEPAD, XDEVICE_PORT0 + port,
-                                   XDEVICE_NO_SLOT, NULL);
-        g_connected = (g_hController != NULL) ? 1 : 0;
-        XDBGF("stdControl: controller %s (handle=%p)\n",
-              g_connected ? "OK" : "not found", (void*)g_hController);
+        DWORD mask = XGetDevices(XDEVICE_TYPE_GAMEPAD);
+        g_nextOpenAttemptMs = tick + 1000;
+        XDBGF("stdControl: XInputOpen try port=%d mask=0x%08X\n", port, (unsigned int)mask);
+        if (mask & (1u << port))
+        {
+            g_hController = XInputOpen(XDEVICE_TYPE_GAMEPAD, XDEVICE_PORT0 + port,
+                                       XDEVICE_NO_SLOT, NULL);
+            g_connected = (g_hController != NULL) ? 1 : 0;
+            XDBGF("stdControl: controller %s (handle=%p err=%lu)\n",
+                  g_connected ? "OK" : "not found", (void*)g_hController,
+                  g_connected ? 0ul : (unsigned long)GetLastError());
+            if (g_connected && !g_pads[g_activeController].connected)
+                g_activeController = port;
+        }
     }
 
     if (g_hController == NULL)
@@ -276,13 +283,14 @@ static void stdControl_ReadController(int port)
         if (g_connected) { g_connected = 0; XDBG("stdControl: disconnected\n"); }
         XInputClose(g_hController);
         g_hController = NULL;
+        g_nextOpenAttemptMs = tick + 1000;
         return;
     }
     if (!g_connected) { g_connected = 1; XDBG("stdControl: connected\n"); }
+    if (g_activeController == port || !g_pads[g_activeController].connected)
+        g_activeController = port;
 
     pad  = &state.Gamepad;
-    tick = (unsigned int)GetTickCount();
-
     /* Digital buttons */
     buttons = pad->wButtons;
     changed = buttons ^ g_prevButtons;
@@ -474,10 +482,33 @@ void stdControl_ReadControls(void)
 {
     int port;
     int oldPoll = g_pollController;
+    DWORD insertions = 0;
+    DWORD removals = 0;
+
+    XGetDeviceChanges(XDEVICE_TYPE_GAMEPAD, &insertions, &removals);
 
     for (port = 0; port < XBOX_MAX_CONTROLLERS; port++)
     {
         g_pollController = port;
+        if (removals & (1u << port))
+        {
+            if (g_hController)
+            {
+                XInputClose(g_hController);
+                g_hController = NULL;
+            }
+            g_connected = 0;
+            g_nextOpenAttemptMs = 0;
+            memset(g_axisValues, 0, sizeof(g_pads[port].axisValues));
+            memset(g_keyDown, 0, sizeof(g_pads[port].keyDown));
+            memset(g_keyPress, 0, sizeof(g_pads[port].keyPress));
+            XDBGF("stdControl: controller removed port=%d\n", port);
+        }
+        if (insertions & (1u << port))
+        {
+            g_nextOpenAttemptMs = 0;
+            XDBGF("stdControl: controller inserted port=%d\n", port);
+        }
         stdControl_ReadController(port);
     }
 

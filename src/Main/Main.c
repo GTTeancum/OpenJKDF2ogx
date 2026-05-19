@@ -270,6 +270,9 @@ int Main_StartupDedicated(int bFullyDedicated)
 int Main_Startup(const char *cmdline)
 {
     int result; // eax
+#ifdef TARGET_XBOX
+    int xboxShowStartupLoading = 1;
+#endif
 
 #if defined(PLATFORM_POSIX)
     // Make sure floating point stuff is using . and not ,
@@ -436,10 +439,18 @@ int Main_Startup(const char *cmdline)
         jkGuiSaveLoad_Startup();
         jkGuiControlSaveLoad_Startup();
 #ifdef TARGET_XBOX
-        xbox_debug_Print("Main_Startup: showing startup loading screen\n");
         g_app_suspended = 1;
-        jkGuiTitle_ShowLoadingStatic();
-        jkGuiTitle_WorldLoadCallback(5.0);
+        xboxShowStartupLoading = Main_bAutostart;
+        if (xboxShowStartupLoading)
+        {
+            xbox_debug_Print("Main_Startup: showing startup loading screen\n");
+            jkGuiTitle_ShowLoadingStatic();
+            jkGuiTitle_WorldLoadCallback(5.0);
+        }
+        else
+        {
+            xbox_debug_Print("Main_Startup: deferring loading screen until after startup FMV\n");
+        }
 #endif
 #ifdef QOL_IMPROVEMENTS
         jkGuiMods_Startup();
@@ -449,7 +460,8 @@ int Main_Startup(const char *cmdline)
 #endif
         xbox_debug_Print("Main_Startup: sithMain_Startup...\n");
 #ifdef TARGET_XBOX
-        jkGuiTitle_WorldLoadCallback(20.0);
+        if (xboxShowStartupLoading)
+            jkGuiTitle_WorldLoadCallback(20.0);
 #endif
         sithMain_Startup(&hs); // ~TODO
         jkAI_Startup();
@@ -459,11 +471,13 @@ int Main_Startup(const char *cmdline)
         jkDev_Startup();
         jkGame_Startup();
 #ifdef TARGET_XBOX
-        jkGuiTitle_WorldLoadCallback(45.0);
+        if (xboxShowStartupLoading)
+            jkGuiTitle_WorldLoadCallback(45.0);
 #endif
         Video_Startup();
 #ifdef TARGET_XBOX
-        jkGuiTitle_WorldLoadCallback(60.0);
+        if (xboxShowStartupLoading)
+            jkGuiTitle_WorldLoadCallback(60.0);
 #endif
         jkControl_Startup(); // ~TODO
         jkHudInv_Startup();
@@ -475,7 +489,8 @@ int Main_Startup(const char *cmdline)
         xbox_debug_Print("Main_Startup: engine stubs done, std3D...\n");
         std3D_Startup(); // Added
 #ifdef TARGET_XBOX
-        jkGuiTitle_WorldLoadCallback(75.0);
+        if (xboxShowStartupLoading)
+            jkGuiTitle_WorldLoadCallback(75.0);
 #endif
 #ifdef QUAKE_CONSOLE
         jkQuakeConsole_Startup(); // Added
@@ -483,7 +498,8 @@ int Main_Startup(const char *cmdline)
 
         xbox_debug_Print("Main_Startup: jkRes_LoadCD...\n");
 #ifdef TARGET_XBOX
-        jkGuiTitle_WorldLoadCallback(85.0);
+        if (xboxShowStartupLoading)
+            jkGuiTitle_WorldLoadCallback(85.0);
 #endif
         if (jkRes_LoadCD(0))
         {
@@ -504,7 +520,8 @@ int Main_Startup(const char *cmdline)
             
             xbox_debug_Print("Main_Startup: LoadCD OK, entering game\n");
 #ifdef TARGET_XBOX
-            jkGuiTitle_WorldLoadCallback(90.0);
+            if (xboxShowStartupLoading)
+                jkGuiTitle_WorldLoadCallback(90.0);
 #endif
             Window_SetDrawHandlers(stdDisplay_DrawAndFlipGdi, stdDisplay_SetCooperativeLevel);
             return 1;

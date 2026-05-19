@@ -2073,6 +2073,26 @@ void std3D_DrawMenuVBuffer8(stdVBuffer *vbuf, const rdColor24_local *pal)
         }
     }
 
+    if (jkCutscene_isRendering)
+    {
+        static int s_cutsceneMenuLog = 0;
+        if (s_cutsceneMenuLog < 12)
+        {
+            unsigned int midIdx = (h / 2) * vbuf->format.width_in_bytes + (w / 2);
+            unsigned int mid = ((h / 2) * padW + (w / 2)) * 4;
+            XDBGF("CutsceneTrace: menuUpload=%d w=%u h=%u pad=%ux%u idx=%u/%u/%u rgbaMid=%02X%02X%02X%02X palMid=%02X%02X%02X\n",
+                  s_cutsceneMenuLog,
+                  w, h, padW, padH,
+                  (unsigned int)src[0],
+                  (unsigned int)src[midIdx],
+                  (unsigned int)src[(h - 1) * vbuf->format.width_in_bytes + (w - 1)],
+                  g_texScratch[mid + 0], g_texScratch[mid + 1],
+                  g_texScratch[mid + 2], g_texScratch[mid + 3],
+                  pal[src[midIdx]].r, pal[src[midIdx]].g, pal[src[midIdx]].b);
+            s_cutsceneMenuLog++;
+        }
+    }
+
     if (stdDisplay_xboxCreditsDebug && (menuDrawCalls <= 20 || (menuDrawCalls % 120) == 0))
     {
         unsigned int mid = ((h / 2) * padW + (w / 2)) * 4;

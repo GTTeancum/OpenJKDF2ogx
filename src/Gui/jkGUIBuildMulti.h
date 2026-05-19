@@ -43,6 +43,7 @@ void jkGuiBuildMulti_ModelDrawer(jkGuiElement *pElement, jkGuiMenu *pMenu, stdVB
 void jkGuiBuildMulti_SaberDrawer(jkGuiElement *pElement, jkGuiMenu *pMenu, stdVBuffer *pVbuf, BOOL redraw);
 void jkGuiBuildMulti_sub_41A120(jkGuiMenu *pMenu);
 int jkGuiBuildMulti_SaberButtonClicked(jkGuiElement *pElement, jkGuiMenu *pMenu, int32_t mouseX, int32_t mouseY, BOOL redraw);
+int jkGuiBuildMulti_HandleXboxController(jkGuiMenu *pMenu, int focusDir);
 //static int (*jkGuiBuildMulti_StartupEditCharacter)() = (void*)jkGuiBuildMulti_StartupEditCharacter_ADDR;
 
 int jkGuiBuildMulti_Startup();

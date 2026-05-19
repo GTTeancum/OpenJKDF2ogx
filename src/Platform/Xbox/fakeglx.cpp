@@ -1619,9 +1619,26 @@ private:
 
 	void InterpretError(HRESULT hr)
 	{
+		InterpretErrorAt("unknown", hr);
+	}
+
+	void InterpretErrorAt(const char* where, HRESULT hr)
+	{
 		char errStr[100];
 		D3DXGetErrorStringA(hr, errStr, sizeof(errStr) / sizeof(errStr[0]) );
-        Con_Printf("D3D Error: %s", errStr);
+        Con_Printf("D3D Error at %s: hr=0x%08lx %s\n", where ? where : "(null)", (unsigned long)hr, errStr);
+		LocalDebugBreak();
+	}
+
+	void InterpretTextureError(const char* where, HRESULT hr, GLsizei width, GLsizei height,
+		int levels, GLint internalformat, GLenum format, GLenum type, D3DFORMAT destPixelFormat)
+	{
+		char errStr[100];
+		D3DXGetErrorStringA(hr, errStr, sizeof(errStr) / sizeof(errStr[0]) );
+        Con_Printf("D3D Error at %s: hr=0x%08lx %s tex=%dx%d levels=%d ifmt=0x%x fmt=0x%x type=0x%x d3dfmt=0x%x\n",
+            where ? where : "(null)", (unsigned long)hr, errStr, (int)width, (int)height,
+            levels, (unsigned int)internalformat, (unsigned int)format, (unsigned int)type,
+            (unsigned int)destPixelFormat);
 		LocalDebugBreak();
 	}
 
@@ -1677,13 +1694,21 @@ public:
 		m_renderer = 0;
 		m_extensions = 0;
 
+#ifdef _XBOX
+		/* Xbox texture memory is tight, and most OpenJKDF2 uploads are exact
+		 * 2D/UI/video surfaces or already-authored JK texture mips.  The old
+		 * default silently expanded dynamic 1024x512 menu/FMVs to 9-level RGBA
+		 * chains, which exhausts hardware memory during startup cutscenes. */
+		m_hintGenerateMipMaps = false;
+#else
 		m_hintGenerateMipMaps = true;
+#endif
 
 		m_hwndMain = hwndMain;
 
 		HRESULT hr = InitD3DX();
 		if ( FAILED(hr) ) {
-			InterpretError(hr);
+			InterpretErrorAt("InitD3DX", hr);
 		}
 
 		hr = D3DXCreateMatrixStack(0, &m_modelViewMatrixStack);
@@ -1754,7 +1779,7 @@ public:
 			m_needBeginScene = false;
 			HRESULT hr = m_pD3DDev->BeginScene();
 			if ( FAILED(hr) ) {
-				InterpretError(hr);
+				InterpretErrorAt("BeginScene", hr);
 			}
 		}
 
@@ -2246,7 +2271,8 @@ public:
 		GLsizei height, GLint /* border */, GLenum format, GLenum type, const GLvoid *pixels){
 		HRESULT hr;
 		if ( target != GL_TEXTURE_2D || type != GL_UNSIGNED_BYTE) {
-			InterpretError(E_FAIL);
+			InterpretTextureError("glTexImage2D bad target/type", E_FAIL, width, height, 0,
+				internalformat, format, type, D3DFMT_UNKNOWN);
 			return;
 		}
 
@@ -2267,7 +2293,8 @@ public:
 					0, D3DRTYPE_TEXTURE, destPixelFormat);
 				if ( FAILED(hr) ) {
 					// Don't know what to do.
-					InterpretError(E_FAIL);
+					InterpretTextureError("CheckDeviceFormat force16 fallback", E_FAIL, width, height, 0,
+						internalformat, format, type, destPixelFormat);
 					return;
 				}
 			}
@@ -2282,7 +2309,8 @@ public:
 						0, D3DRTYPE_TEXTURE, destPixelFormat);
 					if ( FAILED(hr) ) {
 						// Don't know what to do.
-						InterpretError(E_FAIL);
+						InterpretTextureError("CheckDeviceFormat fallback", E_FAIL, width, height, 0,
+							internalformat, format, type, destPixelFormat);
 						return;
 					}
 				}
@@ -2318,7 +2346,8 @@ public:
 			delete [] goodSizeBits;
 		}
 		if ( FAILED(hr)) {
-			InterpretError(hr);
+			InterpretTextureError("ConvertToCompatablePixels", hr, width, height, 0,
+				internalformat, format, type, destPixelFormat);
 			return;
 		}
 
@@ -2348,7 +2377,8 @@ public:
 				0, destPixelFormat, D3DPOOL_MANAGED,
 				&pMipMap);
 			if ( FAILED(hr) ) {
-				InterpretError(hr);
+				InterpretTextureError("CreateTexture", hr, width, height, levels,
+					internalformat, format, type, destPixelFormat);
 				return;
 			}
 
@@ -2359,7 +2389,8 @@ public:
 			compatablePixelsPitch);
 
   		if ( FAILED(hr) ) {
-			InterpretError(hr);
+			InterpretTextureError("glTexSubImage2D_Imp", hr, width, height, 0,
+				internalformat, format, type, destPixelFormat);
 			return;
 		}
 	}
@@ -2645,7 +2676,7 @@ private:
 			}
 			hr = m_pD3DDev->SetRenderState(D3DRS_CULLMODE, cull);
 			if ( FAILED(hr) ){
-				InterpretError(hr);
+				InterpretErrorAt("SetRenderState CULLMODE", hr);
 			}
 		}
 		if ( m_glShadeModelStateDirty ){

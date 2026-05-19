@@ -136,6 +136,51 @@ solid-color/textured path instead of the translucent path.
 
 # Hacks & Tech Debt
 
+## Hold next-weapon for a modern weapon wheel idea
+
+**Status:** Idea / feasible, not implemented.
+**Severity:** UX polish. Current Xbox weapon cycling works, but JK's PC-era
+linear next/previous weapon flow is clumsy on a controller once the player
+has several weapons.
+
+**Idea:** Keep tap behavior exactly as-is for Black/White weapon cycling,
+but treat a long hold on "next weapon" as a weapon wheel. While held, pause
+or slow input enough to select with the right stick / left stick, then equip
+on release. This is the same general console pattern used by modern games
+like Fallout 76: tap cycles, hold opens a radial selector.
+
+**Feasibility:** Good. The Xbox input layer already has per-controller
+held/press state and split-screen active-controller routing:
+
+- `src/Platform/Xbox/stdControl_xbox.c` maps White to `KEY_JOY1_B11`
+  (next weapon) and Black to `KEY_JOY1_B10` (previous weapon).
+- `src/Platform/Xbox/xbox_splitscreen.c` already switches
+  `stdControl_XboxSetActiveController(slot)` before drawing/ticking each
+  local player view.
+- The weapon equip path is already centralized through inventory/weapon
+  selection (`sithInventory_GetCurWeapon`, `sithWeapon_SelectWeapon`,
+  and the COG-backed weapon bins).
+
+**Likely implementation shape:**
+1. Detect a hold threshold for `KEY_JOY1_B11` in the Xbox control path or a
+   small Xbox-only gameplay overlay module. Preserve normal tap-to-cycle if
+   the button is released before the threshold.
+2. While held, render an Xbox-only radial overlay after HUD draw for the
+   active local slot. The wheel should only include carried/selectable
+   weapon bins.
+3. Use stick angle to choose the highlighted weapon. On release, call the
+   same weapon-select route the existing inventory/COG flow uses, rather
+   than bypassing COG scripts.
+4. For split-screen, keep the wheel per active local player and clip it to
+   that player's viewport/quadrant.
+
+**Caveats:**
+- Do not steal short taps; next/previous weapon muscle memory must remain.
+- Some JK weapons rely on COG replies / inventory state, so direct bin
+  mutation is the wrong path.
+- The UI should be optional or Xbox-only; keyboard/mouse builds should not
+  inherit controller-wheel behavior.
+
 ## sithGamesave_Load hijacked into a soft respawn — [FIXED]
 
 **Status:** FIXED — the reverted soft-respawn hijack is no longer needed.

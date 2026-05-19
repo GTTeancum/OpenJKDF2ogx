@@ -45,6 +45,7 @@ static HANDLE jkCutscene_xboxPad = NULL;
 static WORD jkCutscene_xboxPrevButtons = 0;
 static BYTE jkCutscene_xboxPrevAnalog[8] = {0};
 static int jkCutscene_XboxPollInput(void);
+static void jkCutscene_XboxCloseInput(void);
 
 typedef struct jkCutsceneSmkStream
 {
@@ -289,6 +290,18 @@ static int jkCutscene_XboxPollInput(void)
 
     return skip ? jkCutscene_sub_421410() : 0;
 }
+
+static void jkCutscene_XboxCloseInput(void)
+{
+    if (jkCutscene_xboxPad)
+    {
+        XInputClose(jkCutscene_xboxPad);
+        jkCutscene_xboxPad = NULL;
+        jkCutscene_xboxPrevButtons = 0;
+        memset(jkCutscene_xboxPrevAnalog, 0, sizeof(jkCutscene_xboxPrevAnalog));
+        stdPlatform_Printf("CutsceneTrace: closed Xbox input handle\n");
+    }
+}
 #endif
 
 void smush_audio_callback(const uint8_t* data, size_t len)
@@ -402,6 +415,7 @@ void jkCutscene_CleanReset()
     jkCutscene_audio_queue_write_idx = 0;
 #ifdef TARGET_XBOX
     jkCutscene_xboxLastAudioFrame = 0xFFFFFFFFu;
+    jkCutscene_XboxCloseInput();
 #endif
 }
 
@@ -601,6 +615,28 @@ int jkCutscene_sub_421310(char* fpath)
         smk_enable_audio(jkCutscene_smk, 1, 1); // metadata track
         smk_first(jkCutscene_smk);
 
+#ifdef TARGET_XBOX
+        if (smk_get_video(jkCutscene_smk))
+        {
+            stdDisplay_VBufferLock(jkCutscene_frameBuf);
+            _memcpy(jkCutscene_frameBuf->surface_lock_alloc,
+                    smk_get_video(jkCutscene_smk),
+                    jkCutscene_smk_w * jkCutscene_smk_h);
+            stdDisplay_VBufferUnlock(jkCutscene_frameBuf);
+            {
+                const unsigned char *vid = (const unsigned char *)smk_get_video(jkCutscene_smk);
+                const unsigned char *pal = (const unsigned char *)smk_get_palette(jkCutscene_smk);
+                unsigned int mid = (jkCutscene_smk_h / 2) * jkCutscene_smk_w + (jkCutscene_smk_w / 2);
+                stdPlatform_Printf("CutsceneTrace: first SMK frame samples idx=%u/%u/%u pal0=%02X%02X%02X palMid=%02X%02X%02X\n",
+                    (unsigned int)vid[0],
+                    (unsigned int)vid[mid],
+                    (unsigned int)vid[jkCutscene_smk_w * jkCutscene_smk_h - 1],
+                    pal[0], pal[1], pal[2],
+                    pal[vid[mid] * 3 + 0], pal[vid[mid] * 3 + 1], pal[vid[mid] * 3 + 2]);
+            }
+        }
+#endif
+
         int32_t len;
         uint8_t* stream;
 
@@ -736,6 +772,9 @@ int jkCutscene_sub_421410()
         return 0;
 #endif
     Window_RemoveMsgHandler(jkCutscene_Handler);
+#ifdef TARGET_XBOX
+    jkCutscene_XboxCloseInput();
+#endif
 
 #if !defined(SDL2_RENDER) && !defined(TARGET_TWL)
     if (!openjkdf2_bIsKVM)
@@ -839,6 +878,9 @@ int jkCutscene_smack_related_loops()
 #endif
                 jkCutscene_isRendering = 0;
                 jk_ShowCursor(1);
+#ifdef TARGET_XBOX
+                jkCutscene_XboxCloseInput();
+#endif
             }
         }
         else if ( jkCutscene_dword_55B750 != jkCutscene_dword_55AA50 )
@@ -1301,6 +1343,27 @@ int jkCutscene_smacker_process()
     stdDisplay_VBufferLock(jkCutscene_frameBuf);
     _memcpy(jkCutscene_frameBuf->surface_lock_alloc, smk_get_video(jkCutscene_smk), jkCutscene_smk_w*jkCutscene_smk_h);
     stdDisplay_VBufferUnlock(jkCutscene_frameBuf);
+
+#ifdef TARGET_XBOX
+    {
+        static int s_xboxSmkFrameLog = 0;
+        if (s_xboxSmkFrameLog < 8)
+        {
+            const unsigned char *vid = (const unsigned char *)smk_get_video(jkCutscene_smk);
+            const unsigned char *pal = (const unsigned char *)smk_get_palette(jkCutscene_smk);
+            unsigned int mid = (jkCutscene_smk_h / 2) * jkCutscene_smk_w + (jkCutscene_smk_w / 2);
+            stdPlatform_Printf("CutsceneTrace: frameLog=%d idx=%u/%u/%u palMid=%02X%02X%02X audioUs=%llu frameUs=%llu\n",
+                s_xboxSmkFrameLog,
+                (unsigned int)vid[0],
+                (unsigned int)vid[mid],
+                (unsigned int)vid[jkCutscene_smk_w * jkCutscene_smk_h - 1],
+                pal[vid[mid] * 3 + 0], pal[vid[mid] * 3 + 1], pal[vid[mid] * 3 + 2],
+                (unsigned long long)xboxAudioUs,
+                (unsigned long long)xboxFrameUs);
+            s_xboxSmkFrameLog++;
+        }
+    }
+#endif
     
     stdDisplay_VBufferLock(Video_pMenuBuffer);
     stdDisplay_VBufferCopy(Video_pMenuBuffer, jkCutscene_frameBuf, 0, 50, NULL, 0);

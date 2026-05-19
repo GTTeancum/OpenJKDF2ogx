@@ -457,6 +457,41 @@ int rdCache_SendFaceListToHardware()
             expected_alpha = 90;
             flags_idk_ |= 0x200;
             red_and_alpha = 90;
+#ifdef TARGET_XBOX
+            /* Xbox keeps alpha test enabled for texture cutouts.  Probe whether
+             * face-translucent 3DO/world faces at alpha 90 are being discarded
+             * before blending by raising them just over the 0.5 alpha threshold. */
+            expected_alpha = 160;
+            red_and_alpha = 160;
+#endif
+#ifdef TARGET_XBOX
+            {
+                static int s_xboxTransFaceLog = 0;
+                if (s_xboxTransFaceLog < 16 || (s_xboxTransFaceLog % 120) == 0)
+                {
+                    XDBGF("TransFaceDbg: n=%d type=0x%x flags=0x%x mat=%p"
+#ifdef SITH_DEBUG_STRUCT_NAMES
+                          " '%s'"
+#endif
+                          " geom=%d light=%d tex=%d verts=%u z=%.4f..%.4f alpha=%d\n",
+                          s_xboxTransFaceLog,
+                          active_6c->type,
+                          flags_idk_,
+                          (void*)active_6c->material,
+#ifdef SITH_DEBUG_STRUCT_NAMES
+                          active_6c->material ? active_6c->material->mat_fpath : "(null)",
+#endif
+                          active_6c->geometryMode,
+                          active_6c->lightingMode,
+                          active_6c->textureMode,
+                          active_6c->numVertices,
+                          (double)active_6c->z_min,
+                          (double)active_6c->z_max,
+                          expected_alpha);
+                }
+                s_xboxTransFaceLog++;
+            }
+#endif
         }
         else
         {

@@ -3270,6 +3270,39 @@ void sithRender_RenderThings()
                     }
 #endif
                     thingIter->rdthing.clippingIdk = clippingVal;
+#ifdef TARGET_XBOX
+                    if (thingIter->rdthing.type == RD_THINGTYPE_MODEL
+                        && thingIter->rdthing.model3
+                        && !_strcmp(thingIter->rdthing.model3->filename, "tube.3do"))
+                    {
+                        static int s_xboxTubeThingLog = 0;
+                        if (s_xboxTubeThingLog < 16 || (s_xboxTubeThingLog % 120) == 0)
+                        {
+                            rdClipFrustum* dbgFrustum = v1->clipFrustum ? v1->clipFrustum : rdCamera_pCurCamera->pClipFrustum;
+                            XDBGF("TubeDbg: n=%d sector=%u clip=%d radius=%.4f screen=(%.3f,%.3f,%.3f) "
+                                  "pos=(%.3f,%.3f,%.3f) fr=%p l/r/t/b=(%.3f,%.3f,%.3f,%.3f) zn=%.5f zf=%.2f visSectors=%d\n",
+                                  s_xboxTubeThingLog,
+                                  v1 ? v1->id : 0,
+                                  clippingVal,
+                                  (double)clipRadius,
+                                  (double)thingIter->screenPos.x,
+                                  (double)thingIter->screenPos.y,
+                                  (double)thingIter->screenPos.z,
+                                  (double)thingIter->position.x,
+                                  (double)thingIter->position.y,
+                                  (double)thingIter->position.z,
+                                  (void*)dbgFrustum,
+                                  dbgFrustum ? (double)dbgFrustum->nearLeft : 0.0,
+                                  dbgFrustum ? (double)dbgFrustum->right : 0.0,
+                                  dbgFrustum ? (double)dbgFrustum->farTop : 0.0,
+                                  dbgFrustum ? (double)dbgFrustum->bottom : 0.0,
+                                  dbgFrustum ? (double)dbgFrustum->zNear : 0.0,
+                                  dbgFrustum ? (double)dbgFrustum->zFar : 0.0,
+                                  sithRender_numSectors2);
+                        }
+                        s_xboxTubeThingLog++;
+                    }
+#endif
                     if ( clippingVal == SPHERE_FULLY_OUTSIDE || sithRender_008d1668) // MoTS added: sithRender_008d1668
                         continue;
                     curWorld = sithWorld_pCurrentWorld;

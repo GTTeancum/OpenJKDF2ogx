@@ -133,6 +133,8 @@ build/xbox/release/
 build/xbox/chm_extract/
 build/xbox/chm_text/
 build/xbox/test/
+build/fonts/
+build/sft_*/
 build/test_*.bat
 build/pp_*.bat
 build/run_build.bat
