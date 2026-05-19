@@ -35,7 +35,7 @@ extern "C" void Con_Printf (char *fmt, ...);
 #pragma warning( disable : 4820 )
 
 #define     D3D_OVERLOADS
-#define     RELEASENULL(object) if (object) {object->Release();}
+#define     RELEASENULL(object) if (object) {(object)->Release(); (object) = NULL;}
 
 #ifndef _XBOX
 #include	"d3d8.h"
@@ -85,6 +85,16 @@ void LocalDebugBreak(){
 }
 #endif
 
+static int g_xboxTexImageDiagBudget = 96;
+static int g_xboxTexSubDiagBudget = 160;
+static int g_xboxTexStageDiagBudget = 96;
+static int g_xboxDrawDiagBudget = 96;
+static int g_xboxSwapDiagBudget = 48;
+static LPDIRECT3DTEXTURE8 g_xboxMovieLinearTex = NULL;
+static DWORD g_xboxMovieLinearW = 0;
+static DWORD g_xboxMovieLinearH = 0;
+static int g_xboxMovieDirectDiagBudget = 96;
+
 // Globals
 bool g_force16bitTextures;
 bool gFullScreen = true;
@@ -114,6 +124,8 @@ public:
 
 	void Release() {
 		RELEASENULL(m_mipMap);
+		m_format = D3DFMT_UNKNOWN;
+		m_internalFormat = 0;
 	}
 	GLuint m_id;
 	IDirect3DTexture8* m_mipMap;
@@ -251,6 +263,18 @@ public:
 		m_currentTexture->m_mipMap = mipMap;
 		m_currentTexture->m_format = d3dFormat;
 		m_currentTexture->m_internalFormat = internalFormat;
+	}
+
+	void DeleteTexture(GLuint id){
+		TextureEntry* entry = GetEntry(id);
+		if ( !entry ) {
+			return;
+		}
+		entry->Release();
+		entry->m_id = 0;
+		if ( m_currentID == id ) {
+			BindTexture(0);
+		}
 	}
 
 	GLint GetInternalFormat() {
@@ -568,6 +592,19 @@ public:
 					// sprintf(buf,"SetTexture 0x%08x\n", pTexture);
 					// OutputDebugString(buf);
 					if ( pTexture ) {
+						if (g_xboxTexStageDiagBudget > 0) {
+							D3DSURFACE_DESC desc;
+							memset(&desc, 0, sizeof(desc));
+							pTexture->GetLevelDesc(0, &desc);
+							Con_Printf("CutsceneTrace: TexStage stage=%d texId=%u ptr=%p desc=%lux%lu fmt=0x%lx tex2d=%d colorOp=%lu alphaOp=%lu min=%lu mag=%lu dirtyLeft=%d\n",
+								i, (unsigned int)m_stage[i].GetCurrentTexture(), pTexture,
+								(unsigned long)desc.Width, (unsigned long)desc.Height, (unsigned long)desc.Format,
+								m_stage[i].GetTexture2D() ? 1 : 0,
+								(unsigned long)colorOp, (unsigned long)alphaOp,
+								(unsigned long)dxMinFilter, (unsigned long)dxMagFilter,
+								g_xboxTexStageDiagBudget);
+							g_xboxTexStageDiagBudget--;
+						}
 						pD3DDev->SetTexture( i, pTexture);
 					}
 					else {
@@ -1757,7 +1794,118 @@ public:
 		m_pD3DDev->SetRenderState( D3DRS_LIGHTING, FALSE);
 	}
 
+	void ReleaseMovieTexture()
+	{
+		if (g_xboxMovieLinearTex) {
+			Con_Printf("CutsceneTrace: directMovie release tex=%p size=%lux%lu\n",
+				g_xboxMovieLinearTex,
+				(unsigned long)g_xboxMovieLinearW,
+				(unsigned long)g_xboxMovieLinearH);
+		}
+		RELEASENULL(g_xboxMovieLinearTex);
+		g_xboxMovieLinearW = 0;
+		g_xboxMovieLinearH = 0;
+	}
+
+	void DrawLinearRGBAFullscreen(const unsigned char *rgba, DWORD width, DWORD height, DWORD pitch)
+	{
+		HRESULT hr;
+		D3DLOCKED_RECT lr;
+
+		if (!m_pD3DDev || !rgba || !width || !height)
+			return;
+
+		if (!g_xboxMovieLinearTex || g_xboxMovieLinearW != width || g_xboxMovieLinearH != height) {
+			ReleaseMovieTexture();
+			hr = m_pD3DDev->CreateTexture(width, height, 1, 0, D3DFMT_LIN_A8R8G8B8, 0, &g_xboxMovieLinearTex);
+			if (FAILED(hr)) {
+				InterpretTextureError("directMovie CreateTexture LIN_A8R8G8B8", hr, (int)width, (int)height, 1,
+					4, GL_RGBA, GL_UNSIGNED_BYTE, D3DFMT_LIN_A8R8G8B8);
+				return;
+			}
+			g_xboxMovieLinearW = width;
+			g_xboxMovieLinearH = height;
+			Con_Printf("CutsceneTrace: directMovie create tex=%p size=%lux%lu fmt=LIN_A8R8G8B8\n",
+				g_xboxMovieLinearTex, (unsigned long)width, (unsigned long)height);
+		}
+
+		hr = g_xboxMovieLinearTex->LockRect(0, &lr, NULL, 0);
+		if (FAILED(hr)) {
+			InterpretErrorAt("directMovie LockRect", hr);
+			return;
+		}
+
+		for (DWORD y = 0; y < height; ++y) {
+			const unsigned char *src = rgba + y * pitch;
+			unsigned char *dst = (unsigned char *)lr.pBits + y * lr.Pitch;
+			for (DWORD x = 0; x < width; ++x) {
+				dst[x * 4 + 0] = src[x * 4 + 2];
+				dst[x * 4 + 1] = src[x * 4 + 1];
+				dst[x * 4 + 2] = src[x * 4 + 0];
+				dst[x * 4 + 3] = src[x * 4 + 3];
+			}
+		}
+		g_xboxMovieLinearTex->UnlockRect(0);
+
+		if (g_xboxMovieDirectDiagBudget > 0) {
+			const unsigned char *mid = rgba + (height / 2) * pitch + (width / 2) * 4;
+			Con_Printf("CutsceneTrace: directMovie draw tex=%p size=%lux%lu srcPitch=%lu lockPitch=%ld rgbaMid=%02X%02X%02X%02X diagLeft=%d\n",
+				g_xboxMovieLinearTex, (unsigned long)width, (unsigned long)height,
+				(unsigned long)pitch, (long)lr.Pitch,
+				mid[0], mid[1], mid[2], mid[3], g_xboxMovieDirectDiagBudget);
+			g_xboxMovieDirectDiagBudget--;
+		}
+
+		internalEnd();
+
+		struct MovieStreamVertex
+		{
+			D3DVECTOR4 Vert;
+			FLOAT U;
+			FLOAT V;
+		};
+		MovieStreamVertex stream[] =
+		{
+			{{-0.5f, -0.5f, 0.0f, 1.0f}, 0.0f,          0.0f},
+			{{-0.5f, 479.5f, 0.0f, 1.0f}, 0.0f,          (FLOAT)height},
+			{{639.5f, 479.5f, 0.0f, 1.0f}, (FLOAT)width, (FLOAT)height},
+			{{639.5f, -0.5f, 0.0f, 1.0f}, (FLOAT)width, 0.0f}
+		};
+
+		m_pD3DDev->Clear(0, NULL, D3DCLEAR_TARGET | D3DCLEAR_ZBUFFER | D3DCLEAR_STENCIL, 0x00000000, 1.0f, 0);
+		m_pD3DDev->SetTexture(0, g_xboxMovieLinearTex);
+		m_pD3DDev->SetPixelShader(NULL);
+		m_pD3DDev->SetTextureStageState(0, D3DTSS_COLOROP, D3DTOP_SELECTARG1);
+		m_pD3DDev->SetTextureStageState(0, D3DTSS_COLORARG1, D3DTA_TEXTURE);
+		m_pD3DDev->SetTextureStageState(0, D3DTSS_ALPHAOP, D3DTOP_SELECTARG1);
+		m_pD3DDev->SetTextureStageState(0, D3DTSS_ALPHAARG1, D3DTA_TEXTURE);
+		m_pD3DDev->SetTextureStageState(0, D3DTSS_ADDRESSU, D3DTADDRESS_CLAMP);
+		m_pD3DDev->SetTextureStageState(0, D3DTSS_ADDRESSV, D3DTADDRESS_CLAMP);
+		m_pD3DDev->SetTextureStageState(1, D3DTSS_COLOROP, D3DTOP_DISABLE);
+		m_pD3DDev->SetRenderState(D3DRS_ALPHATESTENABLE, FALSE);
+		m_pD3DDev->SetRenderState(D3DRS_ALPHABLENDENABLE, FALSE);
+		m_pD3DDev->SetRenderState(D3DRS_SRCBLEND, D3DBLEND_ONE);
+		m_pD3DDev->SetRenderState(D3DRS_DESTBLEND, D3DBLEND_ZERO);
+		m_pD3DDev->SetRenderState(D3DRS_ZENABLE, D3DZB_FALSE);
+		m_pD3DDev->SetRenderState(D3DRS_ZWRITEENABLE, FALSE);
+		m_pD3DDev->SetRenderState(D3DRS_FOGENABLE, FALSE);
+		m_pD3DDev->SetRenderState(D3DRS_FILLMODE, D3DFILL_SOLID);
+		m_pD3DDev->SetRenderState(D3DRS_CULLMODE, D3DCULL_NONE);
+		m_pD3DDev->SetVertexShader(D3DFVF_XYZRHW | D3DFVF_TEX1);
+		hr = m_pD3DDev->DrawPrimitiveUP(D3DPT_QUADLIST, 1, stream, sizeof(stream[0]));
+		if (FAILED(hr))
+			InterpretErrorAt("directMovie DrawPrimitiveUP", hr);
+
+		m_glRenderStateDirty = true;
+		m_glAlphaStateDirty = true;
+		m_glBlendStateDirty = true;
+		m_glCullStateDirty = true;
+		m_glDepthStateDirty = true;
+		m_textureState.DirtyTexture(0);
+	}
+
 	~FakeGL(){
+		ReleaseMovieTexture();
 		delete [] m_stickyAlloc;
 		ReleaseD3DX();
 		RELEASENULL(m_modelViewMatrixStack);
@@ -1806,6 +1954,21 @@ public:
 				m_OGLPrimitiveVertexBuffer.Initialize(m_pD3DDev, m_pD3D, m_hardwareTandL, typeDesc);
 			}
 			m_OGLPrimitiveVertexBuffer.Begin(mode);
+			if (g_xboxDrawDiagBudget > 0) {
+				Con_Printf("CutsceneTrace: glBegin mode=0x%x tex2d=%d curTex=%u dirty=%d stages=%d blend=%d depth=%d cull=%d alpha=%d vp=%d,%d,%d,%d drawLeft=%d\n",
+					(unsigned int)mode,
+					m_textureState.GetTexture2D() ? 1 : 0,
+					(unsigned int)m_textureState.GetCurrentTexture(),
+					m_glRenderStateDirty ? 1 : 0,
+					m_textureState.GetMaxStages(),
+					m_glBlend ? 1 : 0,
+					m_glDepthTest ? 1 : 0,
+					m_glCullFace ? 1 : 0,
+					m_glAlphaTest ? 1 : 0,
+					m_glViewPortX, m_glViewPortY, m_glViewPortWidth, m_glViewPortHeight,
+					g_xboxDrawDiagBudget);
+				g_xboxDrawDiagBudget--;
+			}
 		}
 		else {
 			m_OGLPrimitiveVertexBuffer.Append(mode);
@@ -1822,6 +1985,22 @@ public:
 			m_textureState.SetCurrentTexture(texture);
 			m_textures.BindTexture(texture);
 		}
+	}
+
+	void glDeleteTextures(GLsizei n, const GLuint *textures){
+		internalEnd();
+		if ( !textures ) {
+			return;
+		}
+		for (GLsizei i = 0; i < n; ++i) {
+			GLuint texture = textures[i];
+			if ( !texture ) {
+				continue;
+			}
+			m_textureState.DirtyTexture(texture);
+			m_textures.DeleteTexture(texture);
+		}
+		SetRenderStateDirty();
 	}
 
 	inline void glMTexCoord2fSGIS(GLenum target, GLfloat s, GLfloat t){
@@ -2283,6 +2462,7 @@ public:
 
 		D3DFORMAT srcPixelFormat = GLToDXPixelFormat(internalformat, format);
 		D3DFORMAT destPixelFormat = srcPixelFormat;
+		GLuint currentTexId = m_textures.GetCurrentID();
 		// Can the surface handle that format?
 		hr = m_pD3D->CheckDeviceFormat(D3DADAPTER_DEFAULT, D3DDEVTYPE_HAL, m_d3dsdBackBuffer.Format,
 			0, D3DRTYPE_TEXTURE, destPixelFormat);
@@ -2363,9 +2543,9 @@ public:
 			// For non-square textures, OpenGL uses more MIPMAP levels than DirectX does.
 			else if ( level >= (GLint)pMipMap->GetLevelCount() ) {
 				return;
-			}
-
 		}
+
+	}
 
 		if( ! pMipMap) {
 			int levels = 1;
@@ -2380,6 +2560,15 @@ public:
 				InterpretTextureError("CreateTexture", hr, width, height, levels,
 					internalformat, format, type, destPixelFormat);
 				return;
+			}
+			if (g_xboxTexImageDiagBudget > 0 && (width >= 256 || height >= 256)) {
+				Con_Printf("CutsceneTrace: TexImage create texId=%u ptr=%p size=%dx%d levels=%d ifmt=0x%x fmt=0x%x d3dfmt=0x%x srcFmt=0x%x force16=%d genMip=%d pitch=%lu pix=%p diagLeft=%d\n",
+					(unsigned int)currentTexId, pMipMap, (int)width, (int)height, levels,
+					(unsigned int)internalformat, (unsigned int)format,
+					(unsigned int)destPixelFormat, (unsigned int)srcPixelFormat,
+					g_force16bitTextures ? 1 : 0, m_hintGenerateMipMaps ? 1 : 0,
+					(unsigned long)compatablePixelsPitch, pixels, g_xboxTexImageDiagBudget);
+				g_xboxTexImageDiagBudget--;
 			}
 
 			m_textures.SetTexture(pMipMap, destPixelFormat, internalformat);
@@ -2462,6 +2651,8 @@ public:
 
 		glTexSubImage2D_Imp(pTexture, level, xoffset, yoffset, width, height, format, type,
 			compatablePixels, compatablePixelsPitch);
+		m_textureState.DirtyTexture(m_textures.GetCurrentID());
+		SetRenderStateDirty();
 	}
 
 	char* StickyAlloc(DWORD size){
@@ -2473,9 +2664,28 @@ public:
 		return m_stickyAlloc;
 	}
 
+	DWORD BytesPerTexel(D3DFORMAT format) {
+		switch (format) {
+		case D3DFMT_P8:
+		case D3DFMT_L8:
+		case D3DFMT_A8:
+			return 1;
+		case D3DFMT_A4R4G4B4:
+		case D3DFMT_R5G6B5:
+		case D3DFMT_X1R5G5B5:
+		case D3DFMT_A1R5G5B5:
+			return 2;
+		case D3DFMT_X8R8G8B8:
+		case D3DFMT_A8R8G8B8:
+			return 4;
+		default:
+			return 0;
+		}
+	}
+
 	void glTexSubImage2D_Imp (IDirect3DTexture8* pMipMap, GLint level,
-		GLint xoffset, GLint yoffset, GLsizei width, GLsizei height,
-		GLenum /* format */, GLenum /* type */, const char* compatablePixels, int compatablePixelsPitch){
+	GLint xoffset, GLint yoffset, GLsizei width, GLsizei height,
+	GLenum /* format */, GLenum /* type */, const char* compatablePixels, int compatablePixelsPitch){
 
 		HRESULT hr = S_OK;
 
@@ -2483,9 +2693,37 @@ public:
         D3DSURFACE_DESC desc;
         RECT rect = { 0, 0, width, height };
         POINT point = { xoffset, yoffset };
+		DWORD bytesPerTexel;
 
         pMipMap->GetLevelDesc(level, &desc);
-        pMipMap->LockRect(level, &lockRect, NULL, 0);
+		bytesPerTexel = BytesPerTexel(desc.Format);
+		if (!bytesPerTexel) {
+			InterpretTextureError("Texture unsupported swizzle format", E_FAIL, width, height, 0,
+				0, 0, 0, desc.Format);
+			return;
+		}
+        hr = pMipMap->LockRect(level, &lockRect, NULL, 0);
+		if (FAILED(hr)) {
+			InterpretErrorAt("Texture LockRect", hr);
+			return;
+		}
+		if (g_xboxTexSubDiagBudget > 0 && (desc.Width >= 256 || desc.Height >= 256)) {
+			const unsigned char *p = (const unsigned char *)compatablePixels;
+			unsigned int b0 = 0, b1 = 0, b2 = 0, b3 = 0;
+			if (p) {
+				b0 = p[0];
+				b1 = p[1];
+				b2 = p[2];
+				b3 = p[3];
+			}
+			Con_Printf("CutsceneTrace: TexSubImp level=%d offs=%d,%d copy=%dx%d desc=%lux%lu fmt=0x%lx srcPitch=%d lockPitch=%ld bpp=%lu dst=%p src=%p first=%02X%02X%02X%02X diagLeft=%d\n",
+				(int)level, (int)xoffset, (int)yoffset, (int)width, (int)height,
+				(unsigned long)desc.Width, (unsigned long)desc.Height,
+				(unsigned long)desc.Format, compatablePixelsPitch, (long)lockRect.Pitch,
+				(unsigned long)bytesPerTexel, lockRect.pBits, compatablePixels,
+				b0, b1, b2, b3, g_xboxTexSubDiagBudget);
+			g_xboxTexSubDiagBudget--;
+		}
 
         XGSwizzleRect((void *)compatablePixels,
                       compatablePixelsPitch,
@@ -2494,7 +2732,7 @@ public:
                       desc.Width,
                       desc.Height,
                       &point,
-                      lockRect.Pitch / desc.Width);
+                      bytesPerTexel);
 
         pMipMap->UnlockRect(level);
 
@@ -2588,7 +2826,10 @@ public:
 	void SwapBuffers(){
 		HRESULT hr = S_OK;
 		internalEnd();
-		m_pD3DDev->EndScene();
+		hr = m_pD3DDev->EndScene();
+		if (FAILED(hr)) {
+			InterpretErrorAt("EndScene", hr);
+		}
 		m_needBeginScene = true;
 //		static int frameCounter;
 //		frameCounter++;
@@ -2597,7 +2838,12 @@ public:
 //		OutputDebugString(buf);
         hr = m_pD3DDev->Present(NULL, NULL, NULL, NULL);
 		if ( FAILED(hr) ){
-			LocalDebugBreak();
+			InterpretErrorAt("Present", hr);
+		}
+		else if (g_xboxSwapDiagBudget > 0) {
+			Con_Printf("CutsceneTrace: Present ok needBegin=%d swapLeft=%d\n",
+				m_needBeginScene ? 1 : 0, g_xboxSwapDiagBudget);
+			g_xboxSwapDiagBudget--;
 		}
 		// if ( frameCounter == 3 ) {
 		//	Sleep(1700);
@@ -3397,6 +3643,10 @@ static void APIENTRY BindTextureExt(GLenum target, GLuint texture){
 	gFakeGL->glBindTexture(target, texture);
 }
 
+static void APIENTRY DeleteTexturesExt(GLsizei n, const GLuint *textures){
+	gFakeGL->glDeleteTextures(n, textures);
+}
+
 static void APIENTRY MTexCoord2fSGIS(GLenum target, GLfloat s, GLfloat t){
 	gFakeGL->glMTexCoord2fSGIS(target, s, t);
 }
@@ -3412,10 +3662,18 @@ static void APIENTRY SelectTextureSGIS(GLenum target){
 extern "C"
 PROC  WINAPI wglGetProcAddress(LPCSTR s){
 	static LPCSTR kBindTextureEXT = "glBindTextureEXT";
+	static LPCSTR kDeleteTextures = "glDeleteTextures";
+	static LPCSTR kDeleteTexturesEXT = "glDeleteTexturesEXT";
 	static LPCSTR kMTexCoord2fSGIS = "glMTexCoord2fSGIS"; // Multitexture
 	static LPCSTR kSelectTextureSGIS = "glSelectTextureSGIS";
 	if ( strncmp(s, kBindTextureEXT, sizeof(kBindTextureEXT)-1) == 0){
 		return (PROC) BindTextureExt;
+	}
+	else if ( strncmp(s, kDeleteTextures, sizeof(kDeleteTextures)-1) == 0){
+		return (PROC) DeleteTexturesExt;
+	}
+	else if ( strncmp(s, kDeleteTexturesEXT, sizeof(kDeleteTexturesEXT)-1) == 0){
+		return (PROC) DeleteTexturesExt;
 	}
 	else if ( strncmp(s, kMTexCoord2fSGIS, sizeof(kMTexCoord2fSGIS)-1) == 0){
 		return (PROC) MTexCoord2fSGIS;
@@ -3441,6 +3699,9 @@ extern "C"{
 void d3dSetMode(int fullscreen, int width, int height, int bpp, int zbpp);
 void d3dEvictTextures();
 void FakeSwapBuffers();
+void FakeGL_DrawLinearRGBAFullscreen(const unsigned char *rgba, unsigned int width,
+	unsigned int height, unsigned int pitch);
+void FakeGL_ReleaseMovieTexture(void);
 void d3dSetGammaRamp(const unsigned char* gammaTable);
 void d3dInitSetForce16BitTextures(int force16bitTextures);
 void d3dHint_GenerateMipMaps(int value);
@@ -3472,6 +3733,20 @@ void FakeSwapBuffers(){
 		return;
 	}
 	gFakeGL->SwapBuffers();
+}
+
+void FakeGL_DrawLinearRGBAFullscreen(const unsigned char *rgba, unsigned int width,
+	unsigned int height, unsigned int pitch)
+{
+	if (!gFakeGL)
+		return;
+	gFakeGL->DrawLinearRGBAFullscreen(rgba, width, height, pitch);
+}
+
+void FakeGL_ReleaseMovieTexture(void)
+{
+	if (gFakeGL)
+		gFakeGL->ReleaseMovieTexture();
 }
 
 void d3dSetGammaRamp(const unsigned char* gammaTable){

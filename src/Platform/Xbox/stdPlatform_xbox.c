@@ -1,6 +1,7 @@
 #include <xtl.h>
 #include "stdPlatform.h"
 #include "jk.h"
+#include "xbox_debug.h"
 
 /* Timing */
 uint32_t stdPlatform_GetTimeMsec(void)
@@ -22,7 +23,7 @@ int stdPlatform_Printf(const char *fmt, ...)
     _vsnprintf(buf, sizeof(buf)-1, fmt, args);
     buf[sizeof(buf)-1] = 0;
     va_end(args);
-    OutputDebugStringA(buf);
+    xbox_debug_Print(buf);
     return 0;
 }
 
@@ -35,7 +36,7 @@ int stdPrintf(int (*printfn)(const char*,...),
     _vsnprintf(buf, sizeof(buf)-1, fmt, args);
     buf[sizeof(buf)-1] = 0;
     va_end(args);
-    OutputDebugStringA(buf);
+    xbox_debug_Print(buf);
     return 0;
 }
 

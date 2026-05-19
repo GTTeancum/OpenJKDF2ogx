@@ -346,7 +346,7 @@ int stdSound_XboxStreamOpen(int bStereo, unsigned int sampleRate,
     g_pcmStream.queuedBytes   = 0;
     g_pcmStream.blockAlign    = blockAlign;
     g_pcmStream.bytesPerSec   = sampleRate * blockAlign;
-    g_pcmStream.prefillBytes  = g_pcmStream.bytesPerSec / 25;
+    g_pcmStream.prefillBytes  = g_pcmStream.bytesPerSec / 8;
     g_pcmStream.prefillBytes -= g_pcmStream.prefillBytes % blockAlign;
     if (g_pcmStream.prefillBytes < blockAlign * 4)
         g_pcmStream.prefillBytes = blockAlign * 4;
@@ -361,7 +361,7 @@ int stdSound_XboxStreamOpen(int bStereo, unsigned int sampleRate,
     xbox_StreamWriteSilence(0, bufferBytes);
     IDirectSoundBuffer_SetCurrentPosition(g_pcmStream.pDS, 0);
     IDirectSoundBuffer_SetVolume(g_pcmStream.pDS, xbox_VolToDS(volume * stdSound_fMenuVolume));
-    XDBGF("stdSound_XboxStreamOpen[v7-audioclock]: ch=%u rate=%u bits=%u buf=%lu prefill=%lu\n",
+    XDBGF("stdSound_XboxStreamOpen[v8-audiobuffer]: ch=%u rate=%u bits=%u buf=%lu prefill=%lu\n",
           (unsigned)wfx.nChannels, sampleRate, (unsigned)bitsPerSample,
           (unsigned long)bufferBytes, (unsigned long)g_pcmStream.prefillBytes);
     return 1;
@@ -574,11 +574,31 @@ int stdSound_XboxStreamMaintainSilence(unsigned int maxQueuedBytes)
 
 uint64_t stdSound_XboxStreamGetPlayedUs(void)
 {
+    static unsigned int s_clockLogs = 0;
+    uint64_t playedUs;
+
     if (!g_pcmStream.pDS || !g_pcmStream.bytesPerSec)
         return 0;
 
     xbox_StreamUpdateQueued();
-    return (uint64_t)((g_pcmStream.totalPlayedBytes * 1000000ULL) / g_pcmStream.bytesPerSec);
+    playedUs = (uint64_t)((g_pcmStream.totalPlayedBytes * 1000000ULL) / g_pcmStream.bytesPerSec);
+
+    if (s_clockLogs < 16 || (s_clockLogs % 120) == 0)
+    {
+        XDBGF("stdSound_XboxStreamClock: us=%I64u queued=%lu submitted=%I64u playedBytes=%I64u calls=%u low=%u full=%u partial=%u silence=%u started=%d\n",
+              (unsigned __int64)playedUs,
+              (unsigned long)g_pcmStream.queuedBytes,
+              (unsigned __int64)g_pcmStream.totalSubmittedBytes,
+              (unsigned __int64)g_pcmStream.totalPlayedBytes,
+              g_pcmStream.writeCalls,
+              g_pcmStream.lowWaterMarks,
+              g_pcmStream.fullWrites,
+              g_pcmStream.partialWrites,
+              g_pcmStream.silenceWrites,
+              g_pcmStream.started);
+    }
+    s_clockLogs++;
+    return playedUs;
 }
 
 int stdSound_XboxStreamPause(int pause)

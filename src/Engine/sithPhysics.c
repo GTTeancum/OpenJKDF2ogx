@@ -9,6 +9,10 @@
 #include "World/jkPlayer.h"
 #include "jk.h"
 
+#ifdef TARGET_XBOX
+#include "Platform/Xbox/xbox_debug.h"
+#endif
+
 void sithPhysics_FindFloor(sithThing *pThing, int a3)
 {
     int v4; // ecx
@@ -158,6 +162,17 @@ void sithPhysics_ThingTick(sithThing *pThing, flex_t deltaSecs)
     if (!pThing->sector)
         return;
 
+#ifdef TARGET_XBOX
+    { static int _xpt0 = 0; if (_xpt0 < 20) {
+        XDBGF("PhysTick: enter thing=%p idx=%d type=%d ds=%f sect=%p sflags=%X attach=%X vel=(%f,%f,%f)\n",
+              (void*)pThing, pThing->thingIdx, (int)pThing->type, (float)deltaSecs,
+              (void*)pThing->sector, (unsigned)pThing->sector->flags,
+              (unsigned)pThing->attach_flags,
+              (float)pThing->physicsParams.vel.x,
+              (float)pThing->physicsParams.vel.y,
+              (float)pThing->physicsParams.vel.z);
+        _xpt0++; } }
+#endif
     rdVector_Zero3(&pThing->physicsParams.velocityMaybe);
     rdVector_Zero3(&pThing->physicsParams.addedVelocity);
 
@@ -169,10 +184,16 @@ void sithPhysics_ThingTick(sithThing *pThing, flex_t deltaSecs)
 
     if (pThing->attach_flags & (SITH_ATTACH_THINGSURFACE | SITH_ATTACH_WORLDSURFACE))
     {
+#ifdef TARGET_XBOX
+        { static int _xpa = 0; if (_xpa < 20) { XDBGF("PhysTick: attached pre thing=%d\n", pThing->thingIdx); _xpa++; } }
+#endif
         sithPhysics_ThingPhysAttached(pThing, deltaSecs);
     }
     else if (pThing->sector->flags & SITH_SECTOR_UNDERWATER)
     {
+#ifdef TARGET_XBOX
+        { static int _xpu = 0; if (_xpu < 20) { XDBGF("PhysTick: underwater pre thing=%d\n", pThing->thingIdx); _xpu++; } }
+#endif
         sithPhysics_ThingPhysUnderwater(pThing, deltaSecs);
     }
 #ifdef QOL_IMPROVEMENTS
@@ -194,13 +215,31 @@ void sithPhysics_ThingTick(sithThing *pThing, flex_t deltaSecs)
 #else
     else if ( pThing->type == SITH_THING_PLAYER )
     {
+#ifdef TARGET_XBOX
+        { static int _xpp = 0; if (_xpp < 20) { XDBGF("PhysTick: player pre thing=%d\n", pThing->thingIdx); _xpp++; } }
+#endif
         sithPhysics_ThingPhysPlayer(pThing, deltaSecs);
     }
 #endif
     else
     {
+#ifdef TARGET_XBOX
+        { static int _xpg = 0; if (_xpg < 20) { XDBGF("PhysTick: general pre thing=%d\n", pThing->thingIdx); _xpg++; } }
+#endif
         sithPhysics_ThingPhysGeneral(pThing, deltaSecs);
     }
+#ifdef TARGET_XBOX
+    { static int _xpt1 = 0; if (_xpt1 < 20) {
+        XDBGF("PhysTick: exit thing=%d vel=(%f,%f,%f) vm=(%f,%f,%f)\n",
+              pThing->thingIdx,
+              (float)pThing->physicsParams.vel.x,
+              (float)pThing->physicsParams.vel.y,
+              (float)pThing->physicsParams.vel.z,
+              (float)pThing->physicsParams.velocityMaybe.x,
+              (float)pThing->physicsParams.velocityMaybe.y,
+              (float)pThing->physicsParams.velocityMaybe.z);
+        _xpt1++; } }
+#endif
 }
 
 void sithPhysics_ThingApplyForce(sithThing *pThing, rdVector3 *forceVec)
@@ -553,6 +592,22 @@ void sithPhysics_ThingPhysPlayer(sithThing *player, flex_t deltaSeconds)
     //int bOverrideIdk = 0; // Remove compiler warns
     flex_t zOverride = 0.0;
 
+#ifdef TARGET_XBOX
+    { static int _xpp0 = 0; if (_xpp0 < 20) {
+        XDBGF("PhysPlayer: enter thing=%d ds=%f flags=%X phys=%X mass=%f airDrag=%f vel=(%f,%f,%f) acc=(%f,%f,%f) rollover=%f\n",
+              player->thingIdx, (float)deltaSeconds,
+              (unsigned)player->thingflags, (unsigned)player->physicsParams.physflags,
+              (float)player->physicsParams.mass,
+              (float)player->physicsParams.airDrag,
+              (float)player->physicsParams.vel.x,
+              (float)player->physicsParams.vel.y,
+              (float)player->physicsParams.vel.z,
+              (float)player->physicsParams.acceleration.x,
+              (float)player->physicsParams.acceleration.y,
+              (float)player->physicsParams.acceleration.z,
+              (float)player->physicsParams.physicsRolloverFrames);
+        _xpp0++; } }
+#endif
     rdVector_Zero3(&player->physicsParams.addedVelocity);
     if (player->physicsParams.physflags & SITH_PF_ANGTHRUST)
     {
@@ -640,8 +695,26 @@ void sithPhysics_ThingPhysPlayer(sithThing *player, flex_t deltaSeconds)
     flex_t framesToApply = rolloverCombine * OLDSTEP_TARGET_FPS; // get number of 50FPS steps passed
     player->physicsParams.physicsRolloverFrames = rolloverCombine - (flex_d_t)(unsigned int)(int)framesToApply * OLDSTEP_DELTA_50FPS;
 
+#ifdef TARGET_XBOX
+    { static int _xpp1 = 0; if (_xpp1 < 20) {
+        XDBGF("PhysPlayer: stepping frames=%d rolloverIn=%f rolloverOut=%f fly=%d sectorFlags=%X\n",
+              (int)framesToApply, (float)rolloverCombine,
+              (float)player->physicsParams.physicsRolloverFrames,
+              (player->physicsParams.physflags & SITH_PF_FLY) ? 1 : 0,
+              player->sector ? (unsigned)player->sector->flags : 0);
+        _xpp1++; } }
+#endif
     for (int i = (int)framesToApply; i > 0; i--)
     {
+#ifdef TARGET_XBOX
+        { static int _xpp2 = 0; if (_xpp2 < 20) {
+            XDBGF("PhysPlayer: step pre remaining=%d vel=(%f,%f,%f)\n",
+                  i,
+                  (float)player->physicsParams.vel.x,
+                  (float)player->physicsParams.vel.y,
+                  (float)player->physicsParams.vel.z);
+            _xpp2++; } }
+#endif
         rdVector_Zero3(&a1a);
         if ( player->physicsParams.airDrag != 0.0 )
         {
@@ -675,7 +748,31 @@ void sithPhysics_ThingPhysPlayer(sithThing *player, flex_t deltaSeconds)
         }
         rdVector_Add3Acc(&player->physicsParams.vel, &a1a);
         rdVector_MultAcc3(&player->physicsParams.velocityMaybe, &player->physicsParams.vel, OLDSTEP_DELTA_50FPS);
+#ifdef TARGET_XBOX
+        { static int _xpp3 = 0; if (_xpp3 < 20) {
+            XDBGF("PhysPlayer: step post remaining=%d vel=(%f,%f,%f) vm=(%f,%f,%f)\n",
+                  i,
+                  (float)player->physicsParams.vel.x,
+                  (float)player->physicsParams.vel.y,
+                  (float)player->physicsParams.vel.z,
+                  (float)player->physicsParams.velocityMaybe.x,
+                  (float)player->physicsParams.velocityMaybe.y,
+                  (float)player->physicsParams.velocityMaybe.z);
+            _xpp3++; } }
+#endif
     }
+#ifdef TARGET_XBOX
+    { static int _xpp4 = 0; if (_xpp4 < 20) {
+        XDBGF("PhysPlayer: exit thing=%d vel=(%f,%f,%f) vm=(%f,%f,%f)\n",
+              player->thingIdx,
+              (float)player->physicsParams.vel.x,
+              (float)player->physicsParams.vel.y,
+              (float)player->physicsParams.vel.z,
+              (float)player->physicsParams.velocityMaybe.x,
+              (float)player->physicsParams.velocityMaybe.y,
+              (float)player->physicsParams.velocityMaybe.z);
+        _xpp4++; } }
+#endif
 }
 
 // MOTS altered

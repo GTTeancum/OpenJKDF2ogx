@@ -266,19 +266,56 @@ void sithThing_TickAll(flex_t deltaSeconds, int deltaMs)
                     break;
             }
 
+#ifdef TARGET_XBOX
+            { static int _p0 = 0; if (_p0 < 20) {
+                XDBGF("Thing[%d] phase=type pre type=%d ds=%f dms=%d\n",
+                      i, (int)pThingIter->type, (float)deltaSeconds, deltaMs);
+                _p0++; } }
+#endif
             switch ( pThingIter->type )
             {
                 case SITH_THING_PLAYER:
+#ifdef TARGET_XBOX
+                    { static int _pp0 = 0; if (_pp0 < 20) {
+                        XDBGF("Thing[%d] phase=playerTick pre playerinfo=%p\n",
+                              i, (void*)pThingIter->actorParams.playerinfo);
+                        _pp0++; } }
+#endif
                     sithPlayer_Tick(pThingIter->actorParams.playerinfo, deltaSeconds);
+#ifdef TARGET_XBOX
+                    { static int _pp1 = 0; if (_pp1 < 20) {
+                        XDBGF("Thing[%d] phase=playerTick post\n", i);
+                        _pp1++; } }
+#endif
                 case SITH_THING_ACTOR:
+#ifdef TARGET_XBOX
+                    { static int _pa0 = 0; if (_pa0 < 20) {
+                        XDBGF("Thing[%d] phase=actorTick pre\n", i);
+                        _pa0++; } }
+#endif
                     sithActor_Tick(pThingIter, deltaMs);
+#ifdef TARGET_XBOX
+                    { static int _pa1 = 0; if (_pa1 < 20) {
+                        XDBGF("Thing[%d] phase=actorTick post\n", i);
+                        _pa1++; } }
+#endif
                     break;
                 case SITH_THING_WEAPON:
                     sithWeapon_Tick(pThingIter, deltaSeconds);
                     break;
             }
             if ( sithThing_handler && pThingIter->jkFlags ) {
+#ifdef TARGET_XBOX
+                { static int _ph0 = 0; if (_ph0 < 20) {
+                    XDBGF("Thing[%d] phase=handler pre jk=%X\n", i, (unsigned)pThingIter->jkFlags);
+                    _ph0++; } }
+#endif
                 sithThing_handler(pThingIter);
+#ifdef TARGET_XBOX
+                { static int _ph1 = 0; if (_ph1 < 20) {
+                    XDBGF("Thing[%d] phase=handler post\n", i);
+                    _ph1++; } }
+#endif
             }
             if ( pThingIter->moveType == SITH_MT_PHYSICS )
             {
@@ -286,7 +323,33 @@ void sithThing_TickAll(flex_t deltaSeconds, int deltaMs)
 #ifdef TARGET_TWL
                 if (bCanAlwaysUpdatePhysics || pThingIter->lastRenderedTickIdx >= jkPlayer_currentTickIdx-3 || bCanUpdateOffscreen)
 #endif
+#ifdef TARGET_XBOX
+                { static int _pm0 = 0; if (_pm0 < 20) {
+                    XDBGF("Thing[%d] phase=physicsMove pre vel=(%f,%f,%f) pos=(%f,%f,%f) sect=%p physflags=%X\n",
+                          i,
+                          (float)pThingIter->physicsParams.vel.x,
+                          (float)pThingIter->physicsParams.vel.y,
+                          (float)pThingIter->physicsParams.vel.z,
+                          (float)pThingIter->position.x,
+                          (float)pThingIter->position.y,
+                          (float)pThingIter->position.z,
+                          (void*)pThingIter->sector,
+                          (unsigned)pThingIter->physicsParams.physflags);
+                    _pm0++; } }
+#endif
                 sithPhysics_ThingTick(pThingIter, deltaSeconds);
+#ifdef TARGET_XBOX
+                { static int _pm1 = 0; if (_pm1 < 20) {
+                    XDBGF("Thing[%d] phase=physicsMove post vel=(%f,%f,%f) vm=(%f,%f,%f)\n",
+                          i,
+                          (float)pThingIter->physicsParams.vel.x,
+                          (float)pThingIter->physicsParams.vel.y,
+                          (float)pThingIter->physicsParams.vel.z,
+                          (float)pThingIter->physicsParams.velocityMaybe.x,
+                          (float)pThingIter->physicsParams.velocityMaybe.y,
+                          (float)pThingIter->physicsParams.velocityMaybe.z);
+                    _pm1++; } }
+#endif
             }
             else if ( pThingIter->moveType == SITH_MT_PATH )
             {
@@ -297,14 +360,34 @@ void sithThing_TickAll(flex_t deltaSeconds, int deltaMs)
 #ifdef TARGET_TWL
             if (bCanAlwaysUpdatePhysics || pThingIter->lastRenderedTickIdx >= jkPlayer_currentTickIdx-3 || bCanUpdateOffscreen)
 #endif
+#ifdef TARGET_XBOX
+            { static int _ptp0 = 0; if (_ptp0 < 20) {
+                XDBGF("Thing[%d] phase=tickPhysics pre\n", i);
+                _ptp0++; } }
+#endif
             sithThing_TickPhysics(pThingIter, deltaSeconds);
+#ifdef TARGET_XBOX
+            { static int _ptp1 = 0; if (_ptp1 < 20) {
+                XDBGF("Thing[%d] phase=tickPhysics post\n", i);
+                _ptp1++; } }
+#endif
 
             // CPU optimization testing
 #ifdef TARGET_TWL
             if ((pThingIter->type == SITH_THING_PLAYER) || bActorCanUpdateNow || bActorCanUpdateEveryOther || (pThingIter->type != SITH_THING_ACTOR && pThingIter->lastRenderedTickIdx >= jkPlayer_currentTickIdx-3) || bCanUpdateOffscreen)
             sithPuppet_Tick(pThingIter, bActorCanUpdateEveryOther ? deltaSeconds * 2 : deltaSeconds);
 #else
+#ifdef TARGET_XBOX
+            { static int _ppu0 = 0; if (_ppu0 < 20) {
+                XDBGF("Thing[%d] phase=puppet pre\n", i);
+                _ppu0++; } }
+#endif
             sithPuppet_Tick(pThingIter, deltaSeconds);
+#ifdef TARGET_XBOX
+            { static int _ppu1 = 0; if (_ppu1 < 20) {
+                XDBGF("Thing[%d] phase=puppet post\n", i);
+                _ppu1++; } }
+#endif
 #endif
             continue;
         }

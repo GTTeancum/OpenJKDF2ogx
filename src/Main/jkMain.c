@@ -63,6 +63,13 @@
 #include "Dss/jkDSS.h"
 #include "stdPlatform.h"
 
+#ifdef TARGET_XBOX
+#ifdef __cplusplus
+extern "C"
+#endif
+void std3D_XboxReleaseMenuTextures(void);
+#endif
+
 #if defined(TARGET_TWL)
 #define TICKRATE_MS (0) // no cap
 #elif defined(QOL_IMPROVEMENTS)
@@ -366,6 +373,18 @@ void jkMain_GuiAdvance()
         jkGuiRend_thing_four = 0;
         v4 = jkSmack_currentGuiState;
         v5 = jkMain_aGuiStateFuncs[jkSmack_currentGuiState].leaveFunc;
+#ifdef TARGET_XBOX
+        if (jkSmack_currentGuiState == JK_GAMEMODE_VIDEO ||
+            jkSmack_currentGuiState == JK_GAMEMODE_VIDEO2 ||
+            jkSmack_currentGuiState == JK_GAMEMODE_VIDEO3 ||
+            jkSmack_currentGuiState == JK_GAMEMODE_VIDEO4 ||
+            jkSmack_currentGuiState == JK_GAMEMODE_MOTS_CUTSCENE)
+        {
+            JKTRACEF("GuiAdv: force video leave state=%d next=%d old=%p new=%p\n",
+                     jkSmack_currentGuiState, jkSmack_nextGuiState, (void*)v5, (void*)jkMain_VideoLeave);
+            v5 = jkMain_VideoLeave;
+        }
+#endif
         if ( v5 )
             v5(jkSmack_currentGuiState, jkSmack_nextGuiState);
         //jk_printf("leave %u\n", jkSmack_currentGuiState);
@@ -373,6 +392,18 @@ void jkMain_GuiAdvance()
         jkSmack_stopTick = 0;
         jkSmack_currentGuiState = jkSmack_nextGuiState;
         v7 = jkMain_aGuiStateFuncs[jkSmack_nextGuiState].showFunc;
+#ifdef TARGET_XBOX
+        if (jkSmack_nextGuiState == JK_GAMEMODE_VIDEO ||
+            jkSmack_nextGuiState == JK_GAMEMODE_VIDEO2 ||
+            jkSmack_nextGuiState == JK_GAMEMODE_VIDEO3 ||
+            jkSmack_nextGuiState == JK_GAMEMODE_VIDEO4 ||
+            jkSmack_nextGuiState == JK_GAMEMODE_MOTS_CUTSCENE)
+        {
+            JKTRACEF("GuiAdv: force video show state=%d prev=%d old=%p new=%p path='%s'\n",
+                     jkSmack_nextGuiState, v4, (void*)v7, (void*)jkMain_VideoShow, jkMain_aLevelJklFname);
+            v7 = jkMain_VideoShow;
+        }
+#endif
         if ( !v7 )
             goto LABEL_35;
         //jk_printf("show %u\n", jkSmack_currentGuiState);
@@ -384,6 +415,24 @@ LABEL_35:
     if ( !jkSmack_stopTick )
     {
         v8 = jkMain_aGuiStateFuncs[jkSmack_currentGuiState].tickFunc;
+#ifdef TARGET_XBOX
+        if (jkSmack_currentGuiState == JK_GAMEMODE_VIDEO ||
+            jkSmack_currentGuiState == JK_GAMEMODE_VIDEO2 ||
+            jkSmack_currentGuiState == JK_GAMEMODE_VIDEO3 ||
+            jkSmack_currentGuiState == JK_GAMEMODE_VIDEO4 ||
+            jkSmack_currentGuiState == JK_GAMEMODE_MOTS_CUTSCENE)
+        {
+            static int vtForceLog = 0;
+            if (vtForceLog < 16)
+            {
+                JKTRACEF("GuiAdv: force video tick state=%d old=%p new=%p rendering=%d stop=%d\n",
+                         jkSmack_currentGuiState, (void*)v8, (void*)jkMain_VideoTick,
+                         jkCutscene_isRendering, jkSmack_stopTick);
+                vtForceLog++;
+            }
+            v8 = jkMain_VideoTick;
+        }
+#endif
         { static int tf=0; if(tf<3){JKTRACEF("GuiAdv: tickFunc=%p\n",(void*)v8);tf++;} }
         if ( v8 )
         {
@@ -776,6 +825,10 @@ LABEL_28:
         stdControl_Flush();
         JKTRACE("GameplayShow: jkGame_Update\n");
         jkGame_Update();
+#ifdef TARGET_XBOX
+        JKTRACE("GameplayShow: reset game clock after load/display warmup\n");
+#endif
+        sithTime_Startup();
         JKTRACE("GameplayShow: thing_eight=1\n");
         thing_eight = 1;
         JKTRACE("GameplayShow: done\n");
@@ -1877,6 +1930,10 @@ int jkMain_SetVideoMode()
         jkHudScope_Close();
         jkHudCameraView_Close();
     }
+#ifdef TARGET_XBOX
+    JKTRACE("SetVideoMode: release transient menu textures\n");
+    std3D_XboxReleaseMenuTextures();
+#endif
     JKTRACE("SetVideoMode: jkHud_Open\n");
     jkHud_Open();
     JKTRACE("SetVideoMode: jkHud_Open done\n");

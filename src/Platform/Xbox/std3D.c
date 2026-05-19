@@ -20,6 +20,13 @@
 extern int jkCutscene_isRendering;
 extern int stdDisplay_xboxCreditsDebug;
 
+#ifdef TARGET_XBOX
+#define XBOX_CUTSCENE_DIAG_SECONDS 5u
+#define XBOX_CUTSCENE_DIAG_FPS 15u
+#define XBOX_CUTSCENE_DIAG_FRAMES (XBOX_CUTSCENE_DIAG_SECONDS * XBOX_CUTSCENE_DIAG_FPS)
+#define XBOX_CUTSCENE_DIAG_MODE_COUNT 6u
+#endif
+
 #ifdef __cplusplus
 extern "C" {
 #endif
@@ -78,10 +85,18 @@ void __stdcall glAlphaFunc    (GLenum func, GLfloat ref);
 void __stdcall glTexImage2D   (GLenum target, GLint level, GLint internalformat,
                                GLsizei width, GLsizei height, GLint border,
                                GLenum format, GLenum type, const void *pixels);
+void __stdcall glTexSubImage2D(GLenum target, GLint level, GLint xoffset,
+                               GLint yoffset, GLsizei width, GLsizei height,
+                               GLenum format, GLenum type, const void *pixels);
 void __stdcall glTexParameterf(GLenum target, GLenum pname, GLfloat param);
+void __stdcall glTexEnvf      (GLenum target, GLenum pname, GLfloat param);
 
 typedef void (__stdcall *PFN_glBindTextureEXT)(GLenum target, GLuint texture);
+typedef void (__stdcall *PFN_glDeleteTexturesEXT)(GLsizei n, const GLuint *textures);
 void * __stdcall wglGetProcAddress(const char *s);
+void FakeGL_DrawLinearRGBAFullscreen(const unsigned char *rgba, unsigned int width,
+                                     unsigned int height, unsigned int pitch);
+void FakeGL_ReleaseMovieTexture(void);
 
 #ifdef __cplusplus
 } /* extern "C" */
@@ -118,6 +133,10 @@ void * __stdcall wglGetProcAddress(const char *s);
 #define GL_LINEAR              0x2601
 #define GL_CLAMP               0x2900
 #define GL_REPEAT              0x2901
+#define GL_REPLACE             0x1E01
+#define GL_MODULATE            0x2100
+#define GL_TEXTURE_ENV_MODE    0x2200
+#define GL_TEXTURE_ENV         0x2300
 
 static int g_xboxViewportX = 0;
 static int g_xboxViewportY = 0;
@@ -312,6 +331,7 @@ static int  g_sceneOpen   = 0;
  * wglGetProcAddress("glBindTextureEXT") since FakeGL doesn't expose
  * a flat `glBindTexture` symbol at file scope. */
 static PFN_glBindTextureEXT g_pfnBindTexture = 0;
+static PFN_glDeleteTexturesEXT g_pfnDeleteTextures = 0;
 
 /* UV out-of-range sentinel — accumulates across all engine vertex
  * submissions; published to HUD slot 14 from DrawRenderList (last
@@ -447,7 +467,9 @@ int std3D_Startup(void)
         /* Resolve glBindTextureEXT once.  This is the only path FakeGL
          * exposes for binding (fakeglx.cpp:3382-3397). */
         g_pfnBindTexture = (PFN_glBindTextureEXT)wglGetProcAddress("glBindTextureEXT");
-        XDBGF("std3D_Startup: glBindTextureEXT proc = %p\n", (void*)g_pfnBindTexture);
+        g_pfnDeleteTextures = (PFN_glDeleteTexturesEXT)wglGetProcAddress("glDeleteTexturesEXT");
+        XDBGF("std3D_Startup: glBindTextureEXT proc = %p deleteProc=%p\n",
+              (void*)g_pfnBindTexture, (void*)g_pfnDeleteTextures);
         if (!g_pfnBindTexture) {
             XDBG("std3D_Startup: BindTexture proc resolution FAILED\n");
             std3D_DebugLine(2, "TEX1 NOPROC");
@@ -2022,14 +2044,399 @@ static unsigned int std3D_xboxMenuSig8(const stdVBuffer *vbuf)
     return sig ^ (nonzero << 24);
 }
 
+#ifdef TARGET_XBOX
+static const char *std3D_XboxCutsceneDiagModeName(unsigned int mode)
+{
+    switch (mode)
+    {
+        case 0: return "real-palette";
+        case 1: return "coord-texture";
+        case 2: return "smk-index-falsecolor";
+        case 3: return "solid-uploaded-tiles";
+        case 4: return "audio-only-no-upload";
+        case 5: return "no-texture-colored-quads";
+        default: return "unknown";
+    }
+}
+#endif
+
+enum { TILE_W = 256, TILE_H = 256, TILE_COLS = 3, TILE_ROWS = 2 };
+static unsigned int tileTexIds[TILE_COLS * TILE_ROWS];
+static int tileTexReady[TILE_COLS * TILE_ROWS];
+static unsigned int tileUploadCalls = 0;
+static unsigned int menuTexId = 0;
+static unsigned int menuTexPadW = 0;
+static unsigned int menuTexPadH = 0;
+static unsigned int menuDrawCalls = 0;
+
+#ifdef __cplusplus
+extern "C"
+#endif
+void std3D_XboxReleaseCutsceneTextures(void)
+{
+    unsigned int ids[TILE_COLS * TILE_ROWS];
+    unsigned int count = 0;
+    unsigned int i;
+
+    for (i = 0; i < (unsigned int)(TILE_COLS * TILE_ROWS); ++i)
+    {
+        if (tileTexIds[i])
+            ids[count++] = tileTexIds[i];
+    }
+
+    if (count && g_pfnDeleteTextures)
+        g_pfnDeleteTextures((GLsizei)count, ids);
+
+    memset(tileTexIds, 0, sizeof(tileTexIds));
+    memset(tileTexReady, 0, sizeof(tileTexReady));
+    tileUploadCalls = 0;
+
+    XDBGF("CutsceneTrace: released cutscene tile textures count=%u deleteProc=%p\n",
+          count, (void*)g_pfnDeleteTextures);
+}
+
+#ifdef __cplusplus
+extern "C"
+#endif
+void std3D_XboxReleaseMenuTextures(void)
+{
+    unsigned int texId = menuTexId;
+
+    std3D_XboxReleaseCutsceneTextures();
+
+    if (texId && g_pfnDeleteTextures)
+        g_pfnDeleteTextures(1, &texId);
+
+    menuTexId = 0;
+    menuTexPadW = 0;
+    menuTexPadH = 0;
+    FakeGL_ReleaseMovieTexture();
+
+    XDBGF("CutsceneTrace: released menu texture tex=%u deleteProc=%p\n",
+          texId, (void*)g_pfnDeleteTextures);
+}
+
+static void std3D_DrawMenuVBuffer8Tiled(stdVBuffer *vbuf, const rdColor24_local *pal)
+{
+    unsigned int w, h, tx, ty;
+    const unsigned char *src;
+    unsigned int globalNonZero = 0;
+    unsigned int globalSampleCount = 0;
+    unsigned int globalMin = 255;
+    unsigned int globalMax = 0;
+    unsigned int globalHash = 2166136261u;
+#ifdef TARGET_XBOX
+    unsigned int diagMode = 0;
+    unsigned int diagModeFrame = 0;
+#endif
+
+    if (!g_pfnBindTexture)
+        return;
+
+    w = (unsigned int)vbuf->format.width;
+    h = (unsigned int)vbuf->format.height;
+    src = (const unsigned char *)vbuf->surface_lock_alloc;
+
+#ifdef TARGET_XBOX
+    if (jkCutscene_isRendering)
+    {
+        diagMode = (tileUploadCalls / XBOX_CUTSCENE_DIAG_FRAMES) % XBOX_CUTSCENE_DIAG_MODE_COUNT;
+        diagModeFrame = tileUploadCalls % XBOX_CUTSCENE_DIAG_FRAMES;
+    }
+#endif
+
+    {
+        unsigned int sy;
+        for (sy = 0; sy < h; sy += 16)
+        {
+            const unsigned char *sampleRow = src + sy * vbuf->format.width_in_bytes;
+            unsigned int sx;
+            for (sx = 0; sx < w; sx += 16)
+            {
+                unsigned int v = sampleRow[sx];
+                globalNonZero += (v != 0);
+                globalSampleCount++;
+                if (v < globalMin) globalMin = v;
+                if (v > globalMax) globalMax = v;
+                globalHash = (globalHash ^ v) * 16777619u;
+            }
+        }
+    }
+
+    if (jkCutscene_isRendering && (tileUploadCalls < 48 || (tileUploadCalls % 60) == 0))
+    {
+        unsigned int p00 = src[0];
+        unsigned int p10 = src[10 * vbuf->format.width_in_bytes + 10];
+        unsigned int pMid = src[(h / 2) * vbuf->format.width_in_bytes + (w / 2)];
+        unsigned int pQ1 = src[(h / 4) * vbuf->format.width_in_bytes + (w / 4)];
+        unsigned int pQ3 = src[((h * 3) / 4) * vbuf->format.width_in_bytes + ((w * 3) / 4)];
+        unsigned int pEnd = src[(h - 1) * vbuf->format.width_in_bytes + (w - 1)];
+        XDBGF("CutsceneTrace: menuUploadTiled=%u w=%u h=%u tile=%dx%d nz=%u/%u diagMode=%u:%s modeFrame=%u\n",
+              tileUploadCalls, w, h, TILE_W, TILE_H, globalNonZero, globalSampleCount,
+#ifdef XBOX_CUTSCENE_FALSE_COLOR_DIAG
+              jkCutscene_isRendering ? XBOX_CUTSCENE_FALSE_COLOR_DIAG : 0
+#elif defined(TARGET_XBOX)
+              jkCutscene_isRendering ? diagMode : 0,
+              jkCutscene_isRendering ? std3D_XboxCutsceneDiagModeName(diagMode) : "normal",
+              jkCutscene_isRendering ? diagModeFrame : 0
+#else
+              0
+#endif
+        );
+        XDBGF("CutsceneTrace: menuBuf call=%u pitch=%d pal=%p idx[00,10,mid,q1,q3,end]=%u,%u,%u,%u,%u,%u min=%u max=%u hash=%08X rgbMid=%02X%02X%02X rgbQ1=%02X%02X%02X rgbQ3=%02X%02X%02X\n",
+              tileUploadCalls, vbuf->format.width_in_bytes, pal,
+              p00, p10, pMid, pQ1, pQ3, pEnd,
+              globalMin, globalMax, globalHash,
+              pal[pMid].r, pal[pMid].g, pal[pMid].b,
+              pal[pQ1].r, pal[pQ1].g, pal[pQ1].b,
+              pal[pQ3].r, pal[pQ3].g, pal[pQ3].b);
+
+        if (tileUploadCalls < 16 || (tileUploadCalls % 120) == 0)
+        {
+            unsigned int rowsWithData = 0;
+            unsigned int bestRow = 0;
+            unsigned int bestRowCount = 0;
+            unsigned int firstRows[8];
+            unsigned int firstRowCount = 0;
+            unsigned int yRow;
+            for (yRow = 0; yRow < h; ++yRow)
+            {
+                const unsigned char *row = src + yRow * vbuf->format.width_in_bytes;
+                unsigned int rowNz = 0;
+                unsigned int xRow;
+                for (xRow = 0; xRow < w; ++xRow)
+                    rowNz += (row[xRow] != 0);
+                if (rowNz)
+                {
+                    if (firstRowCount < (unsigned int)(sizeof(firstRows) / sizeof(firstRows[0])))
+                        firstRows[firstRowCount++] = yRow;
+                    rowsWithData++;
+                    if (rowNz > bestRowCount)
+                    {
+                        bestRowCount = rowNz;
+                        bestRow = yRow;
+                    }
+                }
+            }
+            XDBGF("CutsceneTrace: menuRows call=%u rowsWithData=%u/%u firstRows=%u,%u,%u,%u,%u,%u,%u,%u best=%u:%u\n",
+                  tileUploadCalls, rowsWithData, h,
+                  firstRowCount > 0 ? firstRows[0] : 0xFFFFFFFFu,
+                  firstRowCount > 1 ? firstRows[1] : 0xFFFFFFFFu,
+                  firstRowCount > 2 ? firstRows[2] : 0xFFFFFFFFu,
+                  firstRowCount > 3 ? firstRows[3] : 0xFFFFFFFFu,
+                  firstRowCount > 4 ? firstRows[4] : 0xFFFFFFFFu,
+                  firstRowCount > 5 ? firstRows[5] : 0xFFFFFFFFu,
+                  firstRowCount > 6 ? firstRows[6] : 0xFFFFFFFFu,
+                  firstRowCount > 7 ? firstRows[7] : 0xFFFFFFFFu,
+                  bestRow, bestRowCount);
+        }
+    }
+
+    xbox_set_ui_state(0);
+    glDisable(GL_TEXTURE_2D);
+    glTexEnvf(GL_TEXTURE_ENV, GL_TEXTURE_ENV_MODE, (GLfloat)GL_REPLACE);
+    glClear(GL_COLOR_BUFFER_BIT | GL_DEPTH_BUFFER_BIT | GL_STENCIL_BUFFER_BIT);
+
+#ifdef TARGET_XBOX
+    if (jkCutscene_isRendering && diagMode == 4)
+    {
+        XDBGF("CutsceneTrace: diagMode=%u:%s frame=%u skipped texture upload/draw for audio isolation\n",
+              diagMode, std3D_XboxCutsceneDiagModeName(diagMode), diagModeFrame);
+        tileUploadCalls++;
+        glTexEnvf(GL_TEXTURE_ENV, GL_TEXTURE_ENV_MODE, (GLfloat)GL_MODULATE);
+        return;
+    }
+#endif
+
+    for (ty = 0; ty < TILE_ROWS; ++ty)
+    {
+        for (tx = 0; tx < TILE_COLS; ++tx)
+        {
+            unsigned int tileIdx = ty * TILE_COLS + tx;
+            unsigned int srcX = tx * TILE_W;
+            unsigned int srcY = ty * TILE_H;
+            unsigned int copyW = (srcX + TILE_W <= w) ? TILE_W : (w - srcX);
+            unsigned int copyH = (srcY + TILE_H <= h) ? TILE_H : (h - srcY);
+            unsigned int tileNonZero = 0;
+            unsigned int tileSampleCount = 0;
+            unsigned int tileMin = 255;
+            unsigned int tileMax = 0;
+            unsigned int tileHash = 2166136261u;
+            unsigned int firstNzX = 0xFFFFFFFFu;
+            unsigned int firstNzY = 0xFFFFFFFFu;
+            unsigned int firstNzIdx = 0;
+            unsigned int x, y;
+            float x0, y0, x1, y1, u2, v2;
+
+            if (srcX >= w || srcY >= h)
+                continue;
+
+#ifdef TARGET_XBOX
+            if (jkCutscene_isRendering && diagMode == 5)
+            {
+                static const float colors[TILE_COLS * TILE_ROWS][3] = {
+                    {1.0f, 0.0f, 0.0f}, {0.0f, 1.0f, 0.0f}, {0.0f, 0.0f, 1.0f},
+                    {1.0f, 1.0f, 0.0f}, {1.0f, 0.0f, 1.0f}, {0.0f, 1.0f, 1.0f}
+                };
+                x0 = (float)srcX;
+                y0 = (float)srcY;
+                x1 = (float)(srcX + copyW);
+                y1 = (float)(srcY + copyH);
+                glDisable(GL_TEXTURE_2D);
+                glBegin(GL_TRIANGLES);
+                glColor4f(colors[tileIdx][0], colors[tileIdx][1], colors[tileIdx][2], 1.0f); glVertex3f(x0, y0, 0.0f);
+                glColor4f(colors[tileIdx][0], colors[tileIdx][1], colors[tileIdx][2], 1.0f); glVertex3f(x1, y0, 0.0f);
+                glColor4f(colors[tileIdx][0], colors[tileIdx][1], colors[tileIdx][2], 1.0f); glVertex3f(x1, y1, 0.0f);
+                glEnd();
+                glBegin(GL_TRIANGLES);
+                glColor4f(colors[tileIdx][0], colors[tileIdx][1], colors[tileIdx][2], 1.0f); glVertex3f(x0, y0, 0.0f);
+                glColor4f(colors[tileIdx][0], colors[tileIdx][1], colors[tileIdx][2], 1.0f); glVertex3f(x1, y1, 0.0f);
+                glColor4f(colors[tileIdx][0], colors[tileIdx][1], colors[tileIdx][2], 1.0f); glVertex3f(x0, y1, 0.0f);
+                glEnd();
+                continue;
+            }
+#endif
+
+            memset(g_texScratch, 0, TILE_W * TILE_H * 4);
+            for (y = 0; y < copyH; ++y)
+            {
+                const unsigned char *row = src + (srcY + y) * vbuf->format.width_in_bytes + srcX;
+                for (x = 0; x < copyW; ++x)
+                {
+                    unsigned int idx = row[x];
+                    unsigned int o = (y * TILE_W + x) * 4;
+                    if ((x & 15u) == 0 && (y & 15u) == 0)
+                    {
+                        tileNonZero += (idx != 0);
+                        tileSampleCount++;
+                        if (idx < tileMin) tileMin = idx;
+                        if (idx > tileMax) tileMax = idx;
+                        tileHash = (tileHash ^ idx) * 16777619u;
+                    }
+                    if (idx && firstNzX == 0xFFFFFFFFu)
+                    {
+                        firstNzX = x;
+                        firstNzY = y;
+                        firstNzIdx = idx;
+                    }
+#ifdef TARGET_XBOX
+                    if (jkCutscene_isRendering)
+                    {
+                        if (diagMode == 1)
+                        {
+                            unsigned int gx = srcX + x;
+                            unsigned int gy = srcY + y;
+                            g_texScratch[o + 0] = (unsigned char)(32u + ((gx * 3u + idx * 29u) & 0xDFu));
+                            g_texScratch[o + 1] = (unsigned char)(32u + ((gy * 5u + idx * 47u) & 0xDFu));
+                            g_texScratch[o + 2] = (unsigned char)(32u + (((gx + gy) * 2u + idx * 83u) & 0xDFu));
+                        }
+                        else if (diagMode == 2)
+                        {
+                            g_texScratch[o + 0] = idx ? (unsigned char)(32u + ((idx * 53u) & 0xDFu)) : 0;
+                            g_texScratch[o + 1] = idx ? (unsigned char)(32u + ((idx * 97u) & 0xDFu)) : 0;
+                            g_texScratch[o + 2] = idx ? (unsigned char)(32u + ((idx * 193u) & 0xDFu)) : 0;
+                        }
+                        else if (diagMode == 3)
+                        {
+                            static const unsigned char colors[TILE_COLS * TILE_ROWS][3] = {
+                                {255, 0, 0}, {0, 255, 0}, {0, 0, 255},
+                                {255, 255, 0}, {255, 0, 255}, {0, 255, 255}
+                            };
+                            g_texScratch[o + 0] = colors[tileIdx][0];
+                            g_texScratch[o + 1] = colors[tileIdx][1];
+                            g_texScratch[o + 2] = colors[tileIdx][2];
+                        }
+                        else
+                        {
+                            g_texScratch[o + 0] = pal[idx].r;
+                            g_texScratch[o + 1] = pal[idx].g;
+                            g_texScratch[o + 2] = pal[idx].b;
+                        }
+                    }
+                    else
+#endif
+                    {
+                        g_texScratch[o + 0] = pal[idx].r;
+                        g_texScratch[o + 1] = pal[idx].g;
+                        g_texScratch[o + 2] = pal[idx].b;
+                    }
+                    g_texScratch[o + 3] = 0xFF;
+                }
+            }
+
+            if (!tileTexIds[tileIdx])
+                tileTexIds[tileIdx] = g_nextTexId++;
+
+            g_pfnBindTexture(GL_TEXTURE_2D, tileTexIds[tileIdx]);
+            if (!tileTexReady[tileIdx])
+            {
+                glTexParameterf(GL_TEXTURE_2D, GL_TEXTURE_MIN_FILTER, (GLfloat)GL_NEAREST);
+                glTexParameterf(GL_TEXTURE_2D, GL_TEXTURE_MAG_FILTER, (GLfloat)GL_NEAREST);
+                glTexParameterf(GL_TEXTURE_2D, GL_TEXTURE_WRAP_S, (GLfloat)GL_CLAMP);
+                glTexParameterf(GL_TEXTURE_2D, GL_TEXTURE_WRAP_T, (GLfloat)GL_CLAMP);
+                glTexImage2D(GL_TEXTURE_2D, 0, 4, TILE_W, TILE_H, 0,
+                             GL_RGBA, GL_UNSIGNED_BYTE, g_texScratch);
+                tileTexReady[tileIdx] = 1;
+            }
+            else
+            {
+                glTexSubImage2D(GL_TEXTURE_2D, 0, 0, 0, TILE_W, TILE_H,
+                                GL_RGBA, GL_UNSIGNED_BYTE, g_texScratch);
+            }
+
+            glEnable(GL_TEXTURE_2D);
+            g_pfnBindTexture(GL_TEXTURE_2D, tileTexIds[tileIdx]);
+            glColor4f(1.0f, 1.0f, 1.0f, 1.0f);
+
+            x0 = (float)srcX;
+            y0 = (float)srcY;
+            x1 = (float)(srcX + copyW);
+            y1 = (float)(srcY + copyH);
+            u2 = (float)copyW / (float)TILE_W;
+            v2 = (float)copyH / (float)TILE_H;
+
+            glBegin(GL_TRIANGLES);
+            glColor4f(1.0f, 1.0f, 1.0f, 1.0f); glTexCoord2f(0.0f, 0.0f); glVertex3f(x0, y0, 0.0f);
+            glColor4f(1.0f, 1.0f, 1.0f, 1.0f); glTexCoord2f(u2,   0.0f); glVertex3f(x1, y0, 0.0f);
+            glColor4f(1.0f, 1.0f, 1.0f, 1.0f); glTexCoord2f(u2,   v2);   glVertex3f(x1, y1, 0.0f);
+            glEnd();
+
+            glBegin(GL_TRIANGLES);
+            glColor4f(1.0f, 1.0f, 1.0f, 1.0f); glTexCoord2f(0.0f, 0.0f); glVertex3f(x0, y0, 0.0f);
+            glColor4f(1.0f, 1.0f, 1.0f, 1.0f); glTexCoord2f(u2,   v2);   glVertex3f(x1, y1, 0.0f);
+            glColor4f(1.0f, 1.0f, 1.0f, 1.0f); glTexCoord2f(0.0f, v2);   glVertex3f(x0, y1, 0.0f);
+            glEnd();
+            glDisable(GL_TEXTURE_2D);
+
+            if (jkCutscene_isRendering && (tileUploadCalls < 24 || (tileUploadCalls % 120) == 0))
+            {
+                unsigned int midX = copyW ? (copyW / 2) : 0;
+                unsigned int midY = copyH ? (copyH / 2) : 0;
+                unsigned int midIdx = src[(srcY + midY) * vbuf->format.width_in_bytes + srcX + midX];
+                unsigned int midOff = (midY * TILE_W + midX) * 4;
+                XDBGF("CutsceneTrace: menuTile=%u tile=%u tex=%u ready=%d xy=%u,%u wh=%u,%u full=%dx%d uv=%.4f,%.4f nz=%u/%u min=%u max=%u hash=%08X midIdx=%u rgbaMid=%02X%02X%02X%02X firstNz=%u,%u:%u\n",
+                      tileUploadCalls, tileIdx, tileTexIds[tileIdx], tileTexReady[tileIdx],
+                      srcX, srcY, copyW, copyH,
+                      TILE_W, TILE_H, u2, v2,
+                      tileNonZero, tileSampleCount, tileMin, tileMax, tileHash,
+                      midIdx,
+                      g_texScratch[midOff + 0], g_texScratch[midOff + 1],
+                      g_texScratch[midOff + 2], g_texScratch[midOff + 3],
+                      firstNzX, firstNzY, firstNzIdx);
+            }
+        }
+    }
+
+    tileUploadCalls++;
+    glTexEnvf(GL_TEXTURE_ENV, GL_TEXTURE_ENV_MODE, (GLfloat)GL_MODULATE);
+}
+
 void std3D_DrawMenuVBuffer8(stdVBuffer *vbuf, const rdColor24_local *pal)
 {
     unsigned int w, h, padW, padH, x, y, total;
     const unsigned char *src;
     unsigned int texId;
     float u2, v2;
-    static unsigned int menuTexId = 0;
-    static unsigned int menuDrawCalls = 0;
     unsigned int srcSig = 0;
 
     if (!g_initialized || !vbuf || !vbuf->surface_lock_alloc)
@@ -2056,6 +2463,7 @@ void std3D_DrawMenuVBuffer8(stdVBuffer *vbuf, const rdColor24_local *pal)
         return;
 
     src = (const unsigned char *)vbuf->surface_lock_alloc;
+
     total = padW * padH * 4;
     memset(g_texScratch, 0, total);
 
@@ -2076,21 +2484,43 @@ void std3D_DrawMenuVBuffer8(stdVBuffer *vbuf, const rdColor24_local *pal)
     if (jkCutscene_isRendering)
     {
         static int s_cutsceneMenuLog = 0;
-        if (s_cutsceneMenuLog < 12)
+        if (s_cutsceneMenuLog < 24 || (menuDrawCalls % 120) == 0)
         {
             unsigned int midIdx = (h / 2) * vbuf->format.width_in_bytes + (w / 2);
             unsigned int mid = ((h / 2) * padW + (w / 2)) * 4;
-            XDBGF("CutsceneTrace: menuUpload=%d w=%u h=%u pad=%ux%u idx=%u/%u/%u rgbaMid=%02X%02X%02X%02X palMid=%02X%02X%02X\n",
+            unsigned int nzSample = 0;
+            unsigned int sampleCount = 0;
+            unsigned int sy;
+            for (sy = 0; sy < h; sy += 16)
+            {
+                const unsigned char *sampleRow = src + sy * vbuf->format.width_in_bytes;
+                unsigned int sx;
+                for (sx = 0; sx < w; sx += 16)
+                {
+                    nzSample += (sampleRow[sx] != 0);
+                    sampleCount++;
+                }
+            }
+            XDBGF("CutsceneTrace: menuUpload=%d call=%u w=%u h=%u pad=%ux%u idx=%u/%u/%u rgbaMid=%02X%02X%02X%02X palMid=%02X%02X%02X nz=%u/%u\n",
                   s_cutsceneMenuLog,
+                  menuDrawCalls,
                   w, h, padW, padH,
                   (unsigned int)src[0],
                   (unsigned int)src[midIdx],
                   (unsigned int)src[(h - 1) * vbuf->format.width_in_bytes + (w - 1)],
                   g_texScratch[mid + 0], g_texScratch[mid + 1],
                   g_texScratch[mid + 2], g_texScratch[mid + 3],
-                  pal[src[midIdx]].r, pal[src[midIdx]].g, pal[src[midIdx]].b);
+                  pal[src[midIdx]].r, pal[src[midIdx]].g, pal[src[midIdx]].b,
+                  nzSample, sampleCount);
             s_cutsceneMenuLog++;
         }
+
+        /* Retail Xbox movie paths (UC2004 XMV and Mercenaries RedMovie)
+         * present video through native D3D textures/quads, not through a
+         * swizzled GL upload.  Use a linear Xbox texture here so hardware
+         * sees the same class of resource as those paths. */
+        FakeGL_DrawLinearRGBAFullscreen(g_texScratch, w, h, padW * 4);
+        return;
     }
 
     if (stdDisplay_xboxCreditsDebug && (menuDrawCalls <= 20 || (menuDrawCalls % 120) == 0))
@@ -2131,12 +2561,22 @@ void std3D_DrawMenuVBuffer8(stdVBuffer *vbuf, const rdColor24_local *pal)
         menuTexId = g_nextTexId++;
     texId = menuTexId;
     g_pfnBindTexture(GL_TEXTURE_2D, texId);
-    glTexParameterf(GL_TEXTURE_2D, GL_TEXTURE_MIN_FILTER, (GLfloat)GL_NEAREST);
-    glTexParameterf(GL_TEXTURE_2D, GL_TEXTURE_MAG_FILTER, (GLfloat)GL_NEAREST);
-    glTexParameterf(GL_TEXTURE_2D, GL_TEXTURE_WRAP_S, (GLfloat)GL_CLAMP);
-    glTexParameterf(GL_TEXTURE_2D, GL_TEXTURE_WRAP_T, (GLfloat)GL_CLAMP);
-    glTexImage2D(GL_TEXTURE_2D, 0, 4, (GLsizei)padW, (GLsizei)padH, 0,
-                 GL_RGBA, GL_UNSIGNED_BYTE, g_texScratch);
+    if (menuTexPadW != padW || menuTexPadH != padH)
+    {
+        glTexParameterf(GL_TEXTURE_2D, GL_TEXTURE_MIN_FILTER, (GLfloat)GL_NEAREST);
+        glTexParameterf(GL_TEXTURE_2D, GL_TEXTURE_MAG_FILTER, (GLfloat)GL_NEAREST);
+        glTexParameterf(GL_TEXTURE_2D, GL_TEXTURE_WRAP_S, (GLfloat)GL_CLAMP);
+        glTexParameterf(GL_TEXTURE_2D, GL_TEXTURE_WRAP_T, (GLfloat)GL_CLAMP);
+        glTexImage2D(GL_TEXTURE_2D, 0, 4, (GLsizei)padW, (GLsizei)padH, 0,
+                     GL_RGBA, GL_UNSIGNED_BYTE, g_texScratch);
+        menuTexPadW = padW;
+        menuTexPadH = padH;
+    }
+    else
+    {
+        glTexSubImage2D(GL_TEXTURE_2D, 0, 0, 0, (GLsizei)padW, (GLsizei)padH,
+                        GL_RGBA, GL_UNSIGNED_BYTE, g_texScratch);
+    }
 
     glEnable(GL_TEXTURE_2D);
     g_pfnBindTexture(GL_TEXTURE_2D, texId);
