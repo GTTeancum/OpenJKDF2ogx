@@ -171,7 +171,26 @@ int sithWorld_Load(sithWorld *pWorld, char *map_jkl_fname)
             goto failed_open;
         }
 #ifdef TARGET_XBOX
-        XDBGF("sithWorld_Load: opened OK '%s', parsing sections...\n", v8);
+        {
+            MEMORYSTATUS memStatus;
+            memStatus.dwLength = sizeof(memStatus);
+            GlobalMemoryStatus(&memStatus);
+            XDBGF("sithWorld_Load: opened OK '%s', parsing sections... limits things=%d vis=%d/%d alpha=%d rdtris=%d rdverts=%d stdtex=%d cogSym=%d cogLinkSym=%d cogStack=%d cogLinks=%d phys=%lu page=%lu\n",
+                  v8,
+                  SITH_MAX_THINGS,
+                  SITH_MAX_VISIBLE_SECTORS,
+                  SITH_MAX_VISIBLE_SECTORS_2,
+                  SITH_MAX_VISIBLE_ALPHA_SURFACES,
+                  RDCACHE_MAX_TRIS,
+                  RDCACHE_MAX_VERTICES,
+                  STD3D_MAX_TEXTURES,
+                  SITHCOG_SYMBOL_LIMIT,
+                  SITHCOG_LINKED_SYMBOL_LIMIT,
+                  SITHCOGVM_MAX_STACKSIZE,
+                  SITHCOG_MAX_LINKS,
+                  memStatus.dwAvailPhys,
+                  memStatus.dwAvailPageFile);
+        }
 #endif
         while ( stdConffile_ReadLine() )
         {
@@ -197,9 +216,24 @@ LABEL_11:
                 if ( v3 != -1 )
                 {
                     startMsecs = stdPlatform_GetTimeMsec();
+#ifdef TARGET_XBOX
+                    {
+                        MEMORYSTATUS memStatus;
+                        memStatus.dwLength = sizeof(memStatus);
+                        GlobalMemoryStatus(&memStatus);
+                        XDBGF("sithWorld_Load: section begin '%s' phys=%lu page=%lu\n",
+                              section, memStatus.dwAvailPhys, memStatus.dwAvailPageFile);
+                    }
+#endif
                     if ( !sithWorld_aSectionParsers[v3].funcptr(pWorld, 0) ) {
 #ifdef TARGET_XBOX
-                        XDBGF("sithWorld_Load: SECTION PARSE FAILED: '%s'\n", section);
+                        {
+                            MEMORYSTATUS memStatus;
+                            memStatus.dwLength = sizeof(memStatus);
+                            GlobalMemoryStatus(&memStatus);
+                            XDBGF("sithWorld_Load: SECTION PARSE FAILED: '%s' phys=%lu page=%lu\n",
+                                  section, memStatus.dwAvailPhys, memStatus.dwAvailPageFile);
+                        }
 #endif
                         // Added
                         _sprintf(tmp, "%f seconds to parse section %s -- FAILED!\n", (flex32_t)v6 * 0.001, section);
@@ -212,6 +246,24 @@ LABEL_11:
                     v6 = (unsigned int)(stdPlatform_GetTimeMsec() - startMsecs);
                     _sprintf(tmp, "%f seconds to parse section %s.\n", (flex32_t)v6 * 0.001, section);
                     sithConsole_Print(tmp);
+#ifdef TARGET_XBOX
+                    {
+                        MEMORYSTATUS memStatus;
+                        memStatus.dwLength = sizeof(memStatus);
+                        GlobalMemoryStatus(&memStatus);
+                        XDBGF("sithWorld_Load: section end '%s' ms=%lu phys=%lu page=%lu things=%d cogs=%d scripts=%d mats=%d sectors=%d surfaces=%d\n",
+                              section,
+                              (unsigned long)v6,
+                              memStatus.dwAvailPhys,
+                              memStatus.dwAvailPageFile,
+                              pWorld->numThings,
+                              pWorld->numCogs,
+                              pWorld->numCogScripts,
+                              pWorld->numMaterials,
+                              pWorld->numSectors,
+                              pWorld->numSurfaces);
+                    }
+#endif
 #ifdef TARGET_TWL
                     stdPlatform_PrintHeapStats();
 #endif

@@ -77,7 +77,7 @@
 #define SITH_MAX_VISIBLE_SECTORS_2 (0xA0)
 #define SITH_MAX_VISIBLE_ALPHA_SURFACES (32)
 #define SITH_MAX_SURFACE_CLIP_ITERS (25) // not real
-#elif defined(TARGET_TWL)
+#elif defined(TARGET_TWL) || defined(TARGET_XBOX)
 #define SITH_MAX_THINGS (641)
 #define SITH_MAX_VISIBLE_SECTORS (256)
 #define SITH_MAX_VISIBLE_SECTORS_2 (256+32)
@@ -92,13 +92,13 @@
 #endif // QOL_IMPROVEMENTS
 
 // COG resource limits
-#if defined(QOL_IMPROVEMENTS) && !defined(TARGET_TWL)
+#if defined(QOL_IMPROVEMENTS) && !defined(TARGET_TWL) && !defined(TARGET_XBOX)
 #define SITHCOGVM_MAX_STACKSIZE (0x10000)
 #define SITHCOG_SYMBOL_LIMIT (2048) // JK was 512, MoTS/DW are 1024
 #define SITHCOG_LINKED_SYMBOL_LIMIT (2048)
 #define SITHCOG_MAX_LINKS (2048)
 #define SITHCOG_NODE_STACKDEPTH (0x800) // JK was 0x200, MoTS is 0x400
-#elif defined(TARGET_TWL)
+#elif defined(TARGET_TWL) || defined(TARGET_XBOX)
 
 #define SITHCOGVM_MAX_STACKSIZE (64)
 #define SITHCOG_SYMBOL_LIMIT (1024) // JK was 512, MoTS/DW are 1024
@@ -121,14 +121,27 @@
 #define RDCACHE_MAX_TRIS (0x80) // theoretical max 0x800?
 #define RDCACHE_MAX_VERTICES (0x180) // theoretical max 0x1800?
 
+#ifndef STD3D_MAX_TEXTURES
 #define STD3D_MAX_TEXTURES (512) // theoretical max 2048
+#endif
 #define STD3D_MAX_UI_TRIS (0x100)
 #define STD3D_MAX_UI_VERTICES (0x100)
+#elif defined(TARGET_XBOX)
+#define RDCACHE_MAX_TRIS (0x400)
+#define RDCACHE_MAX_VERTICES (0x4000)
+
+#ifndef STD3D_MAX_TEXTURES
+#define STD3D_MAX_TEXTURES (512)
+#endif
+#define STD3D_MAX_UI_TRIS (0x800)
+#define STD3D_MAX_UI_VERTICES (0x1000)
 #else
 #define RDCACHE_MAX_TRIS (0x400)
 #define RDCACHE_MAX_VERTICES (0x8000)
 
+#ifndef STD3D_MAX_TEXTURES
 #define STD3D_MAX_TEXTURES (4096)
+#endif
 #define STD3D_MAX_UI_TRIS (0x8000)
 #define STD3D_MAX_UI_VERTICES (0x8000)
 #endif
@@ -225,13 +238,13 @@
 
 #define SITHPARTICLE_MAX_PARTICLES (64)
 
-#ifdef TARGET_TWL
+#if defined(TARGET_TWL) || defined(TARGET_XBOX)
 #define RDCAMERA_MAX_LIGHTS (8)
 #else
 #define RDCAMERA_MAX_LIGHTS (64)
 #endif
 
-#ifdef TARGET_TWL
+#if defined(TARGET_TWL) || defined(TARGET_XBOX)
 #define STDGOB_MAX_GOBS (8)
 #else
 #define STDGOB_MAX_GOBS (64)
@@ -275,15 +288,15 @@
 #define STDCONF_LINEBUFFER_LEN (2048)
 #endif
 
-#ifdef TARGET_TWL
+#if defined(TARGET_TWL) || defined(TARGET_XBOX)
 #define SITHAI_MAX_ACTORS (128)
 #else
 #define SITHAI_MAX_ACTORS (256)
 #endif
 
-#if defined(QOL_IMPROVEMENTS) && !defined(TARGET_TWL)
+#if defined(QOL_IMPROVEMENTS) && !defined(TARGET_TWL) && !defined(TARGET_XBOX)
 #define SITH_MIXER_NUMPLAYINGSOUNDS (256)
-#elif defined(TARGET_TWL)
+#elif defined(TARGET_TWL) || defined(TARGET_XBOX)
 #define SITH_MIXER_NUMPLAYINGSOUNDS (32)
 #else
 #define SITH_MIXER_NUMPLAYINGSOUNDS (32)

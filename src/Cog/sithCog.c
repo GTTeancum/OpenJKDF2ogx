@@ -1873,7 +1873,21 @@ void sithCog_Free2(sithCogScript *cogscript)
 
 int sithCog_InitScripts(sithWorld *world, int num)
 {
-    sithCogScript *scripts = (sithCogScript *)pSithHS->alloc(num * sizeof(sithCogScript));
+    sithCogScript *scripts;
+#ifdef TARGET_XBOX
+    {
+        MEMORYSTATUS memStatus;
+        memStatus.dwLength = sizeof(memStatus);
+        GlobalMemoryStatus(&memStatus);
+        XDBGF("sithCog_InitScripts: count=%d sizeof=%u bytes=%u memAvailPhys=%lu memAvailPage=%lu\n",
+              num,
+              (unsigned int)sizeof(sithCogScript),
+              (unsigned int)(sizeof(sithCogScript) * num),
+              memStatus.dwAvailPhys,
+              memStatus.dwAvailPageFile);
+    }
+#endif
+    scripts = (sithCogScript *)pSithHS->alloc(num * sizeof(sithCogScript));
     world->cogScripts = scripts;
     if ( !scripts )
     {
@@ -1889,7 +1903,21 @@ int sithCog_InitScripts(sithWorld *world, int num)
 
 int sithCog_InitCogs(sithWorld *world, int num)
 {
-    sithCog *cogs = (sithCog *)pSithHS->alloc(num * sizeof(sithCog));
+    sithCog *cogs;
+#ifdef TARGET_XBOX
+    {
+        MEMORYSTATUS memStatus;
+        memStatus.dwLength = sizeof(memStatus);
+        GlobalMemoryStatus(&memStatus);
+        XDBGF("sithCog_InitCogs: count=%d sizeof=%u bytes=%u memAvailPhys=%lu memAvailPage=%lu\n",
+              num,
+              (unsigned int)sizeof(sithCog),
+              (unsigned int)(sizeof(sithCog) * num),
+              memStatus.dwAvailPhys,
+              memStatus.dwAvailPageFile);
+    }
+#endif
+    cogs = (sithCog *)pSithHS->alloc(num * sizeof(sithCog));
     world->cogs = cogs;
     if ( !cogs )
     {
@@ -1910,6 +1938,14 @@ int sithCog_ThingFromSymbolidk(sithCog *cog, sithThing *thing, int linkId, int m
         return 0;
     if ( linkId >= 0 )
     {
+        if (sithCog_numThingLinks >= SITHCOG_MAX_LINKS)
+        {
+#ifdef TARGET_XBOX
+            XDBGF("sithCog_ThingFromSymbolidk: link overflow count=%d max=%d cog=%p thing=%p link=%d mask=0x%x\n",
+                  sithCog_numThingLinks, SITHCOG_MAX_LINKS, cog, thing, linkId, mask);
+#endif
+            return 0;
+        }
         thing->thingflags |= SITH_TF_CAPTURED;
         sithCog_aThingLinks[sithCog_numThingLinks].thing = thing;
         sithCog_aThingLinks[sithCog_numThingLinks].cog = cog;
@@ -1928,6 +1964,14 @@ int sithCog_Thingidk(sithCog *cog, sithSurface *surface, int linkId, int mask)
         return 0;
     if ( linkId >= 0 )
     {
+        if (sithCog_numSurfaceLinks >= SITHCOG_MAX_LINKS)
+        {
+#ifdef TARGET_XBOX
+            XDBGF("sithCog_Thingidk: surface link overflow count=%d max=%d cog=%p surface=%p link=%d mask=0x%x\n",
+                  sithCog_numSurfaceLinks, SITHCOG_MAX_LINKS, cog, surface, linkId, mask);
+#endif
+            return 0;
+        }
         surface->surfaceFlags |= SITH_SURFACE_COG_LINKED;
         sithCog_aSurfaceLinks[sithCog_numSurfaceLinks].surface = surface;
         sithCog_aSurfaceLinks[sithCog_numSurfaceLinks].cog = cog;
@@ -1945,6 +1989,14 @@ int sithCog_Sectoridk(sithCog *cog, sithSector *sector, int linkId, int mask)
         return 0;
     if ( linkId >= 0 )
     {
+        if (sithCog_numSectorLinks >= SITHCOG_MAX_LINKS)
+        {
+#ifdef TARGET_XBOX
+            XDBGF("sithCog_Sectoridk: sector link overflow count=%d max=%d cog=%p sector=%p link=%d mask=0x%x\n",
+                  sithCog_numSectorLinks, SITHCOG_MAX_LINKS, cog, sector, linkId, mask);
+#endif
+            return 0;
+        }
         sector->flags |= SITH_SECTOR_COGLINKED;
         sithCog_aSectorLinks[sithCog_numSectorLinks].sector = sector;
         sithCog_aSectorLinks[sithCog_numSectorLinks].cog = cog;

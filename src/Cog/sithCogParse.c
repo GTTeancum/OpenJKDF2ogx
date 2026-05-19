@@ -11,6 +11,9 @@
 #include "General/stdString.h"
 
 #include "jk.h"
+#ifdef TARGET_XBOX
+#include "Platform/Xbox/xbox_debug.h"
+#endif
 
 // For progress tracking script...
 void sithCogYACC_yyerror(){}
@@ -157,6 +160,25 @@ int sithCogParse_Load(char *cog_fpath, sithCogScript *cogscript, int unk)
             v8 = cogscript->triggers[v6].field_8;
             cogscript->triggers[v6].trigPc = cog_parser_node_stackpos[v8];
         }
+#ifdef TARGET_XBOX
+        if (cogscript->pSymbolTable)
+        {
+            unsigned int beforeMax = cogscript->pSymbolTable->max_entries;
+            unsigned int beforeCount = cogscript->pSymbolTable->entry_cnt;
+            sithCogParse_ReallocSymboltable(cogscript->pSymbolTable);
+            {
+                MEMORYSTATUS memStatus;
+                memStatus.dwLength = sizeof(memStatus);
+                GlobalMemoryStatus(&memStatus);
+                XDBGF("sithCogParse_Load: compact symbols used=%u max=%u->%u phys=%lu page=%lu\n",
+                      beforeCount,
+                      beforeMax,
+                      cogscript->pSymbolTable ? cogscript->pSymbolTable->max_entries : 0,
+                      memStatus.dwAvailPhys,
+                      memStatus.dwAvailPageFile);
+            }
+        }
+#endif
         stdConffile_Close();
         return 1;
     }

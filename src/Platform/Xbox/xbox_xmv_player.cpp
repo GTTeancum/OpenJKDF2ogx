@@ -141,7 +141,7 @@ extern "C" int xboxXmv_PlayForSmkPath(const char *smkPath)
 
     for (;;)
     {
-        DWORD waitResult = WaitForSingleObject(thread, 1000 / 60);
+        DWORD waitResult = WaitForSingleObject(thread, 1000 / 120);
         int skipPort;
         const char *skipReason;
 
@@ -152,7 +152,7 @@ extern "C" int xboxXmv_PlayForSmkPath(const char *smkPath)
         {
             XDBGF("XmvDbg: skip requested port=%d reason=%s\n", skipPort, skipReason);
             terminated = 1;
-            decoder->TerminatePlayback();
+            decoder->TerminateImmediately();
             goto wait_done;
         }
     }

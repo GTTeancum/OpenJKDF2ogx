@@ -30,9 +30,10 @@
 #undef STB_VORBIS_HEADER_ONLY
 #include "../../../lib/SDL_mixer/src/codecs/stb_vorbis/stb_vorbis.h"
 
-#define MCI_STREAM_CHUNKS 4
-#define MCI_CHUNK_BYTES   (64 * 1024)
+#define MCI_STREAM_CHUNKS 2
+#define MCI_CHUNK_BYTES   (32 * 1024)
 #define MCI_BUFFER_BYTES  (MCI_STREAM_CHUNKS * MCI_CHUNK_BYTES)
+#define MCI_MIN_FREE_AFTER_LOAD (2 * 1024 * 1024)
 
 extern IDirectSound *stdSound_XboxGetDirectSound(void);
 
@@ -102,6 +103,23 @@ static int stdMci_ReadWholeFile(const char *path, unsigned char **outData, unsig
         return 0;
     }
 
+#ifdef TARGET_XBOX
+    {
+        MEMORYSTATUS memStatus;
+        memStatus.dwLength = sizeof(memStatus);
+        GlobalMemoryStatus(&memStatus);
+        XDBGF("stdMci: read candidate %s size=%d phys=%lu page=%lu\n",
+              path, size, memStatus.dwAvailPhys, memStatus.dwAvailPageFile);
+        if ((unsigned long)size + MCI_MIN_FREE_AFTER_LOAD > memStatus.dwAvailPhys)
+        {
+            XDBGF("stdMci: skip %s, insufficient free memory for full OGG load size=%d phys=%lu reserve=%u\n",
+                  path, size, memStatus.dwAvailPhys, (unsigned int)MCI_MIN_FREE_AFTER_LOAD);
+            std_pHS->fileClose(fd);
+            return 0;
+        }
+    }
+#endif
+
     data = (unsigned char*)malloc((size_t)size);
     if (!data)
     {
@@ -119,6 +137,15 @@ static int stdMci_ReadWholeFile(const char *path, unsigned char **outData, unsig
     std_pHS->fileClose(fd);
     *outData = data;
     *outBytes = (unsigned int)size;
+#ifdef TARGET_XBOX
+    {
+        MEMORYSTATUS memStatus;
+        memStatus.dwLength = sizeof(memStatus);
+        GlobalMemoryStatus(&memStatus);
+        XDBGF("stdMci: read loaded %s size=%u phys=%lu page=%lu\n",
+              path, *outBytes, memStatus.dwAvailPhys, memStatus.dwAvailPageFile);
+    }
+#endif
     return 1;
 }
 
@@ -149,7 +176,8 @@ static int stdMci_TryOpenPath(const char *path)
         return 0;
     }
 
-    XDBGF("stdMci: opened %s ch=%d rate=%d\n", path, stdMci_channels, stdMci_sampleRate);
+    XDBGF("stdMci: opened %s bytes=%u ch=%d rate=%d\n",
+          path, stdMci_oggBytes, stdMci_channels, stdMci_sampleRate);
     return 1;
 }
 
@@ -228,6 +256,15 @@ static int stdMci_CreateBuffer(void)
     desc.dwBufferBytes = MCI_BUFFER_BYTES;
     desc.lpwfxFormat = &wfx;
 
+#ifdef TARGET_XBOX
+    {
+        MEMORYSTATUS memStatus;
+        memStatus.dwLength = sizeof(memStatus);
+        GlobalMemoryStatus(&memStatus);
+        XDBGF("stdMci: CreateSoundBuffer request bytes=%u phys=%lu page=%lu\n",
+              (unsigned int)desc.dwBufferBytes, memStatus.dwAvailPhys, memStatus.dwAvailPageFile);
+    }
+#endif
     hr = IDirectSound_CreateSoundBuffer(ds, &desc, &stdMci_pBuffer, NULL);
     if (FAILED(hr))
     {

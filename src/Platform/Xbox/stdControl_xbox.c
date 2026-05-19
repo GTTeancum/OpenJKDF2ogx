@@ -613,6 +613,30 @@ int stdControl_XboxMovieSkipRequested(int *outPort, const char **outReason)
                 g_activeController = port;
 
             pad = &state.Gamepad;
+            if (pad->bAnalogButtons[XB_BTN_A] > 4)
+            {
+                if (outPort)
+                    *outPort = port;
+                if (outReason)
+                    *outReason = "A";
+                return 1;
+            }
+            if (pad->bAnalogButtons[XB_BTN_B] > 4)
+            {
+                if (outPort)
+                    *outPort = port;
+                if (outReason)
+                    *outReason = "B";
+                return 1;
+            }
+            if (pad->bAnalogButtons[XB_BTN_X] > 4)
+            {
+                if (outPort)
+                    *outPort = port;
+                if (outReason)
+                    *outReason = "X";
+                return 1;
+            }
             if (pad->wButtons)
             {
                 if (outPort)

@@ -49,6 +49,10 @@ static void jkCutscene_XboxCloseInput(void);
 #ifdef __cplusplus
 extern "C"
 #endif
+int stdControl_XboxMovieSkipRequested(int *outPort, const char **outReason);
+#ifdef __cplusplus
+extern "C"
+#endif
 void std3D_XboxReleaseMenuTextures(void);
 #ifdef __cplusplus
 extern "C"
@@ -295,6 +299,15 @@ static int jkCutscene_XboxPollInput(void)
     int skip;
     int pause;
     int i;
+    int skipPort;
+    const char *skipReason;
+
+    if (stdControl_XboxMovieSkipRequested(&skipPort, &skipReason))
+    {
+        stdPlatform_Printf("CutsceneTrace: SMK skip requested port=%d reason=%s\n",
+                           skipPort, skipReason ? skipReason : "unknown");
+        return jkCutscene_sub_421410();
+    }
 
     if (!jkCutscene_xboxPad)
         jkCutscene_xboxPad = XInputOpen(XDEVICE_TYPE_GAMEPAD, XDEVICE_PORT0, XDEVICE_NO_SLOT, NULL);

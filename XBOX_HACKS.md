@@ -13,6 +13,31 @@ history is useful.
 
 # Known Bugs
 
+## Keep level-load memory stats in the stable Xbox log
+
+**Status:** Open.
+**Severity:** Diagnostic hygiene. While chasing hardware-only level-load
+failures, the useful signal was not just the failing subsystem but how much
+physical/page memory was available at each load stage.
+
+**Desired stable behavior:** Once the port is stable again and the noisy
+temporary diagnostics are removed, keep a small permanent Xbox-only memory
+summary around level load. At minimum log:
+- map name at `sithWorld_Load` start
+- Xbox config limits that affect memory (`SITH_MAX_THINGS`,
+  `SITH_MAX_VISIBLE_*`, `RDCACHE_MAX_*`, `STD3D_MAX_TEXTURES`)
+- `GlobalMemoryStatus` physical/page availability before parsing, after
+  major sections, and on parse failure
+- COG allocation counts/sizes for scripts and cogs
+
+**Why:** Hardware failures can look like render hangs, controller issues,
+or generic "could not load level" errors when the real cause is memory
+pressure. Having this permanently in the level-load log gives future
+debugging a baseline without re-adding broad instrumentation.
+
+**Where to keep it:** `src/World/sithWorld.c` and `src/Cog/sithCog.c`,
+guarded by `TARGET_XBOX` and kept concise enough for normal hardware logs.
+
 ## Cutscene volume needs a separate mixer setting — [FIXED]
 
 **Status:** FIXED — `jkGuiSound_cutsceneVolume` is now provided by the

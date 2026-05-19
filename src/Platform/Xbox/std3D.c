@@ -1989,9 +1989,38 @@ int std3D_AddBitmapToTextureCache(void *pBmp, int mipIdx, int is_alpha_tex, int 
 
 void std3D_PurgeBitmapRefs(void *pBmp)
 {
-    /* No-op: FakeGL doesn't expose glDeleteTextures via the wgl proc table
-     * we use. HUD textures are few and small; leak until process exit. */
-    (void)pBmp;
+    stdBitmap_local *bm = (stdBitmap_local*)pBmp;
+    unsigned int ids[32];
+    unsigned int count = 0;
+    int i;
+
+    if (!bm || !bm->aTextureIds || !bm->abLoadedToGPU)
+        return;
+
+    for (i = 0; i < bm->numMips; ++i) {
+        unsigned int id = bm->aTextureIds[i];
+        if (!id)
+            continue;
+
+        if (count < (unsigned int)(sizeof(ids) / sizeof(ids[0])))
+            ids[count++] = id;
+
+        bm->aTextureIds[i] = 0;
+        bm->abLoadedToGPU[i] = 0;
+    }
+
+    if (count && g_pfnDeleteTextures)
+        g_pfnDeleteTextures((GLsizei)count, ids);
+
+#ifdef TARGET_XBOX
+    if (count) {
+        MEMORYSTATUS mem;
+        GlobalMemoryStatus(&mem);
+        XDBGF("std3D_PurgeBitmapRefs: bm=%p deleted=%u deleteProc=%p phys=%lu page=%lu\n",
+              (void*)bm, count, (void*)g_pfnDeleteTextures,
+              (unsigned long)mem.dwAvailPhys, (unsigned long)mem.dwAvailPageFile);
+    }
+#endif
 }
 
 /* Switch GL state to pixel-space ortho UI mode. Called per UI draw — the

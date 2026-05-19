@@ -23,6 +23,7 @@
 #include <math.h>
 
 #define MAX_DS_BUFFERS 128
+#define XBOX_SOUND_MIN_FREE_AFTER_DS_CREATE (1024 * 1024)
 
 typedef struct
 {
@@ -194,6 +195,27 @@ static int xbox_DSCreateBuffer(stdSound_buffer_t *sound, XboxDSEntry *e, int wan
         desc.dwFlags |= DSBCAPS_CTRL3D;
     desc.dwBufferBytes = (DWORD)sound->bufferBytes;
     desc.lpwfxFormat   = &wfx;
+
+#ifdef TARGET_XBOX
+    {
+        MEMORYSTATUS memStatus;
+        memStatus.dwLength = sizeof(memStatus);
+        GlobalMemoryStatus(&memStatus);
+        XDBGF("stdSound_XboxCreateBuffer: request stereo=%d rate=%u bits=%u bytes=%d 3d=%d phys=%lu page=%lu\n",
+              sound->bStereo, sound->nSamplesPerSec, sound->bitsPerSample,
+              sound->bufferBytes, use3D, memStatus.dwAvailPhys, memStatus.dwAvailPageFile);
+        if ((unsigned long)sound->bufferBytes + XBOX_SOUND_MIN_FREE_AFTER_DS_CREATE > memStatus.dwAvailPhys)
+        {
+            XDBGF("stdSound_XboxCreateBuffer: skip low memory stereo=%d rate=%u bits=%u bytes=%d 3d=%d phys=%lu reserve=%u\n",
+                  sound->bStereo, sound->nSamplesPerSec, sound->bitsPerSample,
+                  sound->bufferBytes, use3D, memStatus.dwAvailPhys,
+                  (unsigned int)XBOX_SOUND_MIN_FREE_AFTER_DS_CREATE);
+            e->pDS = NULL;
+            e->b3D = 0;
+            return 0;
+        }
+    }
+#endif
 
     hr = IDirectSound_CreateSoundBuffer(g_pDS, &desc, &e->pDS, NULL);
     if (FAILED(hr))

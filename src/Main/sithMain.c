@@ -394,11 +394,11 @@ int sithMain_Tick()
             for (int i = 0; i < wholeFramesToApply; i++)
             {
 #ifdef TARGET_XBOX
-                { static int _tsL=0; if(_tsL<1){ XDBGF("sithTick: loop i=%d SoundMixerTick\n",i); _tsL++; } }
+                { static int _tsL=0; if(_tsL<24){ XDBGF("sithTick: loop i=%d/%u curMs=%u dms=%u ds=%f SoundMixerTick\n", i, (unsigned)wholeFramesToApply, (unsigned)sithTime_curMs, (unsigned)sithTime_deltaMs, (float)sithTime_deltaSeconds); _tsL++; } }
 #endif
                 sithSoundMixer_Tick(sithTime_deltaSeconds);
 #ifdef TARGET_XBOX
-                { static int _tsE=0; if(_tsE<1){ XDBG("sithTick: EventAdv\n"); _tsE++; } }
+                { static int _tsE=0; if(_tsE<24){ XDBG("sithTick: EventAdv\n"); _tsE++; } }
 #endif
                 sithEvent_Advance();
 
@@ -408,29 +408,32 @@ int sithMain_Tick()
                 if ( (g_debugmodeFlags & DEBUGFLAG_NO_AIEVENTS) == 0  && (!sithNet_isMulti || sithNet_isMulti && sithNet_isServer))
                 {
 #ifdef TARGET_XBOX
-                    { static int _tsA=0; if(_tsA<1){ XDBG("sithTick: AITickAll\n"); _tsA++; } }
+                    { static int _tsA=0; if(_tsA<24){ XDBG("sithTick: AITickAll\n"); _tsA++; } }
 #endif
                     sithAI_TickAll();
                 }
 
 #ifdef TARGET_XBOX
-                { static int _tsS=0; if(_tsS<1){ XDBG("sithTick: SurfaceTick\n"); _tsS++; } }
+                { static int _tsS=0; if(_tsS<24){ XDBG("sithTick: SurfaceTick\n"); _tsS++; } }
 #endif
                 sithSurface_Tick(sithTime_deltaSeconds);
 #ifdef TARGET_XBOX
-                { static int _tsTh=0; if(_tsTh<1){ XDBG("sithTick: ThingTickAll\n"); _tsTh++; } }
+                { static int _tsTh=0; if(_tsTh<24){ XDBGF("sithTick: ThingTickAll pre i=%d numThings=%d player=%p world=%p\n", i, sithWorld_pCurrentWorld ? sithWorld_pCurrentWorld->numThings : -999, sithWorld_pCurrentWorld ? (void*)sithWorld_pCurrentWorld->playerThing : (void*)0, (void*)sithWorld_pCurrentWorld); _tsTh++; } }
 #endif
                 sithThing_TickAll(sithTime_deltaSeconds, sithTime_deltaMs);
 #ifdef TARGET_XBOX
-                { static int _tsMo=0; if(_tsMo<1){ XDBG("sithTick: MotsTick\n"); _tsMo++; } }
+                { static int _tsTh2=0; if(_tsTh2<24){ XDBGF("sithTick: ThingTickAll post i=%d\n", i); _tsTh2++; } }
+                { static int _tsMo=0; if(_tsMo<24){ XDBG("sithTick: MotsTick\n"); _tsMo++; } }
 #endif
                 sithThing_MotsTick(0x1F, 0, 0);
 #ifdef TARGET_XBOX
-                { static int _tsCg=0; if(_tsCg<1){ XDBG("sithTick: CogTickAll\n"); _tsCg++; } }
+                { static int _tsMo2=0; if(_tsMo2<24){ XDBG("sithTick: MotsTick post\n"); _tsMo2++; } }
+                { static int _tsCg=0; if(_tsCg<24){ XDBG("sithTick: CogTickAll\n"); _tsCg++; } }
 #endif
                 sithCogScript_TickAll();
 #ifdef TARGET_XBOX
-                { static int _tsX=0; if(_tsX<1){ XDBG("sithTick: loop end\n"); _tsX++; } }
+                { static int _tsCg2=0; if(_tsCg2<24){ XDBG("sithTick: CogTickAll post\n"); _tsCg2++; } }
+                { static int _tsX=0; if(_tsX<24){ XDBG("sithTick: loop end\n"); _tsX++; } }
 #endif
 
                 // COG scripts will sleep for periods of time based on sithTime_curMs,
