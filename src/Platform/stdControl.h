@@ -81,6 +81,7 @@ int stdControl_XboxGetInvertLook(void);
 int stdControl_XboxGetVibration(void);
 void stdControl_XboxSetActiveController(int port);
 int stdControl_XboxGetConnectedMask(void);
+int stdControl_XboxMovieSkipRequested(int *outPort, const char **outReason);
 int stdControl_XboxGetControllerKeyPress(int port, int keyNum);
 int stdControl_XboxGetControllerKeyDown(int port, int keyNum);
 #endif

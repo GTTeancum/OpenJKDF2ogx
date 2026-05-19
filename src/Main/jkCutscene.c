@@ -596,9 +596,13 @@ int jkCutscene_sub_421310(char* fpath)
 #ifdef TARGET_XBOX
     if (xboxXmv_PlayForSmkPath(tmp))
     {
-        jkCutscene_xboxXmvFinished = 1;
-        jkCutscene_isRendering = 1;
-        jk_ShowCursor(0);
+        stdPlatform_Printf("CutsceneTrace: XMV finished, releasing cutscene/menu state before level load\n");
+        jkCutscene_xboxXmvFinished = 0;
+        jkCutscene_isRendering = 0;
+        stdSound_XboxStreamClose();
+        std3D_XboxReleaseMenuTextures();
+        jkGui_SetModeGame();
+        jk_ShowCursor(1);
         return 1;
     }
 #endif

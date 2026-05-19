@@ -93,95 +93,13 @@ static DWORD WINAPI xboxXmv_PlayThread(void *arg)
     return FAILED(decoder->Play(XMVFLAG_NONE, NULL)) ? 1 : 0;
 }
 
-static int xboxXmv_OpenPads(HANDLE pads[4])
-{
-    DWORD mask = XGetDevices(XDEVICE_TYPE_GAMEPAD);
-    int count = 0;
-    int port;
-
-    for (port = 0; port < 4; port++)
-    {
-        pads[port] = NULL;
-        if (!(mask & (1u << port)))
-            continue;
-
-        pads[port] = XInputOpen(XDEVICE_TYPE_GAMEPAD, XDEVICE_PORT0 + port,
-                                XDEVICE_NO_SLOT, NULL);
-        if (pads[port])
-            count++;
-    }
-    return count;
-}
-
-static void xboxXmv_ClosePads(HANDLE pads[4])
-{
-    int port;
-    for (port = 0; port < 4; port++)
-    {
-        if (pads[port])
-        {
-            XInputClose(pads[port]);
-            pads[port] = NULL;
-        }
-    }
-}
-
-static int xboxXmv_ShouldSkip(HANDLE pads[4], int *outPort, const char **outReason)
-{
-    static const char *kAnalogNames[8] = {
-        "A", "B", "X", "Y", "black", "white", "left trigger", "right trigger"
-    };
-    int port;
-
-    if (outPort)
-        *outPort = -1;
-    if (outReason)
-        *outReason = "unknown";
-
-    for (port = 0; port < 4; port++)
-    {
-        XINPUT_STATE state;
-        XINPUT_GAMEPAD *pad;
-        int i;
-
-        if (!pads[port])
-            continue;
-
-        if (XInputGetState(pads[port], &state) != ERROR_SUCCESS)
-            continue;
-
-        pad = &state.Gamepad;
-        if (pad->wButtons)
-        {
-            if (outPort)
-                *outPort = port;
-            if (outReason)
-                *outReason = "digital";
-            return 1;
-        }
-
-        for (i = 0; i < 8; i++)
-        {
-            if (pad->bAnalogButtons[i] > 10)
-            {
-                if (outPort)
-                    *outPort = port;
-                if (outReason)
-                    *outReason = kAnalogNames[i];
-                return 1;
-            }
-        }
-    }
-
-    return 0;
-}
+extern "C" int stdControl_XboxMovieSkipRequested(int *outPort, const char **outReason);
 
 extern "C" int xboxXmv_PlayForSmkPath(const char *smkPath)
 {
     char xmvPath[260];
     XMVDecoder *decoder = NULL;
     XMVVIDEO_DESC videoDesc;
-    HANDLE pads[4] = { NULL, NULL, NULL, NULL };
     HANDLE thread;
     HRESULT hr;
     int terminated = 0;
@@ -206,17 +124,16 @@ extern "C" int xboxXmv_PlayForSmkPath(const char *smkPath)
     {
         hr = decoder->EnableAudioStream(0, 0, NULL, NULL);
         XDBGF("XmvDbg: EnableAudioStream(0) hr=0x%08X\n", hr);
-    if (SUCCEEDED(hr))
+        if (SUCCEEDED(hr))
             decoder->SetSynchronizationStream(0);
     }
 
-    XDBGF("XmvDbg: opened %d controller(s) for skip polling\n", xboxXmv_OpenPads(pads));
+    XDBG("XmvDbg: using stdControl-owned controller handles for skip polling\n");
 
     thread = CreateThread(NULL, 0, xboxXmv_PlayThread, decoder, 0, NULL);
     if (!thread)
     {
         XDBGF("XmvDbg: CreateThread failed err=%lu\n", GetLastError());
-        xboxXmv_ClosePads(pads);
         decoder->TerminateImmediately();
         decoder->CloseDecoder();
         return 0;
@@ -231,7 +148,7 @@ extern "C" int xboxXmv_PlayForSmkPath(const char *smkPath)
         if (waitResult == WAIT_OBJECT_0)
             break;
 
-        if (xboxXmv_ShouldSkip(pads, &skipPort, &skipReason))
+        if (stdControl_XboxMovieSkipRequested(&skipPort, &skipReason))
         {
             XDBGF("XmvDbg: skip requested port=%d reason=%s\n", skipPort, skipReason);
             terminated = 1;
@@ -243,7 +160,6 @@ extern "C" int xboxXmv_PlayForSmkPath(const char *smkPath)
 wait_done:
     WaitForSingleObject(thread, INFINITE);
     CloseHandle(thread);
-    xboxXmv_ClosePads(pads);
     XDBGF("XmvDbg: playback done path='%s' terminated=%d\n", xmvPath, terminated);
     decoder->CloseDecoder();
     return 1;

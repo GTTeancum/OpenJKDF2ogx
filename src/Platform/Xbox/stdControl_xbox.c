@@ -538,6 +538,106 @@ int stdControl_XboxGetConnectedMask(void)
     return mask;
 }
 
+#ifdef __cplusplus
+extern "C"
+#endif
+int stdControl_XboxMovieSkipRequested(int *outPort, const char **outReason)
+{
+    static const char *kAnalogNames[8] = {
+        "A", "B", "X", "Y", "black", "white", "left trigger", "right trigger"
+    };
+    DWORD insertions = 0;
+    DWORD removals = 0;
+    DWORD mask;
+    unsigned int tick = (unsigned int)GetTickCount();
+    int port;
+
+    if (outPort)
+        *outPort = -1;
+    if (outReason)
+        *outReason = "unknown";
+
+    XGetDeviceChanges(XDEVICE_TYPE_GAMEPAD, &insertions, &removals);
+    mask = XGetDevices(XDEVICE_TYPE_GAMEPAD);
+
+    for (port = 0; port < XBOX_MAX_CONTROLLERS; port++)
+    {
+        XboxControllerState *padState = &g_pads[port];
+        if (removals & (1u << port))
+        {
+            if (padState->hController)
+            {
+                XInputClose(padState->hController);
+                padState->hController = NULL;
+            }
+            padState->connected = 0;
+            padState->nextOpenAttemptMs = 0;
+            XDBGF("stdControl: movie poll removed port=%d\n", port);
+        }
+        if (insertions & (1u << port))
+            padState->nextOpenAttemptMs = 0;
+
+        if (!padState->hController && (mask & (1u << port)) &&
+            tick >= padState->nextOpenAttemptMs)
+        {
+            padState->nextOpenAttemptMs = tick + 1000;
+            padState->hController = XInputOpen(XDEVICE_TYPE_GAMEPAD,
+                                               XDEVICE_PORT0 + port,
+                                               XDEVICE_NO_SLOT, NULL);
+            padState->connected = padState->hController ? 1 : 0;
+            XDBGF("stdControl: movie poll open port=%d handle=%p err=%lu\n",
+                  port, (void*)padState->hController,
+                  padState->hController ? 0ul : (unsigned long)GetLastError());
+            if (padState->connected && !g_pads[g_activeController].connected)
+                g_activeController = port;
+        }
+
+        if (padState->hController)
+        {
+            XINPUT_STATE state;
+            XINPUT_GAMEPAD *pad;
+            int i;
+
+            if (XInputGetState(padState->hController, &state) != ERROR_SUCCESS)
+            {
+                XInputClose(padState->hController);
+                padState->hController = NULL;
+                padState->connected = 0;
+                padState->nextOpenAttemptMs = tick + 1000;
+                XDBGF("stdControl: movie poll lost port=%d\n", port);
+                continue;
+            }
+
+            padState->connected = 1;
+            if (g_activeController == port || !g_pads[g_activeController].connected)
+                g_activeController = port;
+
+            pad = &state.Gamepad;
+            if (pad->wButtons)
+            {
+                if (outPort)
+                    *outPort = port;
+                if (outReason)
+                    *outReason = "digital";
+                return 1;
+            }
+            for (i = 0; i < 8; i++)
+            {
+                if (pad->bAnalogButtons[i] > 10)
+                {
+                    if (outPort)
+                        *outPort = port;
+                    if (outReason)
+                        *outReason = kAnalogNames[i];
+                    return 1;
+                }
+            }
+        }
+    }
+
+    return 0;
+}
+
 int stdControl_XboxGetControllerKeyPress(int port, int keyNum)
 {
     if (port < 0 || port >= XBOX_MAX_CONTROLLERS)
