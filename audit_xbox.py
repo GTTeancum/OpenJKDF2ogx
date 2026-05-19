@@ -60,6 +60,7 @@ LINKED_LIBS = [
     "xboxkrnl.lib",
     "xgraphicsltcg.lib",
     "xonline.lib",
+    "xmv.lib",
     "libc.lib",
     "xapilib.lib",
 ]

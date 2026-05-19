@@ -260,6 +260,7 @@ for %%F in (
     src\Platform\Xbox\std3D.c
     src\Platform\Xbox\std3D_draw.cpp
     src\Platform\Xbox\fakeglx.cpp
+    src\Platform\Xbox\xbox_xmv_player.cpp
     src\Platform\Xbox\xbox_world_helper.cpp
     src\Platform\Xbox\xbox_splitscreen.c
     src\Platform\Xbox\main_xbox.c
@@ -312,7 +313,7 @@ set RSPFILE=%OBJDIR%\link.rsp
 >> "!RSPFILE!" echo /IGNORE:4254
 REM XDK 5558 has full d3d8.lib + xgraphics.lib (non-LTCG variants).
 REM This sidesteps any LTCG-specific issues in d3d8ltcg.lib.
->> "!RSPFILE!" echo d3d8.lib d3dx8.lib dsound.lib xboxkrnl.lib xgraphics.lib xonline.lib libc.lib xapilib.lib
+>> "!RSPFILE!" echo d3d8.lib d3dx8.lib dsound.lib xboxkrnl.lib xgraphics.lib xonline.lib xmv.lib libc.lib xapilib.lib
 for %%O in (!OBJDIR!\*.obj) do >> "!RSPFILE!" echo "%%O"
 
 REM VC71 link.exe breaks under enabledelayedexpansion.

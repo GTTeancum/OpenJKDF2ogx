@@ -829,6 +829,10 @@ LABEL_28:
         JKTRACE("GameplayShow: reset game clock after load/display warmup\n");
 #endif
         sithTime_Startup();
+        jkMain_lastTickMs = stdPlatform_GetTimeMsec();
+#ifdef TARGET_XBOX
+        JKTRACEF("GameplayShow: lastTick reset to %u\n", (unsigned)jkMain_lastTickMs);
+#endif
         JKTRACE("GameplayShow: thing_eight=1\n");
         thing_eight = 1;
         JKTRACE("GameplayShow: done\n");

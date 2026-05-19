@@ -162,7 +162,7 @@ void sithPhysics_ThingTick(sithThing *pThing, flex_t deltaSecs)
     if (!pThing->sector)
         return;
 
-#ifdef TARGET_XBOX
+#if defined(TARGET_XBOX) && 0
     { static int _xpt0 = 0; if (_xpt0 < 20) {
         XDBGF("PhysTick: enter thing=%p idx=%d type=%d ds=%f sect=%p sflags=%X attach=%X vel=(%f,%f,%f)\n",
               (void*)pThing, pThing->thingIdx, (int)pThing->type, (float)deltaSecs,
@@ -184,14 +184,14 @@ void sithPhysics_ThingTick(sithThing *pThing, flex_t deltaSecs)
 
     if (pThing->attach_flags & (SITH_ATTACH_THINGSURFACE | SITH_ATTACH_WORLDSURFACE))
     {
-#ifdef TARGET_XBOX
+#if defined(TARGET_XBOX) && 0
         { static int _xpa = 0; if (_xpa < 20) { XDBGF("PhysTick: attached pre thing=%d\n", pThing->thingIdx); _xpa++; } }
 #endif
         sithPhysics_ThingPhysAttached(pThing, deltaSecs);
     }
     else if (pThing->sector->flags & SITH_SECTOR_UNDERWATER)
     {
-#ifdef TARGET_XBOX
+#if defined(TARGET_XBOX) && 0
         { static int _xpu = 0; if (_xpu < 20) { XDBGF("PhysTick: underwater pre thing=%d\n", pThing->thingIdx); _xpu++; } }
 #endif
         sithPhysics_ThingPhysUnderwater(pThing, deltaSecs);
@@ -215,7 +215,7 @@ void sithPhysics_ThingTick(sithThing *pThing, flex_t deltaSecs)
 #else
     else if ( pThing->type == SITH_THING_PLAYER )
     {
-#ifdef TARGET_XBOX
+#if defined(TARGET_XBOX) && 0
         { static int _xpp = 0; if (_xpp < 20) { XDBGF("PhysTick: player pre thing=%d\n", pThing->thingIdx); _xpp++; } }
 #endif
         sithPhysics_ThingPhysPlayer(pThing, deltaSecs);
@@ -223,12 +223,12 @@ void sithPhysics_ThingTick(sithThing *pThing, flex_t deltaSecs)
 #endif
     else
     {
-#ifdef TARGET_XBOX
+#if defined(TARGET_XBOX) && 0
         { static int _xpg = 0; if (_xpg < 20) { XDBGF("PhysTick: general pre thing=%d\n", pThing->thingIdx); _xpg++; } }
 #endif
         sithPhysics_ThingPhysGeneral(pThing, deltaSecs);
     }
-#ifdef TARGET_XBOX
+#if defined(TARGET_XBOX) && 0
     { static int _xpt1 = 0; if (_xpt1 < 20) {
         XDBGF("PhysTick: exit thing=%d vel=(%f,%f,%f) vm=(%f,%f,%f)\n",
               pThing->thingIdx,

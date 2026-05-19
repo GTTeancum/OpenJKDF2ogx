@@ -50,6 +50,10 @@ static void jkCutscene_XboxCloseInput(void);
 extern "C"
 #endif
 void std3D_XboxReleaseMenuTextures(void);
+#ifdef __cplusplus
+extern "C"
+#endif
+int xboxXmv_PlayForSmkPath(const char *smkPath);
 
 typedef struct jkCutsceneSmkStream
 {
@@ -224,6 +228,7 @@ static int32_t jkCutscene_audio_queue_read_idx = 0;
 static int32_t jkCutscene_audio_queue_write_idx = 0;
 #ifdef TARGET_XBOX
 static uint32_t jkCutscene_xboxLastAudioFrame = 0xFFFFFFFFu;
+static int jkCutscene_xboxXmvFinished = 0;
 
 static void jkCutscene_XboxLogVBufferStats(const char *tag, stdVBuffer *buf, unsigned int call)
 {
@@ -467,6 +472,7 @@ void jkCutscene_CleanReset()
     jkCutscene_audio_queue_write_idx = 0;
 #ifdef TARGET_XBOX
     jkCutscene_xboxLastAudioFrame = 0xFFFFFFFFu;
+    jkCutscene_xboxXmvFinished = 0;
     jkCutscene_XboxCloseInput();
 #endif
 }
@@ -585,6 +591,16 @@ int jkCutscene_sub_421310(char* fpath)
         strcpy(tmp, r);
     }
     free((void*)r);
+#endif
+
+#ifdef TARGET_XBOX
+    if (xboxXmv_PlayForSmkPath(tmp))
+    {
+        jkCutscene_xboxXmvFinished = 1;
+        jkCutscene_isRendering = 1;
+        jk_ShowCursor(0);
+        return 1;
+    }
 #endif
 
 #ifdef TARGET_TWL
@@ -826,6 +842,7 @@ int jkCutscene_sub_421410()
     Window_RemoveMsgHandler(jkCutscene_Handler);
 #ifdef TARGET_XBOX
     jkCutscene_XboxCloseInput();
+    jkCutscene_xboxXmvFinished = 0;
 #endif
 
 #if !defined(SDL2_RENDER) && !defined(TARGET_TWL) && !defined(TARGET_XBOX)
@@ -899,6 +916,11 @@ int jkCutscene_smack_related_loops()
     if ( !jkCutscene_isRendering )
         return 1;
 #ifdef TARGET_XBOX
+    if (jkCutscene_xboxXmvFinished)
+    {
+        jkCutscene_sub_421410();
+        return 1;
+    }
     if (jkCutscene_XboxPollInput())
         return 1;
     jkCutscene_xboxFrameReady = 0;
