@@ -167,18 +167,16 @@ static int xbox_DSCreateBuffer(stdSound_buffer_t *sound, XboxDSEntry *e, int wan
     void *pLock = NULL;
     DWORD lockSz = 0;
     int use3D;
+    IDirectSoundBuffer *oldDS;
+    int old3D;
 
     if (!sound || !e || !g_pDS)
         return 0;
 
     use3D = want3D && !sound->bStereo;
-
-    if (e->pDS)
-    {
-        IDirectSoundBuffer_Stop(e->pDS);
-        IDirectSoundBuffer_Release(e->pDS);
-        e->pDS = NULL;
-    }
+    oldDS = e->pDS;
+    old3D = e->b3D;
+    e->pDS = NULL;
 
     memset(&wfx, 0, sizeof(wfx));
     wfx.wFormatTag      = WAVE_FORMAT_PCM;
@@ -210,8 +208,8 @@ static int xbox_DSCreateBuffer(stdSound_buffer_t *sound, XboxDSEntry *e, int wan
                   sound->bStereo, sound->nSamplesPerSec, sound->bitsPerSample,
                   sound->bufferBytes, use3D, memStatus.dwAvailPhys,
                   (unsigned int)XBOX_SOUND_MIN_FREE_AFTER_DS_CREATE);
-            e->pDS = NULL;
-            e->b3D = 0;
+            e->pDS = oldDS;
+            e->b3D = old3D;
             return 0;
         }
     }
@@ -223,8 +221,8 @@ static int xbox_DSCreateBuffer(stdSound_buffer_t *sound, XboxDSEntry *e, int wan
         XDBGF("stdSound_XboxCreateBuffer: failed 0x%X stereo=%d rate=%u bits=%u bytes=%d 3d=%d\n",
               hr, sound->bStereo, sound->nSamplesPerSec, sound->bitsPerSample,
               sound->bufferBytes, use3D);
-        e->pDS = NULL;
-        e->b3D = 0;
+        e->pDS = oldDS;
+        e->b3D = old3D;
         return 0;
     }
 
@@ -239,6 +237,12 @@ static int xbox_DSCreateBuffer(stdSound_buffer_t *sound, XboxDSEntry *e, int wan
             memcpy(pLock, sound->data, lockSz);
             IDirectSoundBuffer_Unlock(e->pDS, pLock, lockSz, NULL, 0);
         }
+    }
+
+    if (oldDS)
+    {
+        IDirectSoundBuffer_Stop(oldDS);
+        IDirectSoundBuffer_Release(oldDS);
     }
 
     return 1;

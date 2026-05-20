@@ -218,3 +218,19 @@ Risk tags:
 - Outcome: launched with the repo-local loader, reached `static,fmv`, and exited
   with no fatal patterns. The dedicated debug files were not emitted on that
   short run, but the harness reported their expected paths and copied state.
+
+### 011 - Preserve Sound Buffers On Failed Recreate
+
+- Change: keep the existing Xbox DirectSound buffer alive until a replacement
+  buffer is successfully created.
+- Risk: `RISK:LOW`
+- Reason: real hardware logs showed level load reaching music startup with only
+  about 5 MB of free physical memory. The old recreate path released the
+  current buffer before the low-memory guard, so a failed 3D recreate could
+  leave an otherwise valid sound with no hardware buffer.
+- Smoke run:
+  `build\xbox\smoke_runs\20260519_213452-preserve-dsbuf-fmv-level-seq`
+- Outcome: build succeeded. Sequential smoke reached `static,fmv,autostart,
+  level-load,gameplay-show-done,first-tick,xbox-frame` with `fatalCount=0` and
+  `emulatorFatalCount=0`. Music used streamed OGG (`stdMci: opened stream
+  D:\Music\Track12.ogg`) and did not fall back to full-file OGG loads.
