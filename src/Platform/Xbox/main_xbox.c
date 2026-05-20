@@ -40,6 +40,7 @@ extern int sithMain_Load(char *jklFname);
 extern int jkHudInv_InitItems(void);
 extern void jkGuiTitle_WorldLoadCallback(float percentage);
 extern void jkGuiTitle_LoadingStaticFinalizeMenu(void);
+extern int jkGuiTitle_whichLoading;
 extern float jkPlayer_hudScale;
 struct stdVideoMode;
 struct stdVBuffer;
@@ -294,7 +295,17 @@ void __cdecl main(void)
          * (the engine itself is fully fixed-timestep, so running the
          * outer loop faster doesn't speed up gameplay — it just
          * reduces input-to-display latency and increases dt accuracy). */
+#ifdef XBOX_PERF_SMOKE
+        /* DANGEROUS PERF EXPERIMENT:
+         * CXBX-R eventually turns in-game Sleep(0)/Sleep(1) into ~300 ms
+         * stalls in this port's smoke loop. Keep Sleep(1) during title/load
+         * UI so load progress stays cooperative, then let present plus the
+         * host emulator loop throttle gameplay. */
+        if (jkGuiTitle_whichLoading)
+            Sleep(1);
+#else
         Sleep(1);
+#endif
 #ifdef XBOX_PERF_SMOKE
                   { DWORD t5 = GetTickCount();
                     if (traceFrame) XPERF("PerfPhase: loop=%d after Sleep\n", loopCount);

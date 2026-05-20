@@ -461,4 +461,5 @@ void jkGuiTitle_LoadingFinalize()
     xbox_debug_PerfPrintf("TitleLoad: finalize exit which=%d world=%p\n",
                           jkGuiTitle_whichLoading, sithWorld_pCurrentWorld);
 #endif
+    jkGuiTitle_whichLoading = 0;
 }

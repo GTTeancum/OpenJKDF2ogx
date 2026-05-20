@@ -33,6 +33,7 @@ static int xbox_debug_ShouldLogText(const char *msg)
 #ifdef XBOX_PERF_SMOKE
     if (!msg) return 0;
     if (!strncmp(msg, "Perf:", 5)) return 1;
+    if (!strncmp(msg, "PerfPhase:", 10)) return 1;
     if (!strncmp(msg, "===", 3)) return 1;
     if (!strncmp(msg, "Smoke:", 6)) return 1;
     if (!strncmp(msg, "main:", 5)) return 1;
@@ -149,7 +150,8 @@ void xbox_debug_Print(const char *msg)
          * and never reach disk, hiding which line was last reached. */
         FlushFileBuffers(g_hLogFile);
 #else
-        if (!strncmp(msg, "Perf:", 5) || !strncmp(msg, "Smoke:", 6) ||
+        if (!strncmp(msg, "Perf:", 5) || !strncmp(msg, "PerfPhase:", 10) ||
+            !strncmp(msg, "Smoke:", 6) ||
             !strncmp(msg, "main:", 5) || !strncmp(msg, "Main_Startup:", 13) ||
             !strncmp(msg, "TitleLoad:", 10) ||
             strstr(msg, "FATAL") ||
