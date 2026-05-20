@@ -441,6 +441,9 @@ int jkGame_Update()
         int spanMs;
         int spanFrames;
         int fps100;
+        sithWorld *world;
+        sithThing *player;
+        int playerSector;
 
         if (!s_perfMsStart)
         {
@@ -452,12 +455,19 @@ int jkGame_Update()
         spanMs = jkGame_Update_End - s_perfMsLast;
         if (spanMs >= 5000)
         {
+            world = sithWorld_pCurrentWorld;
+            player = world ? world->playerThing : NULL;
+            playerSector = (player && player->sector) ? player->sector->id : -1;
             spanFrames = s_perfFrameTotal - s_perfFrameLast;
             fps100 = spanMs > 0 ? (spanFrames * 100000) / spanMs : 0;
-            XPERF("Perf: frame=%d spanFrames=%d spanMs=%d fps=%d.%02d totalMs=%d sectors=%d faces=%d geoThings=%d nonGeoThings=%d result=%d\n",
+            XPERF("Perf: frame=%d spanFrames=%d spanMs=%d fps=%d.%02d totalMs=%d map='%s' worldSectors=%d worldSurfaces=%d playerSector=%d drawnSectors=%d faces=%d geoThings=%d nonGeoThings=%d result=%d\n",
                   s_perfFrameTotal, spanFrames, spanMs,
                   fps100 / 100, fps100 % 100,
                   jkGame_Update_End - s_perfMsStart,
+                  world ? world->map_jkl_fname : "(null)",
+                  world ? world->numSectors : -1,
+                  world ? world->numSurfaces : -1,
+                  playerSector,
                   sithRender_sectorsDrawn,
                   rdCache_drawnFaces,
                   sithRender_geoThingsDrawn,
