@@ -885,16 +885,69 @@ int std3D_EndScene(void)
 /* closes it cleanly afterwards.                                          */
 /* ====================================================================== */
 static unsigned int g_presentCalls = 0;
+#if defined(TARGET_XBOX) && !defined(XBOX_PERF_SMOKE)
+static unsigned int g_hwPerfStartMs = 0;
+static unsigned long g_hwPerfFrames = 0;
+static unsigned long g_hwPerfDrawLists = 0;
+static unsigned long g_hwPerfTris = 0;
+static unsigned long g_hwPerfVerts = 0;
+static unsigned long g_hwPerfTexUploads = 0;
+static unsigned long g_hwPerfBitmapUploads = 0;
+#endif
 
 void std3D_Present(void)
 {
-#if !defined(XBOX_PERF_SMOKE) && !defined(XBOX_COMPILE_OUT_DEBUG_FORMATS)
+#if defined(XBOX_ENABLE_DEBUG_HUD) && !defined(XBOX_PERF_SMOKE) && !defined(XBOX_COMPILE_OUT_DEBUG_FORMATS)
     char buf[32];
 #endif
     if (!g_initialized) { XDBG("std3D_Present: not initialized\n"); return; }
     g_presentCalls++;
 
-#if !defined(XBOX_PERF_SMOKE) && !defined(XBOX_COMPILE_OUT_DEBUG_FORMATS)
+#if defined(TARGET_XBOX) && !defined(XBOX_PERF_SMOKE)
+    {
+        unsigned int nowMs;
+        unsigned long spanMs;
+        unsigned long fps100;
+
+        nowMs = (unsigned int)GetTickCount();
+        if (!g_hwPerfStartMs) {
+            g_hwPerfStartMs = nowMs;
+        }
+
+        g_hwPerfFrames++;
+        g_hwPerfDrawLists += (unsigned long)std3D_xboxFrameDrawLists;
+        g_hwPerfTris += (unsigned long)std3D_xboxFrameTris;
+        g_hwPerfVerts += (unsigned long)std3D_xboxFrameVerts;
+        g_hwPerfTexUploads += (unsigned long)std3D_xboxFrameTexUploads;
+        g_hwPerfBitmapUploads += (unsigned long)std3D_xboxFrameBitmapUploads;
+
+        spanMs = (unsigned long)(nowMs - g_hwPerfStartMs);
+        if (spanMs >= 10000UL) {
+            fps100 = (spanMs > 0) ? ((g_hwPerfFrames * 100000UL) / spanMs) : 0;
+            XPERF("PerfHW: spanMs=%lu frames=%lu fps=%lu.%02lu drawLists=%lu tris=%lu verts=%lu texUp=%lu uiUp=%lu cutscene=%d credits=%d\n",
+                  spanMs,
+                  g_hwPerfFrames,
+                  fps100 / 100UL,
+                  fps100 % 100UL,
+                  g_hwPerfDrawLists,
+                  g_hwPerfTris,
+                  g_hwPerfVerts,
+                  g_hwPerfTexUploads,
+                  g_hwPerfBitmapUploads,
+                  jkCutscene_isRendering,
+                  stdDisplay_xboxCreditsDebug);
+            g_hwPerfStartMs = nowMs;
+            g_hwPerfFrames = 0;
+            g_hwPerfDrawLists = 0;
+            g_hwPerfTris = 0;
+            g_hwPerfVerts = 0;
+            g_hwPerfTexUploads = 0;
+            g_hwPerfBitmapUploads = 0;
+        }
+    }
+#endif
+
+#if defined(XBOX_ENABLE_DEBUG_HUD) && !defined(XBOX_PERF_SMOKE) && !defined(XBOX_COMPILE_OUT_DEBUG_FORMATS)
     if (!jkCutscene_isRendering && !stdDisplay_xboxCreditsDebug) {
         /* Publish vertex bbox to HUD slots 5/6/7.  Format: "VX  min max". */
         if (g_bboxValid) {
@@ -956,7 +1009,7 @@ void std3D_Present(void)
     glDisable(GL_TEXTURE_2D);
 #endif
 
-#if !defined(XBOX_PERF_SMOKE) && !defined(XBOX_COMPILE_OUT_DEBUG_FORMATS)
+#if defined(XBOX_ENABLE_DEBUG_HUD) && !defined(XBOX_PERF_SMOKE) && !defined(XBOX_COMPILE_OUT_DEBUG_FORMATS)
     if (!jkCutscene_isRendering && !stdDisplay_xboxCreditsDebug) {
         /* Live counters into the HUD text. */
         std3D_DebugLineKV(19, "STARTS",  g_startCalls);

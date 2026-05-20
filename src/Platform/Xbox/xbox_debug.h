@@ -51,11 +51,15 @@ void std3D_DebugCounter(int idx, int val, int max);
 void *xbox_get_world_palette(void);
 
 /* Convenience macros */
-#if defined(XBOX_PERF_SMOKE) || defined(XBOX_COMPILE_OUT_DEBUG_FORMATS)
-/* Perf/release logging:
+#if defined(XBOX_VERBOSE_FORMAT_LOGS)
+#define XDBG(msg)        xbox_debug_Print(msg)
+#define XDBGF            xbox_debug_Printf
+#define XPERF            xbox_debug_PerfPrintf
+#elif defined(TARGET_XBOX) || defined(XBOX_PERF_SMOKE) || defined(XBOX_COMPILE_OUT_DEBUG_FORMATS)
+/* Xbox perf/release logging:
  * Compile formatted debug calls out before their arguments are evaluated.
- * Use XPERF for intentional smoke heartbeats. XDBG still passes through the
- * central filter for plain fatal strings.
+ * Use XPERF for intentional low-rate heartbeats. XDBG still passes through
+ * the central filter for plain fatal strings.
  */
 #define XDBG(msg)        xbox_debug_Print(msg)
 #define XDBGF            if (0) xbox_debug_Printf
