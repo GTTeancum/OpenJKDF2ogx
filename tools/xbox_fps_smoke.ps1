@@ -41,6 +41,7 @@ for ($i = 1; $i -le $Iterations; $i++) {
     New-Item -ItemType Directory -Force -Path $runDir | Out-Null
     $summary = Join-Path $runDir 'summary.txt'
     $gameLog = Join-Path $game 'debug_openjkdf2.txt'
+    $fmvSmoke = Join-Path $game 'xbox_smoke_fmv_seconds.txt'
     $cxbxDebugGame = Join-Path $game 'CxbxDebug.txt'
     $krnlDebugGame = Join-Path $game 'KrnlDebug.txt'
     $cxbxDebugEmu = Join-Path $cxbx 'CxbxDebug.txt'
@@ -51,6 +52,7 @@ for ($i = 1; $i -le $Iterations; $i++) {
 
     Copy-Item $xbeSource $xbeDest -Force
     Remove-Item $gameLog, $cxbxDebugGame, $krnlDebugGame, $cxbxDebugEmu, $krnlDebugEmu -Force -ErrorAction SilentlyContinue
+    Set-Content -Path $fmvSmoke -Value '5' -NoNewline
 
     $start = Get-Date
     $p = Start-Process -FilePath $loader -ArgumentList "/load `"$xbeDest`"" -WorkingDirectory $cxbx -PassThru -WindowStyle Hidden
@@ -64,6 +66,7 @@ for ($i = 1; $i -le $Iterations; $i++) {
     $aliveAtEnd = -not $p.HasExited
     Stop-IsolatedCxbxProcesses
     Start-Sleep -Seconds 1
+    Remove-Item $fmvSmoke -Force -ErrorAction SilentlyContinue
 
     Copy-IfExists $gameLog $runDir
     Copy-IfExists $cxbxDebugGame $runDir

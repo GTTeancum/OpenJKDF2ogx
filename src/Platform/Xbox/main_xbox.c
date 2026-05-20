@@ -13,6 +13,7 @@
 
 #include "platform_xbox.h"
 #include "xbox_debug.h"
+#include "../../engine_config.h"
 #include <xtl.h>
 
 /* Declared in Window_xbox.c */
@@ -31,6 +32,7 @@ int  stdControl_Startup(void);
 void jkMain_GuiAdvance(void);
 extern int jkSmack_stopTick;
 extern int jkSmack_nextGuiState;
+extern int jkSmack_currentGuiState;
 extern int jkPlayer_setDisableCutscenes;
 extern uint32_t g_app_suspended;
 extern void jkRes_LoadGob(char *a1);
@@ -132,7 +134,11 @@ void __cdecl main(void)
      *    Main_Startup takes a command-line string, same as the PC build.
      *    Pass empty string for default behaviour (no episode override).
      * -------------------------------------------------------------- */
+#ifdef XBOX_PERF_SMOKE
+    Main_Startup("-autostart -sp -episode JK1 -map 01narshadda.jkl");
+#else
     Main_Startup("");
+#endif
 
     /* Match the upstream startup flow: the title GUI state loads static.jkl
      * and items.dat after the intro FMV, before the main menu is shown. */
@@ -179,6 +185,20 @@ void __cdecl main(void)
         }
         */
         loopCount++;
+#ifdef XBOX_PERF_SMOKE
+        {
+            static DWORD s_perfLoopLastMs = 0;
+            DWORD nowMs = GetTickCount();
+            if (!s_perfLoopLastMs)
+                s_perfLoopLastMs = nowMs;
+            if (nowMs - s_perfLoopLastMs >= 5000)
+            {
+                XDBGF("Perf: mainLoop=%d elapsedMs=%lu suspended=%d gui=%d\n",
+                      loopCount, (unsigned long)nowMs, g_app_suspended, jkSmack_currentGuiState);
+                s_perfLoopLastMs = nowMs;
+            }
+        }
+#endif
         /* if (loopCount < 5) XDBG("main: -> StartScene\n"); */
         std3D_StartScene();
         /* if (loopCount < 5) XDBG("main: -> GuiAdvance\n"); */
