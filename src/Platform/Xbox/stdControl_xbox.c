@@ -67,6 +67,7 @@
 #define XBOX_NUM_AXES       8
 #define XBOX_NUM_KEYS       512
 #define XBOX_MAX_CONTROLLERS 4
+#define XBOX_CONTROLLER_OPEN_RETRY_MS 10000
 
 typedef struct XboxControllerState
 {
@@ -260,7 +261,7 @@ static void stdControl_ReadController(int port)
     if (g_hController == NULL && tick >= g_nextOpenAttemptMs)
     {
         DWORD mask = XGetDevices(XDEVICE_TYPE_GAMEPAD);
-        g_nextOpenAttemptMs = tick + 1000;
+        g_nextOpenAttemptMs = tick + XBOX_CONTROLLER_OPEN_RETRY_MS;
         XDBGF("stdControl: XInputOpen try port=%d mask=0x%08X\n", port, (unsigned int)mask);
         if (mask & (1u << port))
         {
@@ -283,7 +284,7 @@ static void stdControl_ReadController(int port)
         if (g_connected) { g_connected = 0; XDBG("stdControl: disconnected\n"); }
         XInputClose(g_hController);
         g_hController = NULL;
-        g_nextOpenAttemptMs = tick + 1000;
+        g_nextOpenAttemptMs = tick + XBOX_CONTROLLER_OPEN_RETRY_MS;
         return;
     }
     if (!g_connected) { g_connected = 1; XDBG("stdControl: connected\n"); }
@@ -580,7 +581,7 @@ int stdControl_XboxMovieSkipRequested(int *outPort, const char **outReason)
         if (!padState->hController && (mask & (1u << port)) &&
             tick >= padState->nextOpenAttemptMs)
         {
-            padState->nextOpenAttemptMs = tick + 1000;
+            padState->nextOpenAttemptMs = tick + XBOX_CONTROLLER_OPEN_RETRY_MS;
             padState->hController = XInputOpen(XDEVICE_TYPE_GAMEPAD,
                                                XDEVICE_PORT0 + port,
                                                XDEVICE_NO_SLOT, NULL);
@@ -603,7 +604,7 @@ int stdControl_XboxMovieSkipRequested(int *outPort, const char **outReason)
                 XInputClose(padState->hController);
                 padState->hController = NULL;
                 padState->connected = 0;
-                padState->nextOpenAttemptMs = tick + 1000;
+                padState->nextOpenAttemptMs = tick + XBOX_CONTROLLER_OPEN_RETRY_MS;
                 XDBGF("stdControl: movie poll lost port=%d\n", port);
                 continue;
             }

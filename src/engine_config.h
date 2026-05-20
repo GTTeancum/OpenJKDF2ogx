@@ -4,6 +4,16 @@
 #include <float.h>
 #include "types_enums.h"
 
+/* XBOX PERF SMOKE:
+ * Dangerous-by-design test switch for autonomous CXBX-R performance runs.
+ * This suppresses most Xbox debug spam at the logging layer and emits only
+ * lightweight Perf:/failure lines. Disable if chasing a crash that needs the
+ * old kitchen-sink diagnostics.
+ */
+#ifdef TARGET_XBOX
+#define XBOX_PERF_SMOKE 1
+#endif
+
 // If I ever do demo recording, add it here
 #define NEEDS_STEPPED_PHYS (!jkPlayer_bJankyPhysics || sithNet_isMulti)
 

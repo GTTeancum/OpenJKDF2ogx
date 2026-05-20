@@ -22,6 +22,7 @@
 #include "Engine/sithCamera.h"
 #include "General/stdString.h"
 
+#include "engine_config.h"
 #include "stdPlatform.h"
 #include "jk.h"
 
@@ -430,6 +431,43 @@ int jkGame_Update()
     */
 
     jkGame_Update_End = stdPlatform_GetTimeMsec();
+
+#if defined(TARGET_XBOX) && defined(XBOX_PERF_SMOKE)
+    {
+        static int s_perfFrameTotal = 0;
+        static int s_perfFrameLast = 0;
+        static int s_perfMsStart = 0;
+        static int s_perfMsLast = 0;
+        int spanMs;
+        int spanFrames;
+        int fps100;
+
+        if (!s_perfMsStart)
+        {
+            s_perfMsStart = jkGame_Update_End;
+            s_perfMsLast = jkGame_Update_End;
+        }
+
+        s_perfFrameTotal++;
+        spanMs = jkGame_Update_End - s_perfMsLast;
+        if (spanMs >= 5000)
+        {
+            spanFrames = s_perfFrameTotal - s_perfFrameLast;
+            fps100 = spanMs > 0 ? (spanFrames * 100000) / spanMs : 0;
+            XDBGF("Perf: frame=%d spanFrames=%d spanMs=%d fps=%d.%02d totalMs=%d sectors=%d faces=%d geoThings=%d nonGeoThings=%d result=%d\n",
+                  s_perfFrameTotal, spanFrames, spanMs,
+                  fps100 / 100, fps100 % 100,
+                  jkGame_Update_End - s_perfMsStart,
+                  sithRender_sectorsDrawn,
+                  rdCache_drawnFaces,
+                  sithRender_geoThingsDrawn,
+                  sithRender_nongeoThingsDrawn,
+                  result);
+            s_perfFrameLast = s_perfFrameTotal;
+            s_perfMsLast = jkGame_Update_End;
+        }
+    }
+#endif
 
 #if defined(TARGET_TWL)
     int jkGame_Delta_Start_ClearScreen = jkGame_Update_ClearScreen - jkGame_Update_Start;
