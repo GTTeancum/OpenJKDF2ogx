@@ -6,7 +6,8 @@ param(
     [string]$BuildDir = "C:\Programming\GitHub\OpenJKDF2ogx\build\xbox\release",
     [string]$OutRoot = "C:\Programming\GitHub\OpenJKDF2ogx\build\xbox\smoke_runs",
     [int]$FmvLimitSeconds = 0,
-    [string]$AutoStartLevel = ""
+    [string]$AutoStartLevel = "",
+    [switch]$DisableMusic
 )
 
 $ErrorActionPreference = "Stop"
@@ -25,6 +26,7 @@ $summaryPath = Join-Path $runDir "summary.txt"
 $copiedGameLog = Join-Path $runDir "debug_openjkdf2.txt"
 $fmvLimitPath = Join-Path $AppDir "xbox_smoke_fmv_seconds.txt"
 $autoStartPath = Join-Path $AppDir "xbox_smoke_autostart_level.txt"
+$disableMusicPath = Join-Path $AppDir "xbox_smoke_disable_music.txt"
 
 function Get-CxbxProcesses {
     Get-CimInstance Win32_Process |
@@ -114,11 +116,15 @@ Remove-Item -LiteralPath $gameLog -Force -ErrorAction SilentlyContinue
 Remove-Item -LiteralPath $fallbackGameLog -Force -ErrorAction SilentlyContinue
 Remove-Item -LiteralPath $fmvLimitPath -Force -ErrorAction SilentlyContinue
 Remove-Item -LiteralPath $autoStartPath -Force -ErrorAction SilentlyContinue
+Remove-Item -LiteralPath $disableMusicPath -Force -ErrorAction SilentlyContinue
 if ($FmvLimitSeconds -gt 0) {
     Set-Content -LiteralPath $fmvLimitPath -Value ([string]$FmvLimitSeconds) -Encoding ASCII
 }
 if ($AutoStartLevel.Length -gt 0) {
     Set-Content -LiteralPath $autoStartPath -Value $AutoStartLevel -Encoding ASCII
+}
+if ($DisableMusic) {
+    Set-Content -LiteralPath $disableMusicPath -Value "1" -Encoding ASCII
 }
 
 $start = Get-Date
@@ -158,6 +164,7 @@ Stop-CxbxProcesses
 Start-Sleep -Seconds 1
 Remove-Item -LiteralPath $fmvLimitPath -Force -ErrorAction SilentlyContinue
 Remove-Item -LiteralPath $autoStartPath -Force -ErrorAction SilentlyContinue
+Remove-Item -LiteralPath $disableMusicPath -Force -ErrorAction SilentlyContinue
 
 $activeLogAfter = if (Test-Path -LiteralPath $gameLog) { $gameLog } elseif (Test-Path -LiteralPath $fallbackGameLog) { $fallbackGameLog } else { $null }
 if ($activeLogAfter) {
@@ -203,6 +210,7 @@ $summary.Add("durationSeconds=$duration")
 $summary.Add("watchdogSeconds=$WatchdogSeconds")
 $summary.Add("fmvLimitSeconds=$FmvLimitSeconds")
 $summary.Add("autoStartLevel=$AutoStartLevel")
+$summary.Add("disableMusic=$([bool]$DisableMusic)")
 $summary.Add("loader=$loader")
 $summary.Add("xbeSource=$xbeSrc")
 $summary.Add("xbeDest=$xbeDst")

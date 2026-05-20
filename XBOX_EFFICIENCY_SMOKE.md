@@ -121,3 +121,29 @@ Risk tags:
   `static,fmv,autostart,level-load,gameplay-show-done,first-tick,xbox-frame`;
   stayed alive for the 300-second watchdog with no fatal patterns. Texture
   diagnostic lines dropped from 272 to 36 on the comparable smoke path.
+
+### 007 - Smoke Music Pressure A/B
+
+- Change: add an optional smoke-only marker file,
+  `D:\xbox_smoke_disable_music.txt`, that makes the Xbox MCI backend skip level
+  music. The smoke harness can create it with `-DisableMusic`. Normal hardware
+  runs without the marker are unchanged.
+- Change: throttle the Xbox COG symbol-compaction memory trace to the first 16
+  scripts and then every 64th script.
+- Risk: `RISK:LOW` for normal runtime behavior; the music toggle only applies
+  when the smoke marker exists.
+- Reason: the Xbox music backend keeps the whole OGG in RAM for stb_vorbis while
+  also owning a DirectSound stream buffer. This A/B run measures whether that
+  path materially changes post-load memory headroom.
+- Build: `cmd /c build_xbox.bat` succeeded.
+- Smoke run:
+  `build\xbox\smoke_runs\20260519_204856-normal-fmv5-autostart-01narshadda-disable-music`
+- Outcome: reached
+  `static,fmv,autostart,level-load,gameplay-show-done,first-tick,xbox-frame`;
+  stayed alive for the 300-second watchdog with no fatal patterns. Compared to
+  the prior music-enabled run, COG compaction traces dropped from 105 to 17 and
+  the tail `stdSound_XboxCreateBuffer` memory sample improved from about
+  `90.6 MB` free physical memory to about `96.2 MB`, matching the skipped
+  `Track12.ogg`/`Track13.ogg` full-file load pressure. CXBX-R still survives
+  both paths, so this is not a repro by itself, but it keeps music buffering high
+  on the hardware suspect list.

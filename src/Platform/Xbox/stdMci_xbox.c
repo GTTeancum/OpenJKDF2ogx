@@ -51,6 +51,18 @@ static int stdMci_nextChunk = 0;
 static int stdMci_musicPlaying = 0;
 static flex_t stdMci_volume = 1.0f;
 
+#ifdef TARGET_XBOX
+static int stdMci_SmokeMusicDisabled(void)
+{
+    HANDLE h = CreateFileA("D:\\xbox_smoke_disable_music.txt", GENERIC_READ, FILE_SHARE_READ,
+                           NULL, OPEN_EXISTING, FILE_ATTRIBUTE_NORMAL, NULL);
+    if (h == INVALID_HANDLE_VALUE)
+        return 0;
+    CloseHandle(h);
+    return 1;
+}
+#endif
+
 static LONG stdMci_VolToDS(flex_t v)
 {
     if (v <= 0.0f) return -10000;
@@ -373,6 +385,14 @@ int stdMci_Play(uint8_t trackFrom, uint8_t trackTo)
     stdMci_trackFrom = trackFrom;
     stdMci_trackTo = trackTo < trackFrom ? trackFrom : trackTo;
     stdMci_trackCurrent = trackFrom;
+
+#ifdef TARGET_XBOX
+    if (stdMci_SmokeMusicDisabled())
+    {
+        XDBGF("stdMci: smoke disabled music track %d to %d\n", trackFrom, stdMci_trackTo);
+        return 0;
+    }
+#endif
 
     XDBGF("stdMci: play track %d to %d\n", trackFrom, stdMci_trackTo);
 

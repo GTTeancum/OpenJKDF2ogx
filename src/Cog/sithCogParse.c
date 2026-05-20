@@ -167,15 +167,21 @@ int sithCogParse_Load(char *cog_fpath, sithCogScript *cogscript, int unk)
             unsigned int beforeCount = cogscript->pSymbolTable->entry_cnt;
             sithCogParse_ReallocSymboltable(cogscript->pSymbolTable);
             {
+                static int s_xboxCogCompactDbg = 0;
                 MEMORYSTATUS memStatus;
                 memStatus.dwLength = sizeof(memStatus);
                 GlobalMemoryStatus(&memStatus);
-                XDBGF("sithCogParse_Load: compact symbols used=%u max=%u->%u phys=%lu page=%lu\n",
-                      beforeCount,
-                      beforeMax,
-                      cogscript->pSymbolTable ? cogscript->pSymbolTable->max_entries : 0,
-                      memStatus.dwAvailPhys,
-                      memStatus.dwAvailPageFile);
+                if (s_xboxCogCompactDbg < 16 || (s_xboxCogCompactDbg % 64) == 0)
+                {
+                    XDBGF("sithCogParse_Load: compact symbols n=%d used=%u max=%u->%u phys=%lu page=%lu\n",
+                          s_xboxCogCompactDbg,
+                          beforeCount,
+                          beforeMax,
+                          cogscript->pSymbolTable ? cogscript->pSymbolTable->max_entries : 0,
+                          memStatus.dwAvailPhys,
+                          memStatus.dwAvailPageFile);
+                }
+                s_xboxCogCompactDbg++;
             }
         }
 #endif
