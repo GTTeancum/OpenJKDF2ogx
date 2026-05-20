@@ -1757,12 +1757,109 @@ typedef struct rdRect_local {
 } rdRect_local;
 
 /* Round v up to next power of two (v <= 1 → 1; v=59 → 64; v=129 → 256). */
+#define XBOX_UI_TRACK_MAX 256
+#define XBOX_LARGE_UI_MIN_PIXELS (256u * 256u)
+
+typedef struct xbox_ui_texture_ref {
+    stdBitmap_local *bm;
+    int mipIdx;
+    unsigned int id;
+    unsigned int padW;
+    unsigned int padH;
+} xbox_ui_texture_ref;
+
+static xbox_ui_texture_ref g_xboxUiTextureRefs[XBOX_UI_TRACK_MAX];
+
 static unsigned int xbox_next_pow2(unsigned int v)
 {
     unsigned int r = 1;
     if (v == 0) return 1;
     while (r < v) r <<= 1;
     return r;
+}
+
+static void std3D_XboxTrackUIBitmapTexture(stdBitmap_local *bm, int mipIdx,
+                                           unsigned int id,
+                                           unsigned int padW,
+                                           unsigned int padH)
+{
+    unsigned int i;
+    unsigned int empty = XBOX_UI_TRACK_MAX;
+
+    for (i = 0; i < XBOX_UI_TRACK_MAX; ++i) {
+        if (g_xboxUiTextureRefs[i].bm == bm &&
+            g_xboxUiTextureRefs[i].mipIdx == mipIdx) {
+            g_xboxUiTextureRefs[i].id = id;
+            g_xboxUiTextureRefs[i].padW = padW;
+            g_xboxUiTextureRefs[i].padH = padH;
+            return;
+        }
+        if (!g_xboxUiTextureRefs[i].bm && empty == XBOX_UI_TRACK_MAX)
+            empty = i;
+    }
+
+    if (empty < XBOX_UI_TRACK_MAX) {
+        g_xboxUiTextureRefs[empty].bm = bm;
+        g_xboxUiTextureRefs[empty].mipIdx = mipIdx;
+        g_xboxUiTextureRefs[empty].id = id;
+        g_xboxUiTextureRefs[empty].padW = padW;
+        g_xboxUiTextureRefs[empty].padH = padH;
+    }
+}
+
+static void std3D_XboxUntrackUIBitmap(stdBitmap_local *bm)
+{
+    unsigned int i;
+
+    for (i = 0; i < XBOX_UI_TRACK_MAX; ++i) {
+        if (g_xboxUiTextureRefs[i].bm == bm)
+            memset(&g_xboxUiTextureRefs[i], 0, sizeof(g_xboxUiTextureRefs[i]));
+    }
+}
+
+static unsigned int std3D_XboxReleaseLargeUIBitmapTextures(const char *reason)
+{
+    unsigned int released = 0;
+    unsigned int scanned = 0;
+    unsigned int i;
+
+    for (i = 0; i < XBOX_UI_TRACK_MAX; ++i) {
+        xbox_ui_texture_ref *ref = &g_xboxUiTextureRefs[i];
+        stdBitmap_local *bm = ref->bm;
+        unsigned int pixels;
+        unsigned int id;
+
+        if (!bm || !ref->id)
+            continue;
+
+        scanned++;
+        pixels = ref->padW * ref->padH;
+        if (pixels < XBOX_LARGE_UI_MIN_PIXELS)
+            continue;
+
+        id = ref->id;
+        if (g_pfnDeleteTextures)
+            g_pfnDeleteTextures(1, &id);
+
+        if (bm->aTextureIds && ref->mipIdx >= 0 && ref->mipIdx < bm->numMips)
+            bm->aTextureIds[ref->mipIdx] = 0;
+        if (bm->abLoadedToGPU && ref->mipIdx >= 0 && ref->mipIdx < bm->numMips)
+            bm->abLoadedToGPU[ref->mipIdx] = 0;
+
+        memset(ref, 0, sizeof(*ref));
+        released++;
+    }
+
+    if (released) {
+        MEMORYSTATUS mem;
+        GlobalMemoryStatus(&mem);
+        XDBGF("CutsceneTrace: released large UI bitmap textures count=%u scanned=%u minPixels=%u reason=%s phys=%lu page=%lu\n",
+              released, scanned, XBOX_LARGE_UI_MIN_PIXELS,
+              reason ? reason : "(null)",
+              (unsigned long)mem.dwAvailPhys, (unsigned long)mem.dwAvailPageFile);
+    }
+
+    return released;
 }
 
 static int xbox_upload_bitmap_mip(stdBitmap_local *bm, int mipIdx, int is_alpha_tex)
@@ -1969,6 +2066,7 @@ static int xbox_upload_bitmap_mip(stdBitmap_local *bm, int mipIdx, int is_alpha_
 
     bm->aTextureIds[mipIdx]   = id;
     bm->abLoadedToGPU[mipIdx] = 1;
+    std3D_XboxTrackUIBitmapTexture(bm, mipIdx, id, padW, padH);
 
     { static int _n = 0;
       if (_n < 16) {
@@ -2011,6 +2109,8 @@ void std3D_PurgeBitmapRefs(void *pBmp)
 
     if (count && g_pfnDeleteTextures)
         g_pfnDeleteTextures((GLsizei)count, ids);
+
+    std3D_XboxUntrackUIBitmap(bm);
 
 #ifdef TARGET_XBOX
     if (count) {
@@ -2130,8 +2230,10 @@ extern "C"
 void std3D_XboxReleaseMenuTextures(void)
 {
     unsigned int texId = menuTexId;
+    unsigned int largeUiCount;
 
     std3D_XboxReleaseCutsceneTextures();
+    largeUiCount = std3D_XboxReleaseLargeUIBitmapTextures("menu-release");
 
     if (texId && g_pfnDeleteTextures)
         g_pfnDeleteTextures(1, &texId);
@@ -2141,8 +2243,8 @@ void std3D_XboxReleaseMenuTextures(void)
     menuTexPadH = 0;
     FakeGL_ReleaseMovieTexture();
 
-    XDBGF("CutsceneTrace: released menu texture tex=%u deleteProc=%p\n",
-          texId, (void*)g_pfnDeleteTextures);
+    XDBGF("CutsceneTrace: released menu texture tex=%u largeUi=%u deleteProc=%p\n",
+          texId, largeUiCount, (void*)g_pfnDeleteTextures);
 }
 
 static void std3D_DrawMenuVBuffer8Tiled(stdVBuffer *vbuf, const rdColor24_local *pal)

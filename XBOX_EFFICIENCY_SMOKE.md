@@ -44,3 +44,17 @@ Risk tags:
 - Outcome: reached `static,fmv`; no fatal patterns. Active log path was
   `C:\Games\Emulators\CXBX\openJKDF2x\debug_openjkdf2.txt`, confirming `D:\`
   logging is working under CXBX-R.
+
+### 002 - Large UI Texture Release
+
+- Change: track Xbox UI bitmap texture uploads and release large padded UI
+  textures (`>= 256x256`) when `std3D_XboxReleaseMenuTextures()` runs.
+- Risk: `RISK:MEDIUM`
+- Reason: startup/title/menu screens upload as 1024x512 textures. They should
+  not remain resident when transitioning into level load, while smaller HUD
+  assets stay cached.
+- Build: `cmd /c build_xbox.bat` succeeded.
+- Smoke run: `build\xbox\smoke_runs\20260519_200756-large-ui-release-sanity`
+- Outcome: reached `fmv`; no fatal patterns. Log confirms
+  `released large UI bitmap textures count=12`, all from startup/title UI
+  uploads, before XMV playback starts.
