@@ -1,7 +1,7 @@
 param(
     [int]$WatchdogSeconds = 300,
     [string]$RunLabel = "normal-boot",
-    [string]$CxbxRoot = "C:\Games\Emulators\CXBX",
+    [string]$CxbxRoot = "C:\Programming\GitHub\OpenJKDF2ogx\CXBXR",
     [string]$AppDir = "C:\Games\Emulators\CXBX\openJKDF2x",
     [string]$BuildDir = "C:\Programming\GitHub\OpenJKDF2ogx\build\xbox\release",
     [string]$OutRoot = "C:\Programming\GitHub\OpenJKDF2ogx\build\xbox\smoke_runs",
@@ -14,8 +14,10 @@ $ErrorActionPreference = "Stop"
 
 $xbeSrc = Join-Path $BuildDir "default.xbe"
 $xbeDst = Join-Path $AppDir "default.xbe"
-$loader = Join-Path $CxbxRoot "cxbxr-ldr.exe"
+$loader = Join-Path $CxbxRoot "cxbxr-ldr-project1.exe"
 $gameLog = Join-Path $AppDir "debug_openjkdf2.txt"
+$cxbxDebugLog = Join-Path $AppDir "CxbxDebug.txt"
+$krnlDebugLog = Join-Path $AppDir "KrnlDebug.txt"
 $fallbackGameLog = Join-Path $CxbxRoot "EmuDisk\Partition1\debug_openjkdf2.txt"
 $timestamp = Get-Date -Format "yyyyMMdd_HHmmss"
 $safeLabel = ($RunLabel -replace '[^A-Za-z0-9_.-]', '_')
@@ -24,15 +26,24 @@ $stdoutPath = Join-Path $runDir "cxbxr-stdout.txt"
 $stderrPath = Join-Path $runDir "cxbxr-stderr.txt"
 $summaryPath = Join-Path $runDir "summary.txt"
 $copiedGameLog = Join-Path $runDir "debug_openjkdf2.txt"
+$copiedCxbxDebugLog = Join-Path $runDir "CxbxDebug.txt"
+$copiedKrnlDebugLog = Join-Path $runDir "KrnlDebug.txt"
 $fmvLimitPath = Join-Path $AppDir "xbox_smoke_fmv_seconds.txt"
 $autoStartPath = Join-Path $AppDir "xbox_smoke_autostart_level.txt"
 $disableMusicPath = Join-Path $AppDir "xbox_smoke_disable_music.txt"
 
 function Get-CxbxProcesses {
+    $root = try { (Resolve-Path -LiteralPath $CxbxRoot -ErrorAction Stop).Path } catch { $CxbxRoot }
+    $allowedNames = @(
+        "cxbx-project1.exe",
+        "cxbxr-ldr-project1.exe"
+    )
+
     Get-CimInstance Win32_Process |
         Where-Object {
-            $_.Name -match '^(cxbx|cxbxr)' -or
-            ($_.ExecutablePath -and $_.ExecutablePath -match '\\CXBX\\.*(cxbx|cxbxr)')
+            $allowedNames -contains $_.Name -and
+            $_.ExecutablePath -and
+            $_.ExecutablePath.StartsWith($root, [System.StringComparison]::OrdinalIgnoreCase)
         }
 }
 
@@ -113,6 +124,8 @@ Start-Sleep -Seconds 2
 
 Copy-Item -LiteralPath $xbeSrc -Destination $xbeDst -Force
 Remove-Item -LiteralPath $gameLog -Force -ErrorAction SilentlyContinue
+Remove-Item -LiteralPath $cxbxDebugLog -Force -ErrorAction SilentlyContinue
+Remove-Item -LiteralPath $krnlDebugLog -Force -ErrorAction SilentlyContinue
 Remove-Item -LiteralPath $fallbackGameLog -Force -ErrorAction SilentlyContinue
 Remove-Item -LiteralPath $fmvLimitPath -Force -ErrorAction SilentlyContinue
 Remove-Item -LiteralPath $autoStartPath -Force -ErrorAction SilentlyContinue
@@ -170,6 +183,12 @@ $activeLogAfter = if (Test-Path -LiteralPath $gameLog) { $gameLog } elseif (Test
 if ($activeLogAfter) {
     Copy-Item -LiteralPath $activeLogAfter -Destination $copiedGameLog -Force
 }
+if (Test-Path -LiteralPath $cxbxDebugLog) {
+    Copy-Item -LiteralPath $cxbxDebugLog -Destination $copiedCxbxDebugLog -Force
+}
+if (Test-Path -LiteralPath $krnlDebugLog) {
+    Copy-Item -LiteralPath $krnlDebugLog -Destination $copiedKrnlDebugLog -Force
+}
 
 $heartbeatPatterns = @(
     "HEARTBEAT",
@@ -198,6 +217,13 @@ $fatalPatterns = @(
 $parsePath = if (Test-Path -LiteralPath $copiedGameLog) { $copiedGameLog } else { $gameLog }
 $heartbeatCount = Count-Matches $parsePath $heartbeatPatterns
 $fatalCount = Count-Matches $parsePath $fatalPatterns
+$emulatorFatalCount = 0
+if (Test-Path -LiteralPath $copiedCxbxDebugLog) {
+    $emulatorFatalCount += Count-Matches $copiedCxbxDebugLog $fatalPatterns
+}
+if (Test-Path -LiteralPath $copiedKrnlDebugLog) {
+    $emulatorFatalCount += Count-Matches $copiedKrnlDebugLog $fatalPatterns
+}
 $reached = Get-ReachedStates $parsePath
 $duration = [int]($end - $start).TotalSeconds
 $exitCode = if ($proc.HasExited) { $proc.ExitCode } else { "still-running" }
@@ -212,18 +238,24 @@ $summary.Add("fmvLimitSeconds=$FmvLimitSeconds")
 $summary.Add("autoStartLevel=$AutoStartLevel")
 $summary.Add("disableMusic=$([bool]$DisableMusic)")
 $summary.Add("loader=$loader")
+$summary.Add("managedProcessNames=cxbx-project1.exe,cxbxr-ldr-project1.exe")
 $summary.Add("xbeSource=$xbeSrc")
 $summary.Add("xbeDest=$xbeDst")
 $summary.Add("loaderExitCode=$exitCode")
 $summary.Add("aliveAtEnd=$aliveAtEnd")
 $summary.Add("gameLog=$gameLog")
+$summary.Add("cxbxDebugLog=$cxbxDebugLog")
+$summary.Add("krnlDebugLog=$krnlDebugLog")
 $summary.Add("fallbackGameLog=$fallbackGameLog")
 $summary.Add("activeGameLog=$activeLogAfter")
 $summary.Add("gameLogCopied=$([bool](Test-Path -LiteralPath $copiedGameLog))")
+$summary.Add("cxbxDebugLogCopied=$([bool](Test-Path -LiteralPath $copiedCxbxDebugLog))")
+$summary.Add("krnlDebugLogCopied=$([bool](Test-Path -LiteralPath $copiedKrnlDebugLog))")
 $summary.Add("lastLogLength=$lastLogLength")
 $summary.Add("lastLogWrite=$lastLogWrite")
 $summary.Add("heartbeatCount=$heartbeatCount")
 $summary.Add("fatalCount=$fatalCount")
+$summary.Add("emulatorFatalCount=$emulatorFatalCount")
 $summary.Add("reached=$reached")
 $summary.Add("")
 $summary.Add("lastUsefulLogLines:")
@@ -246,13 +278,21 @@ else {
     $summary.Add("logMissing=True")
 }
 
+foreach ($emuLog in @($copiedCxbxDebugLog, $copiedKrnlDebugLog)) {
+    if (Test-Path -LiteralPath $emuLog) {
+        $summary.Add("")
+        $summary.Add("lastEmulatorLogLines:$([System.IO.Path]::GetFileName($emuLog))")
+        Get-Content -LiteralPath $emuLog -Tail 80 | ForEach-Object { $summary.Add($_) }
+    }
+}
+
 $summary | Set-Content -LiteralPath $summaryPath -Encoding ASCII
 $summary | ForEach-Object { Write-Output $_ }
 
 if (!(Test-Path -LiteralPath $parsePath)) {
     exit 2
 }
-if ($fatalCount -gt 0) {
+if ($fatalCount -gt 0 -or $emulatorFatalCount -gt 0) {
     exit 1
 }
 exit 0

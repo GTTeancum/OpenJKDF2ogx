@@ -197,3 +197,24 @@ Risk tags:
   `stdMci: read candidate` or `stdMci: read loaded` lines. Tail DirectSound
   allocation samples held around `98.0 MB` free physical memory, removing the
   previous multi-megabyte OGG load/drop pattern.
+
+### 010 - Dedicated CXBX-R Instance
+
+- Change: point the smoke harness at the repo-local CXBX-R instance,
+  `C:\Programming\GitHub\OpenJKDF2ogx\CXBXR\cxbxr-ldr-project1.exe`, by
+  default.
+- Change: constrain emulator process management to exact process names
+  `cxbx-project1.exe` and `cxbxr-ldr-project1.exe`, and only when the executable
+  path is under the repo-local `CXBXR` directory.
+- Change: delete and copy `CxbxDebug.txt` and `KrnlDebug.txt` from the XBE
+  folder into each smoke artifact when present, include their tails in
+  `summary.txt`, and count fatal patterns from those logs separately as
+  `emulatorFatalCount`.
+- Risk: `RISK:LOW`
+- Reason: autonomous smoke can now run without clobbering other CXBX-R sessions,
+  while keeping emulator/kernel diagnostics with the game log.
+- Smoke run:
+  `build\xbox\smoke_runs\20260519_212348-local-project1-cxbxr-sanity`
+- Outcome: launched with the repo-local loader, reached `static,fmv`, and exited
+  with no fatal patterns. The dedicated debug files were not emitted on that
+  short run, but the harness reported their expected paths and copied state.
