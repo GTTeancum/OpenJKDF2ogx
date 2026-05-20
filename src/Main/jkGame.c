@@ -35,6 +35,15 @@
 extern unsigned int stdDisplay_xboxFlipCalls;
 extern unsigned int stdDisplay_xboxFlipSuppressed;
 extern unsigned int stdDisplay_xboxFlipMenuDraws;
+#ifdef __cplusplus
+extern "C" {
+#endif
+extern unsigned int std3D_xboxFrameDrawLists;
+extern unsigned int std3D_xboxFrameTris;
+extern unsigned int std3D_xboxFrameVerts;
+#ifdef __cplusplus
+}
+#endif
 #endif
 
 #if defined(TARGET_TWL)
@@ -466,7 +475,7 @@ int jkGame_Update()
             playerSector = (player && player->sector) ? player->sector->id : -1;
             spanFrames = s_perfFrameTotal - s_perfFrameLast;
             fps100 = spanMs > 0 ? (spanFrames * 100000) / spanMs : 0;
-            XPERF("Perf: frame=%d spanFrames=%d spanMs=%d fps=%d.%02d totalMs=%d ddraw=%d flips=%u flipSupp=%u flipMenu=%u map='%s' worldSectors=%d worldSurfaces=%d playerSector=%d drawnSectors=%d faces=%d geoThings=%d nonGeoThings=%d result=%d\n",
+            XPERF("Perf: frame=%d spanFrames=%d spanMs=%d fps=%d.%02d totalMs=%d ddraw=%d flips=%u flipSupp=%u flipMenu=%u drawLists=%u gpuTris=%u gpuVerts=%u map='%s' worldSectors=%d worldSurfaces=%d playerSector=%d drawnSectors=%d faces=%d geoThings=%d nonGeoThings=%d result=%d\n",
                   s_perfFrameTotal, spanFrames, spanMs,
                   fps100 / 100, fps100 % 100,
                   jkGame_Update_End - s_perfMsStart,
@@ -474,6 +483,9 @@ int jkGame_Update()
                   stdDisplay_xboxFlipCalls,
                   stdDisplay_xboxFlipSuppressed,
                   stdDisplay_xboxFlipMenuDraws,
+                  std3D_xboxFrameDrawLists,
+                  std3D_xboxFrameTris,
+                  std3D_xboxFrameVerts,
                   world ? world->map_jkl_fname : "(null)",
                   world ? world->numSectors : -1,
                   world ? world->numSurfaces : -1,

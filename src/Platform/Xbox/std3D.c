@@ -352,6 +352,10 @@ static int       GL_numTris      = 0;
 static rdLine    GL_tmpLines[1024];
 static int       GL_numLines     = 0;
 
+unsigned int std3D_xboxFrameDrawLists = 0;
+unsigned int std3D_xboxFrameTris = 0;
+unsigned int std3D_xboxFrameVerts = 0;
+
 /* ====================================================================== */
 /* std3D_Startup                                                          */
 /* ====================================================================== */
@@ -806,6 +810,9 @@ int std3D_StartScene(void)
         GL_verticesDone = 0;
         GL_numTris      = 0;
         GL_numLines     = 0;
+        std3D_xboxFrameDrawLists = 0;
+        std3D_xboxFrameTris = 0;
+        std3D_xboxFrameVerts = 0;
 
         /* Reset per-frame vertex-bbox accumulators on outer transition. */
         g_bboxXmin =  1e30f; g_bboxXmax = -1e30f;
@@ -1092,6 +1099,9 @@ void std3D_DrawRenderList(void)
         }
         return;
     }
+    std3D_xboxFrameDrawLists++;
+    std3D_xboxFrameTris += (unsigned int)GL_numTris;
+    std3D_xboxFrameVerts += (unsigned int)GL_numVertices;
     std3D_DebugLineKV(10, "DRAWN", GL_numTris);
 
     /* ---------------------------------------------------------------- */
