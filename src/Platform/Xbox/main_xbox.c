@@ -48,6 +48,39 @@ extern struct stdVBuffer* Video_pMenuBuffer;
 extern struct stdVBuffer* Video_pVbufIdk;
 extern struct stdVBuffer* Video_pOverlayMapBuffer;
 
+#ifdef XBOX_PERF_SMOKE
+static const char *xbox_read_smoke_autostart_args(char *buf, unsigned int bufSize)
+{
+    DWORD readBytes = 0;
+    HANDLE h;
+    unsigned int i;
+
+    if (!buf || bufSize < 2)
+        return "-autostart -sp -episode JK1 -map 01narshadda.jkl";
+
+    h = CreateFileA("D:\\xbox_smoke_autostart_args.txt", GENERIC_READ,
+                    FILE_SHARE_READ, NULL, OPEN_EXISTING, FILE_ATTRIBUTE_NORMAL, NULL);
+    if (h == INVALID_HANDLE_VALUE)
+        return "-autostart -sp -episode JK1 -map 01narshadda.jkl";
+
+    if (!ReadFile(h, buf, bufSize - 1, &readBytes, NULL))
+        readBytes = 0;
+    CloseHandle(h);
+    buf[readBytes] = 0;
+
+    for (i = 0; i < readBytes; i++)
+    {
+        if (buf[i] == '\r' || buf[i] == '\n')
+        {
+            buf[i] = 0;
+            break;
+        }
+    }
+
+    return buf[0] ? buf : "-autostart -sp -episode JK1 -map 01narshadda.jkl";
+}
+#endif
+
 /* =========================================================================
  * void main(void)  —  Xbox entry point (no argc/argv on Xbox)
  * ====================================================================== */
@@ -135,7 +168,10 @@ void __cdecl main(void)
      *    Pass empty string for default behaviour (no episode override).
      * -------------------------------------------------------------- */
 #ifdef XBOX_PERF_SMOKE
-    Main_Startup("-autostart -sp -episode JK1 -map 01narshadda.jkl");
+    {
+        char smokeArgs[160];
+        Main_Startup((char *)xbox_read_smoke_autostart_args(smokeArgs, sizeof(smokeArgs)));
+    }
 #else
     Main_Startup("");
 #endif

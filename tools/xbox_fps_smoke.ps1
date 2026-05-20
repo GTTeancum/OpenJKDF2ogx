@@ -1,6 +1,7 @@
 param(
     [int]$Iterations = 1,
-    [int]$WatchdogSeconds = 240
+    [int]$WatchdogSeconds = 240,
+    [string]$AutostartArgs = '-autostart -sp -episode JK1 -map 01narshadda.jkl'
 )
 
 $ErrorActionPreference = 'Continue'
@@ -70,6 +71,7 @@ for ($i = 1; $i -le $Iterations; $i++) {
     $summary = Join-Path $runDir 'summary.txt'
     $gameLog = Join-Path $game 'debug_openjkdf2.txt'
     $fmvSmoke = Join-Path $game 'xbox_smoke_fmv_seconds.txt'
+    $autostartFile = Join-Path $game 'xbox_smoke_autostart_args.txt'
     $cxbxDebugGame = Join-Path $game 'CxbxDebug.txt'
     $krnlDebugGame = Join-Path $game 'KrnlDebug.txt'
     $cxbxDebugEmu = Join-Path $cxbx 'CxbxDebug.txt'
@@ -81,6 +83,7 @@ for ($i = 1; $i -le $Iterations; $i++) {
     Copy-Item $xbeSource $xbeDest -Force
     Remove-Item $gameLog, $cxbxDebugGame, $krnlDebugGame, $cxbxDebugEmu, $krnlDebugEmu -Force -ErrorAction SilentlyContinue
     Set-Content -Path $fmvSmoke -Value '5' -NoNewline
+    Set-Content -Path $autostartFile -Value $AutostartArgs -NoNewline
 
     $start = Get-Date
     $p = Start-Process -FilePath $loader -ArgumentList "/load `"$xbeDest`"" -WorkingDirectory $cxbx -PassThru -WindowStyle Hidden
@@ -94,7 +97,7 @@ for ($i = 1; $i -le $Iterations; $i++) {
     $aliveAtEnd = -not $p.HasExited
     Stop-IsolatedCxbxProcesses
     Start-Sleep -Seconds 1
-    Remove-Item $fmvSmoke -Force -ErrorAction SilentlyContinue
+    Remove-Item $fmvSmoke, $autostartFile -Force -ErrorAction SilentlyContinue
 
     Copy-IfExists $gameLog $runDir
     Copy-IfExists $cxbxDebugGame $runDir
@@ -128,6 +131,7 @@ for ($i = 1; $i -le $Iterations; $i++) {
         "run=$i"
         "started=$start"
         "watchdogSeconds=$WatchdogSeconds"
+        "autostartArgs=$AutostartArgs"
         "aliveAtEnd=$aliveAtEnd"
         "heartbeatCount=$heartbeats"
         "gameFatalCount=$fatalCount"
