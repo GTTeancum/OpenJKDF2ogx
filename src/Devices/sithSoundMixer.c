@@ -309,7 +309,7 @@ sithPlayingSound* sithSoundMixer_cog_playsound_internal(sithSound *sound, flex_t
 
     ++v6->sound->field_40;
     stdSound_BufferSetVolume(v6->pSoundBuf, v6->vol_2 * 0.75);
-    if ( jkGuiSound_b3DSound )
+    if ( jkGuiSound_b3DSound && !(v6->flags & SITHSOUNDFLAG_NO_3D) )
     {
         v6->p3DSoundObj = stdSound_BufferQueryInterface(v6->pSoundBuf);
         if ( v6->p3DSoundObj )
@@ -1355,7 +1355,7 @@ int sithSoundMixer_sub_4DD5D0(sithPlayingSound *sound)
         flex_t a2 = sound->vol_2 * 0.75;
         ++sound->sound->field_40;
         stdSound_BufferSetVolume(sound->pSoundBuf, a2);
-        if ( jkGuiSound_b3DSound )
+        if ( jkGuiSound_b3DSound && !(sound->flags & SITHSOUNDFLAG_NO_3D) )
         {
             sound->p3DSoundObj = stdSound_BufferQueryInterface(sound->pSoundBuf);
             if ( sound->p3DSoundObj )
