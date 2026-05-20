@@ -134,6 +134,7 @@ build/xbox/smoke_runs/
 build/xbox/chm_extract/
 build/xbox/chm_text/
 build/xbox/test/
+CXBXR/
 build/fonts/
 build/sft_*/
 build/test_*.bat
