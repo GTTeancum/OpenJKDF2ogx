@@ -45,25 +45,9 @@ void xbox_debug_Startup(void)
     int i;
     long status;
 
-    /* Strategy 1: NtCreateFile to HDD partition roots (works on real hw + CXBX-R) */
-    {
-        static const char *ntPaths[] = {
-            "\\Device\\Harddisk0\\Partition1\\debug_openjkdf2.txt",
-            "\\Device\\Harddisk0\\Partition6\\debug_openjkdf2.txt",
-            "\\Device\\Harddisk0\\Partition7\\debug_openjkdf2.txt",
-            NULL
-        };
-        for (i = 0; ntPaths[i]; i++) {
-            status = xdbg_NtCreate(ntPaths[i], &g_hLogFile);
-            if (status >= 0) {
-                g_logIsNtHandle = 1;
-                xbox_debug_Print("=== OpenJKDF2 Xbox debug log ===\n");
-                return;
-            }
-        }
-    }
-
-    /* Strategy 2: CreateFileA with drive letters (dashboard-mapped) */
+    /* Prefer D:\, the mounted title directory. This matches retail Xbox
+     * source patterns such as Unreal Tournament's D:\System\ appBaseDir and
+     * makes CXBX-R logs land beside the loaded XBE. */
     {
         static const char *caPaths[] = {
             "D:\\debug_openjkdf2.txt",
@@ -77,6 +61,24 @@ void xbox_debug_Startup(void)
                 NULL, CREATE_ALWAYS, FILE_ATTRIBUTE_NORMAL | FILE_FLAG_WRITE_THROUGH, NULL);
             if (g_hLogFile != INVALID_HANDLE_VALUE) {
                 g_logIsNtHandle = 0;
+                xbox_debug_Print("=== OpenJKDF2 Xbox debug log ===\n");
+                return;
+            }
+        }
+    }
+
+    /* Fallback: NtCreateFile to HDD partition roots. */
+    {
+        static const char *ntPaths[] = {
+            "\\Device\\Harddisk0\\Partition1\\debug_openjkdf2.txt",
+            "\\Device\\Harddisk0\\Partition6\\debug_openjkdf2.txt",
+            "\\Device\\Harddisk0\\Partition7\\debug_openjkdf2.txt",
+            NULL
+        };
+        for (i = 0; ntPaths[i]; i++) {
+            status = xdbg_NtCreate(ntPaths[i], &g_hLogFile);
+            if (status >= 0) {
+                g_logIsNtHandle = 1;
                 xbox_debug_Print("=== OpenJKDF2 Xbox debug log ===\n");
                 return;
             }

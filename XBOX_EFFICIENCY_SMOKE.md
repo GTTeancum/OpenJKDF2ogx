@@ -31,3 +31,16 @@ Risk tags:
 - Outcome: reached `fmv`; no fatal patterns. The run exposed repeated
   `CutsceneTrace: TexImage create` lines for 1024x512 textures during playback,
   so the first efficiency target is FMV texture lifetime/reuse.
+
+### 001 - Title Directory Log
+
+- Change: prefer `D:\debug_openjkdf2.txt` for Xbox logging, matching the retail
+  title-directory convention visible in local Unreal Tournament Xbox source
+  (`appBaseDir()` returns `D:\System\`). The old Partition1 path remains as a
+  fallback.
+- Risk: `RISK:LOW`
+- Build: `cmd /c build_xbox.bat` succeeded.
+- Smoke run: `build\xbox\smoke_runs\20260519_200423-d-log-sanity`
+- Outcome: reached `static,fmv`; no fatal patterns. Active log path was
+  `C:\Games\Emulators\CXBX\openJKDF2x\debug_openjkdf2.txt`, confirming `D:\`
+  logging is working under CXBX-R.

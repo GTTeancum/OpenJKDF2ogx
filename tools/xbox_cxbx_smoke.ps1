@@ -12,7 +12,8 @@ $ErrorActionPreference = "Stop"
 $xbeSrc = Join-Path $BuildDir "default.xbe"
 $xbeDst = Join-Path $AppDir "default.xbe"
 $loader = Join-Path $CxbxRoot "cxbxr-ldr.exe"
-$gameLog = Join-Path $CxbxRoot "EmuDisk\Partition1\debug_openjkdf2.txt"
+$gameLog = Join-Path $AppDir "debug_openjkdf2.txt"
+$fallbackGameLog = Join-Path $CxbxRoot "EmuDisk\Partition1\debug_openjkdf2.txt"
 $timestamp = Get-Date -Format "yyyyMMdd_HHmmss"
 $safeLabel = ($RunLabel -replace '[^A-Za-z0-9_.-]', '_')
 $runDir = Join-Path $OutRoot "$timestamp-$safeLabel"
@@ -75,6 +76,7 @@ Start-Sleep -Seconds 2
 
 Copy-Item -LiteralPath $xbeSrc -Destination $xbeDst -Force
 Remove-Item -LiteralPath $gameLog -Force -ErrorAction SilentlyContinue
+Remove-Item -LiteralPath $fallbackGameLog -Force -ErrorAction SilentlyContinue
 
 $start = Get-Date
 $proc = Start-Process `
@@ -93,8 +95,9 @@ $lastLogWrite = $null
 while ((Get-Date) -lt $deadline) {
     Start-Sleep -Seconds 2
 
-    if (Test-Path -LiteralPath $gameLog) {
-        $item = Get-Item -LiteralPath $gameLog
+    $activeLog = if (Test-Path -LiteralPath $gameLog) { $gameLog } elseif (Test-Path -LiteralPath $fallbackGameLog) { $fallbackGameLog } else { $null }
+    if ($activeLog) {
+        $item = Get-Item -LiteralPath $activeLog
         $lastLogLength = $item.Length
         $lastLogWrite = $item.LastWriteTime
     }
@@ -111,8 +114,9 @@ $end = Get-Date
 Stop-CxbxProcesses
 Start-Sleep -Seconds 1
 
-if (Test-Path -LiteralPath $gameLog) {
-    Copy-Item -LiteralPath $gameLog -Destination $copiedGameLog -Force
+$activeLogAfter = if (Test-Path -LiteralPath $gameLog) { $gameLog } elseif (Test-Path -LiteralPath $fallbackGameLog) { $fallbackGameLog } else { $null }
+if ($activeLogAfter) {
+    Copy-Item -LiteralPath $activeLogAfter -Destination $copiedGameLog -Force
 }
 
 $heartbeatPatterns = @(
@@ -158,6 +162,8 @@ $summary.Add("xbeDest=$xbeDst")
 $summary.Add("loaderExitCode=$exitCode")
 $summary.Add("aliveAtEnd=$aliveAtEnd")
 $summary.Add("gameLog=$gameLog")
+$summary.Add("fallbackGameLog=$fallbackGameLog")
+$summary.Add("activeGameLog=$activeLogAfter")
 $summary.Add("gameLogCopied=$([bool](Test-Path -LiteralPath $copiedGameLog))")
 $summary.Add("lastLogLength=$lastLogLength")
 $summary.Add("lastLogWrite=$lastLogWrite")
