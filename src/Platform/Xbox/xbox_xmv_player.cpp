@@ -104,7 +104,7 @@ static int xboxXmv_FindForSmkPath(const char *smkPath, char *out, size_t outSize
 static DWORD WINAPI xboxXmv_PlayThread(void *arg)
 {
     XMVDecoder *decoder = (XMVDecoder *)arg;
-    HRESULT hr = decoder->Play(XMVFLAG_SYNC_ON_NEXT_VBLANK, NULL);
+    HRESULT hr = decoder->Play(XMVFLAG_NONE, NULL);
     XDBGF("XmvDbg: Play returned hr=0x%08X\n", hr);
     return FAILED(hr) ? 1 : 0;
 }
@@ -211,7 +211,8 @@ extern "C" int xboxXmv_PlayForSmkPath(const char *smkPath)
             XDBGF("XmvDbg: smoke auto-skip fired elapsedMs=%lu limitMs=%lu\n",
                   (DWORD)(GetTickCount() - playbackStartMs), smokeLimitMs);
             terminated = 1;
-            decoder->TerminateImmediately();
+            XDBG("XmvDbg: requesting TerminatePlayback for smoke auto-skip\n");
+            decoder->TerminatePlayback();
             goto wait_done;
         }
 
@@ -219,12 +220,14 @@ extern "C" int xboxXmv_PlayForSmkPath(const char *smkPath)
         {
             XDBGF("XmvDbg: skip requested port=%d reason=%s\n", skipPort, skipReason);
             terminated = 1;
-            decoder->TerminateImmediately();
+            XDBG("XmvDbg: requesting TerminatePlayback for user skip\n");
+            decoder->TerminatePlayback();
             goto wait_done;
         }
     }
 
 wait_done:
+    XDBG("XmvDbg: waiting for playback thread\n");
     WaitForSingleObject(thread, INFINITE);
     {
         DWORD threadExit = 0xFFFFFFFF;
