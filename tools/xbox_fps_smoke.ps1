@@ -2,7 +2,8 @@ param(
     [int]$Iterations = 1,
     [int]$WatchdogSeconds = 240,
     [string]$AutostartArgs = '-autostart -sp -episode JK1 -map 01narshadda.jkl',
-    [switch]$BuildSmokeXbe
+    [switch]$BuildSmokeXbe,
+    [switch]$SkipBuildSmokeXbe
 )
 
 $ErrorActionPreference = 'Continue'
@@ -18,7 +19,7 @@ $outRoot = Join-Path $repo "build\xbox\smoke_logs\fps_smoke_$stamp"
 
 New-Item -ItemType Directory -Force -Path $outRoot | Out-Null
 
-if ($BuildSmokeXbe) {
+if ($BuildSmokeXbe -or -not $SkipBuildSmokeXbe) {
     $buildLog = Join-Path $outRoot 'build_xbox_perf_smoke.log'
     $oldSmoke = $env:XBOX_PERF_SMOKE
     try {
