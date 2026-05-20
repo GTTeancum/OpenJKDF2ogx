@@ -14,6 +14,9 @@
 #include "Dss/sithDSSThing.h"
 #include "General/stdMath.h"
 #include "jk.h"
+#ifdef TARGET_XBOX
+#include "Platform/Xbox/xbox_debug.h"
+#endif
 
 int sithSoundMixer_Startup()
 {
@@ -835,23 +838,75 @@ void sithSoundMixer_TickSectorSound()
 void sithSoundMixer_Tick(flex_t deltaSecs)
 {
     rdVector3 tmp;
+#ifdef TARGET_XBOX
+    static int s_xboxMixDbgTicks = 0;
+    int xboxMixDbgLog = s_xboxMixDbgTicks < 8;
+    uint32_t xboxMixDbgActive = 0;
+    uint32_t xboxMixDbgLoggedSounds = 0;
+    if (xboxMixDbgLog)
+    {
+        uint32_t i;
+        for (i = 0; i < sithSoundMixer_numSoundsAvailable; i++)
+        {
+            if (sithSoundMixer_aPlayingSounds[i].sound)
+                xboxMixDbgActive++;
+        }
+        XDBGF("MixDbg: tick enter #%d dt=%.6f mci=%d cam=%p world=%p curSector=%p soundsAvail=%u active=%u\n",
+              s_xboxMixDbgTicks, deltaSecs, sithSoundMixer_bPlayingMci,
+              sithCamera_currentCamera, sithWorld_pCurrentWorld,
+              sithSoundMixer_pLastSectorSoundSector, sithSoundMixer_numSoundsAvailable, xboxMixDbgActive);
+    }
+    s_xboxMixDbgTicks++;
+#endif
 
 #ifdef STDSOUND_OPENAL
     jkGuiSound_numChannels = SITH_MIXER_NUMPLAYINGSOUNDS;
 #endif
 
     if (sithSoundMixer_bPlayingMci)
+    {
+#ifdef TARGET_XBOX
+        if (xboxMixDbgLog)
+            XDBG("MixDbg: before stdMci_CheckStatus\n");
+#endif
         stdMci_CheckStatus();
+#ifdef TARGET_XBOX
+        if (xboxMixDbgLog)
+            XDBG("MixDbg: after stdMci_CheckStatus\n");
+#endif
+    }
 
     if ( !sithCamera_currentCamera )
+    {
+#ifdef TARGET_XBOX
+        if (xboxMixDbgLog)
+            XDBG("MixDbg: no current camera, return\n");
+#endif
         return;
+    }
     if ( (sithCamera_currentCamera->cameraPerspective & 0xFC) != 0 )
         sithSoundMixer_pFocusedThing = 0;
     else
         sithSoundMixer_pFocusedThing = sithWorld_pCurrentWorld->cameraFocus;
 
+#ifdef TARGET_XBOX
+    if (xboxMixDbgLog)
+    {
+        XDBGF("MixDbg: focus=%p camPersp=0x%x camVec=(%.3f,%.3f,%.3f) l=(%.3f,%.3f,%.3f) u=(%.3f,%.3f,%.3f)\n",
+              sithSoundMixer_pFocusedThing, sithCamera_currentCamera->cameraPerspective,
+              sithCamera_currentCamera->vec3_1.x, sithCamera_currentCamera->vec3_1.y, sithCamera_currentCamera->vec3_1.z,
+              sithCamera_currentCamera->viewMat.lvec.x, sithCamera_currentCamera->viewMat.lvec.y, sithCamera_currentCamera->viewMat.lvec.z,
+              sithCamera_currentCamera->viewMat.uvec.x, sithCamera_currentCamera->viewMat.uvec.y, sithCamera_currentCamera->viewMat.uvec.z);
+        XDBG("MixDbg: before TickSectorSound\n");
+    }
+#endif
     // This was inlined, TODO check Jones3D and see if it had a name
     sithSoundMixer_TickSectorSound();
+#ifdef TARGET_XBOX
+    if (xboxMixDbgLog)
+        XDBGF("MixDbg: after TickSectorSound curSectorSound=%p lastSector=%p\n",
+              sithSoundMixer_pCurSectorPlayingSound, sithSoundMixer_pLastSectorSoundSector);
+#endif
 
     for (uint32_t i = 0; i < sithSoundMixer_numSoundsAvailable; i++)
     {
@@ -859,12 +914,41 @@ void sithSoundMixer_Tick(flex_t deltaSecs)
         if ( soundIter->sound )
         {
             //jk_printf("tick %u: %s %x, %f %f vol %f\n", i, soundIter->sound->sound_fname, soundIter->flags, soundIter->distance, soundIter->maxPosition, soundIter->vol_2);
+#ifdef TARGET_XBOX
+            if (xboxMixDbgLog && xboxMixDbgLoggedSounds < 24)
+            {
+                XDBGF("MixDbg: before TickPlayingSound i=%u sound=%p '%s' buf=%p 3d=%p flags=0x%x ref=%d vol=%.3f target=%.3f dist=%.3f max=%.3f thing=%p sector=%p pos=(%.3f,%.3f,%.3f)\n",
+                      i, soundIter->sound, soundIter->sound->sound_fname,
+                      soundIter->pSoundBuf, soundIter->p3DSoundObj, soundIter->flags,
+                      soundIter->refid, soundIter->vol_2, soundIter->volume,
+                      soundIter->distance, soundIter->maxPosition, soundIter->thing,
+                      soundIter->thing ? soundIter->thing->sector : NULL,
+                      soundIter->pos.x, soundIter->pos.y, soundIter->pos.z);
+            }
+#endif
             sithSoundMixer_TickPlayingSound(soundIter, deltaSecs);
+#ifdef TARGET_XBOX
+            if (xboxMixDbgLog && xboxMixDbgLoggedSounds < 24)
+            {
+                XDBGF("MixDbg: after TickPlayingSound i=%u sound=%p buf=%p flags=0x%x vol=%.3f dist=%.3f\n",
+                      i, soundIter->sound, soundIter->pSoundBuf,
+                      soundIter->flags, soundIter->vol_2, soundIter->distance);
+                xboxMixDbgLoggedSounds++;
+            }
+#endif
         }
     }
     //printf("--- %u\n", sithSoundMixer_activeChannels);
+#ifdef TARGET_XBOX
+    if (xboxMixDbgLog)
+        XDBG("MixDbg: before SetPositionOrientation\n");
+#endif
     rdVector_Scale3(&tmp, &sithCamera_currentCamera->vec3_1, 10.0);
     stdSound_SetPositionOrientation(&tmp, &sithCamera_currentCamera->viewMat.lvec, &sithCamera_currentCamera->viewMat.uvec);
+#ifdef TARGET_XBOX
+    if (xboxMixDbgLog)
+        XDBG("MixDbg: tick exit\n");
+#endif
 }
 
 void sithSoundMixer_TickPlayingSound(sithPlayingSound *sound, flex_t deltaSecs)

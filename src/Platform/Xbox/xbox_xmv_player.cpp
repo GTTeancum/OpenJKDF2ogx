@@ -16,6 +16,18 @@ static int xboxXmv_FileExists(const char *path)
     return 1;
 }
 
+static DWORD xboxXmv_FileSizeOrZero(const char *path)
+{
+    HANDLE h = CreateFileA(path, GENERIC_READ, FILE_SHARE_READ, NULL,
+                           OPEN_EXISTING, FILE_ATTRIBUTE_NORMAL, NULL);
+    DWORD size;
+    if (h == INVALID_HANDLE_VALUE)
+        return 0;
+    size = GetFileSize(h, NULL);
+    CloseHandle(h);
+    return size == INVALID_FILE_SIZE ? 0 : size;
+}
+
 static void xboxXmv_BaseNameNoExt(const char *path, char *out, size_t outSize)
 {
     const char *base = path;
@@ -79,6 +91,8 @@ static int xboxXmv_FindForSmkPath(const char *smkPath, char *out, size_t outSize
         {
             strncpy(out, candidates[i], outSize - 1);
             out[outSize - 1] = 0;
+            XDBGF("XmvDbg: selected candidate[%d]='%s' size=%lu\n",
+                  i, out, xboxXmv_FileSizeOrZero(out));
             return 1;
         }
     }
@@ -90,7 +104,9 @@ static int xboxXmv_FindForSmkPath(const char *smkPath, char *out, size_t outSize
 static DWORD WINAPI xboxXmv_PlayThread(void *arg)
 {
     XMVDecoder *decoder = (XMVDecoder *)arg;
-    return FAILED(decoder->Play(XMVFLAG_NONE, NULL)) ? 1 : 0;
+    HRESULT hr = decoder->Play(XMVFLAG_SYNC_ON_NEXT_VBLANK, NULL);
+    XDBGF("XmvDbg: Play returned hr=0x%08X\n", hr);
+    return FAILED(hr) ? 1 : 0;
 }
 
 static DWORD xboxXmv_ReadSmokeLimitMs(void)
@@ -153,6 +169,12 @@ extern "C" int xboxXmv_PlayForSmkPath(const char *smkPath)
     XDBGF("XmvDbg: desc path='%s' w=%lu h=%lu fps=%lu audioStreams=%lu\n",
           xmvPath, videoDesc.Width, videoDesc.Height,
           videoDesc.FramesPerSecond, videoDesc.AudioStreamCount);
+    {
+        DWORD *raw = (DWORD *)&videoDesc;
+        XDBGF("XmvDbg: rawdesc sizeof=%u dwords=%08lX %08lX %08lX %08lX %08lX %08lX %08lX %08lX\n",
+              (unsigned int)sizeof(videoDesc),
+              raw[0], raw[1], raw[2], raw[3], raw[4], raw[5], raw[6], raw[7]);
+    }
 
     if (videoDesc.AudioStreamCount)
     {
@@ -204,6 +226,11 @@ extern "C" int xboxXmv_PlayForSmkPath(const char *smkPath)
 
 wait_done:
     WaitForSingleObject(thread, INFINITE);
+    {
+        DWORD threadExit = 0xFFFFFFFF;
+        GetExitCodeThread(thread, &threadExit);
+        XDBGF("XmvDbg: playback thread exit=%lu terminated=%d\n", threadExit, terminated);
+    }
     CloseHandle(thread);
     XDBGF("XmvDbg: playback done path='%s' terminated=%d\n", xmvPath, terminated);
     decoder->CloseDecoder();

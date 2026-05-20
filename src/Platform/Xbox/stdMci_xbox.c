@@ -187,10 +187,17 @@ static int stdMci_TryOpenPath(const char *path)
               path, stdMci_channels, stdMci_sampleRate);
         return 1;
     }
+    XDBGF("stdMci: open_filename failed err=%d path='%s'\n", err, path);
+    XDBGF("stdMci: falling back to whole-file path='%s'\n", path);
 #endif
 
     if (!stdMci_ReadWholeFile(path, &stdMci_oggData, &stdMci_oggBytes))
+    {
+#ifdef TARGET_XBOX
+        XDBGF("stdMci: whole-file open/read failed path='%s'\n", path);
+#endif
         return 0;
+    }
 
     stdMci_vorbis = stb_vorbis_open_memory(stdMci_oggData, (int)stdMci_oggBytes, &err, NULL);
     if (!stdMci_vorbis)
@@ -473,23 +480,73 @@ int stdMci_CheckStatus(void)
 {
     DWORD playCursor = 0, writeCursor = 0;
     int playChunk;
+#ifdef TARGET_XBOX
+    static int s_mciDbgChecks = 0;
+    int mciDbgLog = s_mciDbgChecks < 24;
+
+    if (mciDbgLog)
+    {
+        XDBGF("stdMci: CheckStatus enter #%d playing=%d buf=%p vorbis=%p nextChunk=%d ch=%d rate=%d\n",
+              s_mciDbgChecks, stdMci_musicPlaying, stdMci_pBuffer, stdMci_vorbis,
+              stdMci_nextChunk, stdMci_channels, stdMci_sampleRate);
+    }
+    s_mciDbgChecks++;
+#endif
 
     if (!stdMci_musicPlaying || !stdMci_pBuffer)
+    {
+#ifdef TARGET_XBOX
+        if (mciDbgLog)
+            XDBG("stdMci: CheckStatus inactive/no-buffer return 0\n");
+#endif
         return 0;
+    }
 
     if (FAILED(IDirectSoundBuffer_GetCurrentPosition(stdMci_pBuffer, &playCursor, &writeCursor)))
+    {
+#ifdef TARGET_XBOX
+        if (mciDbgLog)
+            XDBG("stdMci: CheckStatus GetCurrentPosition failed\n");
+#endif
         return 1;
+    }
 
     playChunk = (int)(playCursor / MCI_CHUNK_BYTES);
+#ifdef TARGET_XBOX
+    if (mciDbgLog)
+    {
+        XDBGF("stdMci: CheckStatus pos play=%lu write=%lu playChunk=%d nextChunk=%d\n",
+              playCursor, writeCursor, playChunk, stdMci_nextChunk);
+    }
+#endif
     while (stdMci_nextChunk != playChunk)
     {
+#ifdef TARGET_XBOX
+        if (mciDbgLog)
+            XDBGF("stdMci: CheckStatus before FillChunk chunk=%d\n", stdMci_nextChunk);
+#endif
         stdMci_FillChunk(stdMci_nextChunk);
+#ifdef TARGET_XBOX
+        if (mciDbgLog)
+            XDBGF("stdMci: CheckStatus after FillChunk chunk=%d playing=%d\n",
+                  stdMci_nextChunk, stdMci_musicPlaying);
+#endif
         stdMci_nextChunk = (stdMci_nextChunk + 1) % MCI_STREAM_CHUNKS;
     }
 
     if (!stdMci_musicPlaying)
+    {
+#ifdef TARGET_XBOX
+        if (mciDbgLog)
+            XDBG("stdMci: CheckStatus releasing stopped buffer\n");
+#endif
         stdMci_ReleaseBuffer();
+    }
 
+#ifdef TARGET_XBOX
+    if (mciDbgLog)
+        XDBGF("stdMci: CheckStatus exit playing=%d\n", stdMci_musicPlaying);
+#endif
     return stdMci_musicPlaying;
 }
 
