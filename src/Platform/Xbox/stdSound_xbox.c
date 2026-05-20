@@ -245,6 +245,11 @@ static int xbox_DSCreateBuffer(stdSound_buffer_t *sound, XboxDSEntry *e, int wan
         IDirectSoundBuffer_Release(oldDS);
     }
 
+#ifdef TARGET_XBOX
+    XDBGF("stdSound_XboxCreateBuffer: success ds=%p stereo=%d rate=%u bits=%u bytes=%d 3d=%d old=%p old3d=%d\n",
+          e->pDS, sound->bStereo, sound->nSamplesPerSec, sound->bitsPerSample,
+          sound->bufferBytes, e->b3D, oldDS, old3D);
+#endif
     return 1;
 }
 

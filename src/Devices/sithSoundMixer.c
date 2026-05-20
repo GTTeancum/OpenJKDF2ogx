@@ -676,7 +676,11 @@ sithPlayingSound* sithSoundMixer_StopSectorSound(sithSound* pSound)
         return NULL;
     }
 
+#ifdef TARGET_XBOX
+    sithPlayingSound* v28 = sithSoundMixer_PlayingSoundFromSound(pSound, SITHSOUNDFLAG_LOOP | SITHSOUNDFLAG_AMBIENT_NOPAN | SITHSOUNDFLAG_NO_3D);
+#else
     sithPlayingSound* v28 = sithSoundMixer_PlayingSoundFromSound(pSound, 1);
+#endif
     if ( v28 )
     {
         if (sithSoundMixer_sub_4DD5D0(v28))
