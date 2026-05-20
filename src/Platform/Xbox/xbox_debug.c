@@ -167,6 +167,17 @@ void xbox_debug_Printf(const char *fmt, ...)
     xbox_debug_Print(buf);
 }
 
+void xbox_debug_PerfPrintf(const char *fmt, ...)
+{
+    char buf[XDBG_BUF_SIZE];
+    va_list args;
+    va_start(args, fmt);
+    _vsnprintf(buf, sizeof(buf) - 1, fmt, args);
+    va_end(args);
+    buf[sizeof(buf) - 1] = '\0';
+    xbox_debug_Print(buf);
+}
+
 /* xbox_get_world_palette() lives in xbox_world_helper.cpp — separated
  * because the engine global sithWorld_pCurrentWorld is emitted with C++
  * name mangling by globals.c (compiled with /Tp) and a C-linkage TU

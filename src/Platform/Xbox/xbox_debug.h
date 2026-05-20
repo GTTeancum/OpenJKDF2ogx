@@ -18,6 +18,10 @@
 #ifndef XBOX_DEBUG_H
 #define XBOX_DEBUG_H
 
+#if defined(TARGET_XBOX) && !defined(XBOX_PERF_SMOKE)
+#define XBOX_PERF_SMOKE 1
+#endif
+
 #ifdef __cplusplus
 extern "C" {
 #endif
@@ -26,6 +30,7 @@ void xbox_debug_Startup(void);
 void xbox_debug_Shutdown(void);
 void xbox_debug_Print(const char *msg);
 void xbox_debug_Printf(const char *fmt, ...);
+void xbox_debug_PerfPrintf(const char *fmt, ...);
 
 /* On-screen debug HUD — text overlay drawn after StartScene's clear.
  * Each glyph is rendered as solid quads (3x5 bitmap font), no textures
@@ -50,10 +55,23 @@ void std3D_DebugCounter(int idx, int val, int max);
 void *xbox_get_world_palette(void);
 
 /* Convenience macros */
+#if defined(XBOX_PERF_SMOKE)
+/* XBOX PERF SMOKE:
+ * Dangerous rollback-friendly optimization. Compiles formatted debug calls
+ * out before their arguments are evaluated; use XPERF for intentional smoke
+ * heartbeats. XDBG still passes through the central filter for plain fatal
+ * strings.
+ */
+#define XDBG(msg)        xbox_debug_Print(msg)
+#define XDBGF            if (0) xbox_debug_Printf
+#define XPERF            xbox_debug_PerfPrintf
+#else
 #define XDBG(msg)        xbox_debug_Print(msg)
 /* VC71 C89 mode doesn't support __VA_ARGS__. Use XDBGF as a direct
    function call instead of a variadic macro. */
 #define XDBGF  xbox_debug_Printf
+#define XPERF  xbox_debug_PerfPrintf
+#endif
 
 
 #ifdef __cplusplus

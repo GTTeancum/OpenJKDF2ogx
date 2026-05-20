@@ -193,7 +193,7 @@ void __cdecl main(void)
                 s_perfLoopLastMs = nowMs;
             if (nowMs - s_perfLoopLastMs >= 5000)
             {
-                XDBGF("Perf: mainLoop=%d elapsedMs=%lu suspended=%d gui=%d\n",
+                XPERF("Perf: mainLoop=%d elapsedMs=%lu suspended=%d gui=%d\n",
                       loopCount, (unsigned long)nowMs, g_app_suspended, jkSmack_currentGuiState);
                 s_perfLoopLastMs = nowMs;
             }

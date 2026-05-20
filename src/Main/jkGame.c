@@ -454,7 +454,7 @@ int jkGame_Update()
         {
             spanFrames = s_perfFrameTotal - s_perfFrameLast;
             fps100 = spanMs > 0 ? (spanFrames * 100000) / spanMs : 0;
-            XDBGF("Perf: frame=%d spanFrames=%d spanMs=%d fps=%d.%02d totalMs=%d sectors=%d faces=%d geoThings=%d nonGeoThings=%d result=%d\n",
+            XPERF("Perf: frame=%d spanFrames=%d spanMs=%d fps=%d.%02d totalMs=%d sectors=%d faces=%d geoThings=%d nonGeoThings=%d result=%d\n",
                   s_perfFrameTotal, spanFrames, spanMs,
                   fps100 / 100, fps100 % 100,
                   jkGame_Update_End - s_perfMsStart,
