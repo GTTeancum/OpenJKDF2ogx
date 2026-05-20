@@ -18,10 +18,6 @@
 #ifndef XBOX_DEBUG_H
 #define XBOX_DEBUG_H
 
-#if defined(TARGET_XBOX) && !defined(XBOX_PERF_SMOKE)
-#define XBOX_PERF_SMOKE 1
-#endif
-
 #ifdef __cplusplus
 extern "C" {
 #endif
@@ -55,12 +51,11 @@ void std3D_DebugCounter(int idx, int val, int max);
 void *xbox_get_world_palette(void);
 
 /* Convenience macros */
-#if defined(XBOX_PERF_SMOKE)
-/* XBOX PERF SMOKE:
- * Dangerous rollback-friendly optimization. Compiles formatted debug calls
- * out before their arguments are evaluated; use XPERF for intentional smoke
- * heartbeats. XDBG still passes through the central filter for plain fatal
- * strings.
+#if defined(XBOX_PERF_SMOKE) || defined(XBOX_COMPILE_OUT_DEBUG_FORMATS)
+/* Perf/release logging:
+ * Compile formatted debug calls out before their arguments are evaluated.
+ * Use XPERF for intentional smoke heartbeats. XDBG still passes through the
+ * central filter for plain fatal strings.
  */
 #define XDBG(msg)        xbox_debug_Print(msg)
 #define XDBGF            if (0) xbox_debug_Printf

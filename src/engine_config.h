@@ -4,14 +4,20 @@
 #include <float.h>
 #include "types_enums.h"
 
-/* XBOX PERF SMOKE:
- * Dangerous-by-design test switch for autonomous CXBX-R performance runs.
- * This suppresses most Xbox debug spam at the logging layer and emits only
- * lightweight Perf:/failure lines. Disable if chasing a crash that needs the
- * old kitchen-sink diagnostics.
+/* Xbox release defaults:
+ * - Compile formatted debug calls out unless XBOX_VERBOSE_DEBUG is requested.
+ * - Use the faster main-loop yield policy that smoke testing validated.
+ *
+ * XBOX_PERF_SMOKE is intentionally not enabled here. It is an opt-in build
+ * flag for autonomous CXBX-R runs that need autostart files and Perf: lines.
  */
 #ifdef TARGET_XBOX
-#define XBOX_PERF_SMOKE 1
+#if !defined(XBOX_VERBOSE_DEBUG) && !defined(XBOX_COMPILE_OUT_DEBUG_FORMATS)
+#define XBOX_COMPILE_OUT_DEBUG_FORMATS 1
+#endif
+#ifndef XBOX_MAIN_LOOP_PERF_YIELD
+#define XBOX_MAIN_LOOP_PERF_YIELD 1
+#endif
 #endif
 
 // If I ever do demo recording, add it here

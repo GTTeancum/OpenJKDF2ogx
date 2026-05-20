@@ -298,9 +298,8 @@ void __cdecl main(void)
          * (the engine itself is fully fixed-timestep, so running the
          * outer loop faster doesn't speed up gameplay — it just
          * reduces input-to-display latency and increases dt accuracy). */
-#ifdef XBOX_PERF_SMOKE
-        /* DANGEROUS PERF EXPERIMENT:
-         * CXBX-R eventually turns in-game Sleep(0)/Sleep(1) into ~300 ms
+#if defined(XBOX_PERF_SMOKE) || defined(XBOX_MAIN_LOOP_PERF_YIELD)
+        /* CXBX-R eventually turns in-game Sleep(0)/Sleep(1) into ~300 ms
          * stalls in this port's smoke loop. Yield occasionally during
          * title/load UI so load progress stays cooperative, then let present
          * plus the host emulator loop throttle gameplay. */

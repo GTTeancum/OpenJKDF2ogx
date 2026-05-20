@@ -1,7 +1,8 @@
 param(
     [int]$Iterations = 1,
     [int]$WatchdogSeconds = 240,
-    [string]$AutostartArgs = '-autostart -sp -episode JK1 -map 01narshadda.jkl'
+    [string]$AutostartArgs = '-autostart -sp -episode JK1 -map 01narshadda.jkl',
+    [switch]$BuildSmokeXbe
 )
 
 $ErrorActionPreference = 'Continue'
@@ -16,6 +17,25 @@ $stamp = Get-Date -Format 'yyyyMMdd_HHmmss'
 $outRoot = Join-Path $repo "build\xbox\smoke_logs\fps_smoke_$stamp"
 
 New-Item -ItemType Directory -Force -Path $outRoot | Out-Null
+
+if ($BuildSmokeXbe) {
+    $buildLog = Join-Path $outRoot 'build_xbox_perf_smoke.log'
+    $oldSmoke = $env:XBOX_PERF_SMOKE
+    try {
+        $env:XBOX_PERF_SMOKE = '1'
+        & cmd /c build_xbox.bat > $buildLog 2>&1
+        if ($LASTEXITCODE -ne 0) {
+            Get-Content $buildLog -Tail 120
+            throw "build_xbox.bat failed with exit code $LASTEXITCODE"
+        }
+    } finally {
+        if ($null -eq $oldSmoke) {
+            Remove-Item Env:\XBOX_PERF_SMOKE -ErrorAction SilentlyContinue
+        } else {
+            $env:XBOX_PERF_SMOKE = $oldSmoke
+        }
+    }
+}
 
 function Get-IsolatedCxbxProcesses {
     Get-CimInstance Win32_Process | Where-Object {
