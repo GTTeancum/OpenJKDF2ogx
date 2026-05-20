@@ -298,10 +298,10 @@ void __cdecl main(void)
 #ifdef XBOX_PERF_SMOKE
         /* DANGEROUS PERF EXPERIMENT:
          * CXBX-R eventually turns in-game Sleep(0)/Sleep(1) into ~300 ms
-         * stalls in this port's smoke loop. Keep Sleep(1) during title/load
-         * UI so load progress stays cooperative, then let present plus the
-         * host emulator loop throttle gameplay. */
-        if (jkGuiTitle_whichLoading)
+         * stalls in this port's smoke loop. Yield occasionally during
+         * title/load UI so load progress stays cooperative, then let present
+         * plus the host emulator loop throttle gameplay. */
+        if (jkGuiTitle_whichLoading && ((loopCount & 63) == 0))
             Sleep(1);
 #else
         Sleep(1);
