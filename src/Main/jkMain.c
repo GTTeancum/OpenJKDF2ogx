@@ -852,6 +852,19 @@ void jkMain_GameplayTick(int a2)
 {
     unsigned int v1; // esi
     int v3; // esi
+#if defined(TARGET_XBOX) && defined(XBOX_PERF_SMOKE)
+    static unsigned int s_perfLastMs = 0;
+    static unsigned int s_perfFrames = 0;
+    static unsigned int s_perfSithTickCalls = 0;
+    static unsigned int s_perfGameUpdateCalls = 0;
+    static unsigned long s_perfSithTickMs = 0;
+    static unsigned long s_perfPlayerMs = 0;
+    static unsigned long s_perfGameUpdateMs = 0;
+    static unsigned long s_perfOtherMs = 0;
+    unsigned int perfFuncStart = stdPlatform_GetTimeMsec();
+    if (!s_perfLastMs)
+        s_perfLastMs = perfFuncStart;
+#endif
 
     { static int ge=0; if(ge<3){JKTRACEF("GameplayTick: enter six=%d eight=%d\n",thing_six,thing_eight);ge++;} }
 
@@ -870,7 +883,15 @@ void jkMain_GameplayTick(int a2)
     {
         jkMain_lastTickMs = v1;
         { static int gs=0; if(gs<3){JKTRACE("GameplayTick: calling sithMain_Tick\n");gs++;} }
+#if defined(TARGET_XBOX) && defined(XBOX_PERF_SMOKE)
+        { unsigned int perfT0 = stdPlatform_GetTimeMsec();
+#endif
         if (sithMain_Tick()) { JKTRACE("GameplayTick: sithMain_Tick nonzero, returning\n"); return; }
+#if defined(TARGET_XBOX) && defined(XBOX_PERF_SMOKE)
+          s_perfSithTickMs += stdPlatform_GetTimeMsec() - perfT0;
+          s_perfSithTickCalls++;
+        }
+#endif
         { static int ga=0; if(ga<3){JKTRACE("GameplayTick: after sithMain_Tick\n");ga++;} }
     }
     
@@ -897,8 +918,15 @@ void jkMain_GameplayTick(int a2)
             jkMain_EndLevel(1);
         }
         { static int gn=0; if(gn<3){JKTRACE("GameplayTick: nullsub\n");gn++;} }
+#if defined(TARGET_XBOX) && defined(XBOX_PERF_SMOKE)
+        { unsigned int perfPlayerStart = stdPlatform_GetTimeMsec();
+#endif
         jkPlayer_nullsub_1(&playerThings[playerThingIdx]);
         jkGame_dword_552B5C += stdPlatform_GetTimeMsec() - v1;
+#if defined(TARGET_XBOX) && defined(XBOX_PERF_SMOKE)
+          s_perfPlayerMs += stdPlatform_GetTimeMsec() - perfPlayerStart;
+        }
+#endif
         v3 = stdPlatform_GetTimeMsec();
         { static int gg=0; if(gg<3){JKTRACEF("GameplayTick: jkGame_Update check susp=%d a2=%d\n",g_app_suspended,a2);gg++;} }
         if ( g_app_suspended && a2 != 6 ) {
@@ -907,13 +935,43 @@ void jkMain_GameplayTick(int a2)
 #endif
             {
                 { static int gu=0; if(gu<3){JKTRACE("GameplayTick: calling jkGame_Update\n");gu++;} }
+#if defined(TARGET_XBOX) && defined(XBOX_PERF_SMOKE)
+                { unsigned int perfUpdateStart = stdPlatform_GetTimeMsec();
+#endif
                 jkGame_Update();
+#if defined(TARGET_XBOX) && defined(XBOX_PERF_SMOKE)
+                  s_perfGameUpdateMs += stdPlatform_GetTimeMsec() - perfUpdateStart;
+                  s_perfGameUpdateCalls++;
+                }
+#endif
                 { static int gv=0; if(gv<3){JKTRACE("GameplayTick: jkGame_Update done\n");gv++;} }
             }
         }
         jkGame_updateMsecsTotal += stdPlatform_GetTimeMsec() - v3;
         { static int gr=0; if(gr<3){JKTRACE("GameplayTick: returning\n");gr++;} }
     }
+#if defined(TARGET_XBOX) && defined(XBOX_PERF_SMOKE)
+    s_perfFrames++;
+    s_perfOtherMs += stdPlatform_GetTimeMsec() - perfFuncStart;
+    {
+        unsigned int nowMs = stdPlatform_GetTimeMsec();
+        if (nowMs - s_perfLastMs >= 5000)
+        {
+            XPERF("PerfGame: frames=%u spanMs=%u sithCalls=%u gameCalls=%u sithMs=%lu playerMs=%lu gameMs=%lu totalMs=%lu\n",
+                  s_perfFrames, nowMs - s_perfLastMs, s_perfSithTickCalls,
+                  s_perfGameUpdateCalls, s_perfSithTickMs, s_perfPlayerMs,
+                  s_perfGameUpdateMs, s_perfOtherMs);
+            s_perfLastMs = nowMs;
+            s_perfFrames = 0;
+            s_perfSithTickCalls = 0;
+            s_perfGameUpdateCalls = 0;
+            s_perfSithTickMs = 0;
+            s_perfPlayerMs = 0;
+            s_perfGameUpdateMs = 0;
+            s_perfOtherMs = 0;
+        }
+    }
+#endif
 }
 
 // MOTS altered

@@ -453,6 +453,12 @@ int jkGame_Update()
         static int s_perfFrameLast = 0;
         static int s_perfMsStart = 0;
         static int s_perfMsLast = 0;
+        static unsigned long s_perfClearMs = 0;
+        static unsigned long s_perfAdvanceMs = 0;
+        static unsigned long s_perfCameraMs = 0;
+        static unsigned long s_perfPovMs = 0;
+        static unsigned long s_perfHudMs = 0;
+        static unsigned long s_perfEndMs = 0;
         int spanMs;
         int spanFrames;
         int fps100;
@@ -467,6 +473,12 @@ int jkGame_Update()
         }
 
         s_perfFrameTotal++;
+        s_perfClearMs += jkGame_Update_ClearScreen - jkGame_Update_Start;
+        s_perfAdvanceMs += jkGame_Update_AdvanceFrame - jkGame_Update_ClearScreen;
+        s_perfCameraMs += jkGame_Update_UpdateCamera - jkGame_Update_AdvanceFrame;
+        s_perfPovMs += jkGame_Update_DrawPov - jkGame_Update_UpdateCamera;
+        s_perfHudMs += jkGame_Update_HudDrawn - jkGame_Update_DrawPov;
+        s_perfEndMs += jkGame_Update_End - jkGame_Update_HudDrawn;
         spanMs = jkGame_Update_End - s_perfMsLast;
         if (spanMs >= 5000)
         {
@@ -495,8 +507,17 @@ int jkGame_Update()
                   sithRender_geoThingsDrawn,
                   sithRender_nongeoThingsDrawn,
                   result);
+            XPERF("PerfUpdate: frames=%d clearMs=%lu advanceMs=%lu cameraMs=%lu povMs=%lu hudMs=%lu endMs=%lu\n",
+                  spanFrames, s_perfClearMs, s_perfAdvanceMs, s_perfCameraMs,
+                  s_perfPovMs, s_perfHudMs, s_perfEndMs);
             s_perfFrameLast = s_perfFrameTotal;
             s_perfMsLast = jkGame_Update_End;
+            s_perfClearMs = 0;
+            s_perfAdvanceMs = 0;
+            s_perfCameraMs = 0;
+            s_perfPovMs = 0;
+            s_perfHudMs = 0;
+            s_perfEndMs = 0;
         }
     }
 #endif
