@@ -525,6 +525,12 @@ static unsigned int g_dbgFrameTick = 0;
 void std3D_DebugLine(int idx, const char *text)
 {
     int i = 0;
+#if defined(XBOX_PERF_SMOKE)
+    /* Smoke-only: skip debug HUD line churn while profiling gameplay FPS. */
+    (void)idx;
+    (void)text;
+    return;
+#endif
     if (idx < 0 || idx >= DBG_NUM_LINES) return;
     if (text)
         for (; i < DBG_LINE_LEN && text[i]; ++i)
@@ -534,28 +540,49 @@ void std3D_DebugLine(int idx, const char *text)
 
 void std3D_DebugLineKV(int idx, const char *key, int value)
 {
+#if defined(XBOX_PERF_SMOKE)
+    /* Smoke-only: avoids per-frame sprintf work from render diagnostics. */
+    (void)idx;
+    (void)key;
+    (void)value;
+    return;
+#else
     char buf[DBG_LINE_LEN + 1];
     /* sprintf is fine on Xbox — full CRT linked. */
     sprintf(buf, "%s %d", key ? key : "", value);
     std3D_DebugLine(idx, buf);
+#endif
 }
 
 /* Compatibility shims — old flag/counter calls now write text lines. */
 void std3D_DebugFlag(int idx, int on)
 {
+#if defined(XBOX_PERF_SMOKE)
+    (void)idx;
+    (void)on;
+    return;
+#else
     char buf[DBG_LINE_LEN + 1];
     sprintf(buf, "F%d %s", idx, on ? "ON" : "..");
     /* Reserve lines 0..7 for flags. */
     if (idx >= 0 && idx < 8) std3D_DebugLine(idx, buf);
+#endif
 }
 
 void std3D_DebugCounter(int idx, int val, int max)
 {
+#if defined(XBOX_PERF_SMOKE)
+    (void)idx;
+    (void)val;
+    (void)max;
+    return;
+#else
     char buf[DBG_LINE_LEN + 1];
     (void)max;
     sprintf(buf, "C%d %d", idx, val);
     /* Reserve lines 8..11 for counters. */
     if (idx >= 0 && idx < 4) std3D_DebugLine(8 + idx, buf);
+#endif
 }
 
 static void dbg_quad(float x, float y, float w, float h,
