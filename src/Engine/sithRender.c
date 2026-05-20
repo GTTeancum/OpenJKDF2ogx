@@ -3528,12 +3528,12 @@ void sithRender_RenderThings()
         if (sithRender_RenderThing(lastDrawn)) {
             ++sithRender_nongeoThingsDrawn;
         }
-    }
 
-    // DSi doesn't really have Z buffer options, so just batch everything
+        // DSi doesn't really have Z buffer options, so just batch everything
 //#ifndef TARGET_TWL
-    rdCache_Flush();
+        rdCache_Flush();
 //#endif
+    }
 
     if (sithRender_008d1668) {
         rdSetCullFlags(1);
