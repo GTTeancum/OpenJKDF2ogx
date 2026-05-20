@@ -833,10 +833,13 @@ static unsigned int g_presentCalls = 0;
 
 void std3D_Present(void)
 {
+#ifndef XBOX_PERF_SMOKE
     char buf[32];
+#endif
     if (!g_initialized) { XDBG("std3D_Present: not initialized\n"); return; }
     g_presentCalls++;
 
+#ifndef XBOX_PERF_SMOKE
     if (!jkCutscene_isRendering && !stdDisplay_xboxCreditsDebug) {
         /* Publish vertex bbox to HUD slots 5/6/7.  Format: "VX  min max". */
         if (g_bboxValid) {
@@ -854,6 +857,7 @@ void std3D_Present(void)
             std3D_DebugLine(7, "");
         }
     }
+#endif
 
     /* Restore 2D state for HUD draw — engine left projection in
      * perspective + modelview = view matrix. */
@@ -897,6 +901,7 @@ void std3D_Present(void)
     glDisable(GL_TEXTURE_2D);
 #endif
 
+#ifndef XBOX_PERF_SMOKE
     if (!jkCutscene_isRendering && !stdDisplay_xboxCreditsDebug) {
         /* Live counters into the HUD text. */
         std3D_DebugLineKV(19, "STARTS",  g_startCalls);
@@ -907,6 +912,7 @@ void std3D_Present(void)
 
         std3D_DrawDebugHUD();
     }
+#endif
 
     { static int _sw=0; if(_sw<3){ XDBG("std3D_Present: FakeSwapBuffers\n"); } _sw++; }
     FakeSwapBuffers();
