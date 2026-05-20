@@ -235,8 +235,8 @@ static int xbox_DSCreateBuffer(stdSound_buffer_t *sound, XboxDSEntry *e, int wan
                   sound->bStereo, sound->nSamplesPerSec, sound->bitsPerSample,
                   sound->bufferBytes, use3D, memStatus.dwAvailPhys,
                   (unsigned int)XBOX_SOUND_MIN_FREE_AFTER_DS_CREATE);
-            e->pDS = NULL;
-            e->b3D = 0;
+            e->pDS = oldDS;
+            e->b3D = old3D;
             return 0;
         }
     }
