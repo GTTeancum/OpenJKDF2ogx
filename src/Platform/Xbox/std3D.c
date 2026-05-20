@@ -529,8 +529,8 @@ static unsigned int g_dbgFrameTick = 0;
 void std3D_DebugLine(int idx, const char *text)
 {
     int i = 0;
-#if defined(XBOX_PERF_SMOKE)
-    /* Smoke-only: skip debug HUD line churn while profiling gameplay FPS. */
+#if defined(XBOX_PERF_SMOKE) || defined(XBOX_COMPILE_OUT_DEBUG_FORMATS)
+    /* Skip debug HUD line churn in profiling and normal Xbox release builds. */
     (void)idx;
     (void)text;
     return;
@@ -544,8 +544,8 @@ void std3D_DebugLine(int idx, const char *text)
 
 void std3D_DebugLineKV(int idx, const char *key, int value)
 {
-#if defined(XBOX_PERF_SMOKE)
-    /* Smoke-only: avoids per-frame sprintf work from render diagnostics. */
+#if defined(XBOX_PERF_SMOKE) || defined(XBOX_COMPILE_OUT_DEBUG_FORMATS)
+    /* Avoid per-frame sprintf work from render diagnostics. */
     (void)idx;
     (void)key;
     (void)value;
@@ -561,7 +561,7 @@ void std3D_DebugLineKV(int idx, const char *key, int value)
 /* Compatibility shims — old flag/counter calls now write text lines. */
 void std3D_DebugFlag(int idx, int on)
 {
-#if defined(XBOX_PERF_SMOKE)
+#if defined(XBOX_PERF_SMOKE) || defined(XBOX_COMPILE_OUT_DEBUG_FORMATS)
     (void)idx;
     (void)on;
     return;
@@ -575,7 +575,7 @@ void std3D_DebugFlag(int idx, int on)
 
 void std3D_DebugCounter(int idx, int val, int max)
 {
-#if defined(XBOX_PERF_SMOKE)
+#if defined(XBOX_PERF_SMOKE) || defined(XBOX_COMPILE_OUT_DEBUG_FORMATS)
     (void)idx;
     (void)val;
     (void)max;
@@ -867,13 +867,13 @@ static unsigned int g_presentCalls = 0;
 
 void std3D_Present(void)
 {
-#ifndef XBOX_PERF_SMOKE
+#if !defined(XBOX_PERF_SMOKE) && !defined(XBOX_COMPILE_OUT_DEBUG_FORMATS)
     char buf[32];
 #endif
     if (!g_initialized) { XDBG("std3D_Present: not initialized\n"); return; }
     g_presentCalls++;
 
-#ifndef XBOX_PERF_SMOKE
+#if !defined(XBOX_PERF_SMOKE) && !defined(XBOX_COMPILE_OUT_DEBUG_FORMATS)
     if (!jkCutscene_isRendering && !stdDisplay_xboxCreditsDebug) {
         /* Publish vertex bbox to HUD slots 5/6/7.  Format: "VX  min max". */
         if (g_bboxValid) {
@@ -935,7 +935,7 @@ void std3D_Present(void)
     glDisable(GL_TEXTURE_2D);
 #endif
 
-#ifndef XBOX_PERF_SMOKE
+#if !defined(XBOX_PERF_SMOKE) && !defined(XBOX_COMPILE_OUT_DEBUG_FORMATS)
     if (!jkCutscene_isRendering && !stdDisplay_xboxCreditsDebug) {
         /* Live counters into the HUD text. */
         std3D_DebugLineKV(19, "STARTS",  g_startCalls);
