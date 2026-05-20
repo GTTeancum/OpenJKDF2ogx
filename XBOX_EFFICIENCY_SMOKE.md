@@ -170,6 +170,11 @@ Risk tags:
   from about `90.6 MB` free physical memory in the comparable music-enabled run
   to about `92.5 MB` before the track transition and about `93.9 MB` after
   `Track13.ogg` loaded.
+- Reverted: hardware testing reported that sound no longer worked at all after
+  this change. The follow-up commits `ac1c3d12` and the revert of
+  `1f752aae` restore the previous Xbox sound-buffer lifetime behavior. Treat
+  this iteration as rejected unless the DirectSound/source-buffer model is
+  redesigned and retested.
 
 ### 009 - Stream Xbox OGG Music From File
 

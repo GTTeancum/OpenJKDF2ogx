@@ -159,33 +159,6 @@ static void xbox_DSFree(stdSound_buffer_t *p)
     }
 }
 
-static int xbox_DSCopyFromDS(IDirectSoundBuffer *dst, IDirectSoundBuffer *src, DWORD bytes)
-{
-    void *srcLock = NULL;
-    void *dstLock = NULL;
-    DWORD srcSz = 0;
-    DWORD dstSz = 0;
-    DWORD copySz;
-
-    if (!dst || !src || !bytes)
-        return 0;
-
-    if (FAILED(IDirectSoundBuffer_Lock(src, 0, bytes, &srcLock, &srcSz, NULL, NULL, 0)))
-        return 0;
-    if (FAILED(IDirectSoundBuffer_Lock(dst, 0, bytes, &dstLock, &dstSz, NULL, NULL, 0)))
-    {
-        IDirectSoundBuffer_Unlock(src, srcLock, srcSz, NULL, 0);
-        return 0;
-    }
-
-    copySz = srcSz < dstSz ? srcSz : dstSz;
-    memcpy(dstLock, srcLock, copySz);
-
-    IDirectSoundBuffer_Unlock(dst, dstLock, dstSz, NULL, 0);
-    IDirectSoundBuffer_Unlock(src, srcLock, srcSz, NULL, 0);
-    return 1;
-}
-
 static int xbox_DSCreateBuffer(stdSound_buffer_t *sound, XboxDSEntry *e, int want3D)
 {
     DSBUFFERDESC desc;
@@ -194,16 +167,18 @@ static int xbox_DSCreateBuffer(stdSound_buffer_t *sound, XboxDSEntry *e, int wan
     void *pLock = NULL;
     DWORD lockSz = 0;
     int use3D;
-    IDirectSoundBuffer *oldDS;
-    int old3D;
 
     if (!sound || !e || !g_pDS)
         return 0;
 
     use3D = want3D && !sound->bStereo;
-    oldDS = e->pDS;
-    old3D = e->b3D;
-    e->pDS = NULL;
+
+    if (e->pDS)
+    {
+        IDirectSoundBuffer_Stop(e->pDS);
+        IDirectSoundBuffer_Release(e->pDS);
+        e->pDS = NULL;
+    }
 
     memset(&wfx, 0, sizeof(wfx));
     wfx.wFormatTag      = WAVE_FORMAT_PCM;
@@ -248,8 +223,8 @@ static int xbox_DSCreateBuffer(stdSound_buffer_t *sound, XboxDSEntry *e, int wan
         XDBGF("stdSound_XboxCreateBuffer: failed 0x%X stereo=%d rate=%u bits=%u bytes=%d 3d=%d\n",
               hr, sound->bStereo, sound->nSamplesPerSec, sound->bitsPerSample,
               sound->bufferBytes, use3D);
-        e->pDS = oldDS;
-        e->b3D = old3D;
+        e->pDS = NULL;
+        e->b3D = 0;
         return 0;
     }
 
@@ -264,16 +239,6 @@ static int xbox_DSCreateBuffer(stdSound_buffer_t *sound, XboxDSEntry *e, int wan
             memcpy(pLock, sound->data, lockSz);
             IDirectSoundBuffer_Unlock(e->pDS, pLock, lockSz, NULL, 0);
         }
-    }
-    else if (oldDS && sound->bufferBytes > 0)
-    {
-        xbox_DSCopyFromDS(e->pDS, oldDS, (DWORD)sound->bufferBytes);
-    }
-
-    if (oldDS)
-    {
-        IDirectSoundBuffer_Stop(oldDS);
-        IDirectSoundBuffer_Release(oldDS);
     }
 
     return 1;
@@ -758,8 +723,6 @@ int stdSound_BufferUnlock(stdSound_buffer_t *sound, void *buffer, int bufferRead
     XboxDSEntry *e;
     void *pLock = NULL;
     DWORD lockSz = 0;
-    static unsigned int s_xboxSoundCpuFreeCount = 0;
-    static unsigned int s_xboxSoundCpuFreeBytes = 0;
     (void)buffer;
     if (!sound || !sound->data) return 0;
     if (bufferReadLen <= 0 || bufferReadLen > sound->bufferBytes)
@@ -769,18 +732,6 @@ int stdSound_BufferUnlock(stdSound_buffer_t *sound, void *buffer, int bufferRead
     if (FAILED(IDirectSoundBuffer_Lock(e->pDS, 0, (DWORD)bufferReadLen, &pLock, &lockSz, NULL, NULL, 0))) return 0;
     memcpy(pLock, sound->data, lockSz);
     IDirectSoundBuffer_Unlock(e->pDS, pLock, lockSz, NULL, 0);
-    if (!sound->bIsCopy)
-    {
-        s_xboxSoundCpuFreeCount++;
-        s_xboxSoundCpuFreeBytes += (unsigned int)sound->bufferBytes;
-        if (s_xboxSoundCpuFreeCount <= 16 || (s_xboxSoundCpuFreeCount % 64) == 0)
-        {
-            XDBGF("stdSound_XboxBufferUnlock: released CPU PCM n=%u bytes=%d total=%u\n",
-                  s_xboxSoundCpuFreeCount, sound->bufferBytes, s_xboxSoundCpuFreeBytes);
-        }
-        free(sound->data);
-        sound->data = NULL;
-    }
     return 1;
 }
 
@@ -844,7 +795,6 @@ stdSound_buffer_t *stdSound_BufferDuplicate(stdSound_buffer_t *sound)
     copy = (stdSound_buffer_t*)malloc(sizeof(stdSound_buffer_t));
     if (!copy) return NULL;
     memcpy(copy, sound, sizeof(stdSound_buffer_t));
-    copy->data = NULL;
     copy->bIsCopy = 1;
     copy->refcnt  = 1;
     dst = xbox_DSAlloc(copy);
