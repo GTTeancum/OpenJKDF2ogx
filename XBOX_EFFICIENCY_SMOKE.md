@@ -147,3 +147,26 @@ Risk tags:
   `Track12.ogg`/`Track13.ogg` full-file load pressure. CXBX-R still survives
   both paths, so this is not a repro by itself, but it keeps music buffering high
   on the hardware suspect list.
+
+### 008 - Release Uploaded Sound PCM
+
+- Change: after `stdSound_BufferUnlock()` successfully uploads PCM into the Xbox
+  DirectSound buffer, release the CPU-side PCM allocation for non-copy buffers.
+  DirectSound buffer recreates and 3D upgrades now preserve sample data by
+  copying from the previous DirectSound buffer when the CPU copy has already
+  been released.
+- Risk: `RISK:HIGH`
+- Reason: sound effects were retaining both a CPU PCM copy and one or more
+  DirectSound buffers. That duplicates the same sample data during and after
+  level load, exactly where hardware has been running tight.
+- Build: `cmd /c build_xbox.bat` succeeded.
+- Smoke run:
+  `build\xbox\smoke_runs\20260519_205738-normal-fmv5-autostart-01narshadda-free-cpu-pcm`
+- Outcome: reached
+  `static,fmv,autostart,level-load,gameplay-show-done,first-tick,xbox-frame`;
+  stayed alive for the 300-second watchdog with no fatal patterns. The smoke log
+  recorded 16 reported CPU PCM releases before throttling, totaling `367340`
+  bytes in the first logged batch. Tail DirectSound allocation samples improved
+  from about `90.6 MB` free physical memory in the comparable music-enabled run
+  to about `92.5 MB` before the track transition and about `93.9 MB` after
+  `Track13.ogg` loaded.
