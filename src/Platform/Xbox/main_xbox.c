@@ -212,6 +212,16 @@ void __cdecl main(void)
      * 4. Game loop
      * -------------------------------------------------------------- */
     { static int loopCount = 0;
+#ifdef XBOX_PERF_SMOKE
+    static DWORD s_perfLoopLastMs = 0;
+    static unsigned long s_perfStartMs = 0;
+    static unsigned long s_perfGuiMs = 0;
+    static unsigned long s_perfEndMs = 0;
+    static unsigned long s_perfPresentMs = 0;
+    static unsigned long s_perfSleepMs = 0;
+    static unsigned int s_perfPhaseFrames = 0;
+    static int s_perfTraceNextFrame = 0;
+#endif
     while (Window_xbox_PumpMessages())
     {
         /* Heartbeat / per-step tick logging.  Commented out — game is
@@ -226,26 +236,55 @@ void __cdecl main(void)
         loopCount++;
 #ifdef XBOX_PERF_SMOKE
         {
-            static DWORD s_perfLoopLastMs = 0;
             DWORD nowMs = GetTickCount();
             if (!s_perfLoopLastMs)
                 s_perfLoopLastMs = nowMs;
             if (nowMs - s_perfLoopLastMs >= 5000)
             {
-                XPERF("Perf: mainLoop=%d elapsedMs=%lu suspended=%d gui=%d\n",
-                      loopCount, (unsigned long)nowMs, g_app_suspended, jkSmack_currentGuiState);
+                XPERF("Perf: mainLoop=%d elapsedMs=%lu suspended=%d gui=%d phaseFrames=%u startMs=%lu advanceMs=%lu endMs=%lu presentMs=%lu sleepMs=%lu\n",
+                      loopCount, (unsigned long)nowMs, g_app_suspended, jkSmack_currentGuiState,
+                      s_perfPhaseFrames, s_perfStartMs, s_perfGuiMs, s_perfEndMs,
+                      s_perfPresentMs, s_perfSleepMs);
+                s_perfStartMs = 0;
+                s_perfGuiMs = 0;
+                s_perfEndMs = 0;
+                s_perfPresentMs = 0;
+                s_perfSleepMs = 0;
+                s_perfPhaseFrames = 0;
+                s_perfTraceNextFrame = 1;
                 s_perfLoopLastMs = nowMs;
             }
         }
 #endif
         /* if (loopCount < 5) XDBG("main: -> StartScene\n"); */
+#ifdef XBOX_PERF_SMOKE
+        { DWORD t0 = GetTickCount();
+          int traceFrame = s_perfTraceNextFrame;
+          if (traceFrame) XPERF("PerfPhase: loop=%d before StartScene\n", loopCount);
+#endif
         std3D_StartScene();
+#ifdef XBOX_PERF_SMOKE
+          { DWORD t1 = GetTickCount();
+            if (traceFrame) XPERF("PerfPhase: loop=%d after StartScene before GuiAdvance\n", loopCount);
+#endif
         /* if (loopCount < 5) XDBG("main: -> GuiAdvance\n"); */
         jkMain_GuiAdvance();
+#ifdef XBOX_PERF_SMOKE
+            { DWORD t2 = GetTickCount();
+              if (traceFrame) XPERF("PerfPhase: loop=%d after GuiAdvance before EndScene\n", loopCount);
+#endif
         /* if (loopCount < 5) XDBG("main: -> EndScene\n"); */
         std3D_EndScene();
+#ifdef XBOX_PERF_SMOKE
+              { DWORD t3 = GetTickCount();
+                if (traceFrame) XPERF("PerfPhase: loop=%d after EndScene before Present\n", loopCount);
+#endif
         /* if (loopCount < 5) XDBG("main: -> Present\n"); */
         std3D_Present();  /* Swap buffers AFTER EndScene, outside scene block */
+#ifdef XBOX_PERF_SMOKE
+                { DWORD t4 = GetTickCount();
+                  if (traceFrame) XPERF("PerfPhase: loop=%d after Present before Sleep\n", loopCount);
+#endif
         /* if (loopCount < 5) XDBG("main: -> Sleep\n"); */
         /* Sleep(1) yields to the kernel scheduler without imposing a
          * long idle.  Sleep(16) was capping us to ~30 fps on hardware:
@@ -256,6 +295,23 @@ void __cdecl main(void)
          * outer loop faster doesn't speed up gameplay — it just
          * reduces input-to-display latency and increases dt accuracy). */
         Sleep(1);
+#ifdef XBOX_PERF_SMOKE
+                  { DWORD t5 = GetTickCount();
+                    if (traceFrame) XPERF("PerfPhase: loop=%d after Sleep\n", loopCount);
+                    s_perfStartMs += (unsigned long)(t1 - t0);
+                    s_perfGuiMs += (unsigned long)(t2 - t1);
+                    s_perfEndMs += (unsigned long)(t3 - t2);
+                    s_perfPresentMs += (unsigned long)(t4 - t3);
+                    s_perfSleepMs += (unsigned long)(t5 - t4);
+                    s_perfPhaseFrames++;
+                    if (traceFrame) s_perfTraceNextFrame = 0;
+                  }
+                }
+              }
+            }
+          }
+        }
+#endif
     }
     } /* close loopCount scope */
 
