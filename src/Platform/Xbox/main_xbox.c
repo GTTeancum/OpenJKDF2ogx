@@ -216,13 +216,7 @@ void __cdecl main(void)
          * (the engine itself is fully fixed-timestep, so running the
          * outer loop faster doesn't speed up gameplay — it just
          * reduces input-to-display latency and increases dt accuracy). */
-#ifdef XBOX_PERF_SMOKE
-        /* DANGEROUS PERF EXPERIMENT: smoke-only scheduler yield.
-         * If hardware audio/input gets unstable, revert this commit first. */
-        Sleep(0);
-#else
         Sleep(1);
-#endif
     }
     } /* close loopCount scope */
 
