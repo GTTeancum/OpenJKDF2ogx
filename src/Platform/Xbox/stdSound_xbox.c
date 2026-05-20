@@ -837,28 +837,15 @@ void stdSound_SetMenuVolume(float a1) { stdSound_fMenuVolume = a1; }
 
 stdSound_3dBuffer_t *stdSound_BufferQueryInterface(stdSound_buffer_t *a1)
 {
-    XboxDSEntry *e;
-    stdXbox3DBuffer *buf3d;
+    static int s_logged3DDisabled = 0;
 
-    if (!a1 || a1->bStereo)
-        return NULL;
-
-    e = xbox_DSFind(a1);
-    if (!e || !e->pDS)
-        return NULL;
-    if (!e->b3D && !xbox_DSCreateBuffer(a1, e, 1))
-        return NULL;
-
-    buf3d = (stdXbox3DBuffer*)malloc(sizeof(stdXbox3DBuffer));
-    if (!buf3d)
-        return NULL;
-
-    memset(buf3d, 0, sizeof(stdXbox3DBuffer));
-    buf3d->owner = a1;
-    buf3d->pDS = e->pDS;
-    IDirectSoundBuffer_SetMinDistance(buf3d->pDS, 1.0f, DS3D_DEFERRED);
-    IDirectSoundBuffer_SetMaxDistance(buf3d->pDS, 1000.0f, DS3D_DEFERRED);
-    return buf3d;
+    (void)a1;
+    if (!s_logged3DDisabled)
+    {
+        XDBG("stdSound: Xbox DirectSound 3D buffers disabled; using non-3D fallback\n");
+        s_logged3DDisabled = 1;
+    }
+    return NULL;
 }
 
 int stdSound_3DSetMode(stdSound_3dBuffer_t *a1, int a2)

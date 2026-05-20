@@ -493,16 +493,8 @@ sithPlayingSound* sithSoundMixer_PlaySoundPosThing(sithSound *sound, sithThing *
                 if ( v16 )
                 {
                     ++v11->sound->field_40;
-                    stdSound_BufferSetVolume(v11->pSoundBuf, v11->vol_2 * 0.75);
-                    if ( jkGuiSound_b3DSound )
-                    {
-                        v11->p3DSoundObj = stdSound_BufferQueryInterface(v11->pSoundBuf);
-                        if ( v11->p3DSoundObj )
-                            stdSound_BufferSetVolume(v11->pSoundBuf, v11->vol_2);
-                    }
                     v11->flags |= SITHSOUNDFLAG_NO_3D;
-                    if ( v11->p3DSoundObj )
-                        stdSound_3DSetMode(v11->p3DSoundObj, 2);
+                    stdSound_BufferSetVolume(v11->pSoundBuf, v11->vol_2 * 0.75);
                     if ( sithSoundMixer_activeChannels >= jkGuiSound_numChannels )
                     {
                         v19 = sithSoundMixer_dword_836C04;

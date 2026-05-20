@@ -171,9 +171,9 @@ extern "C" int xboxXmv_PlayForSmkPath(const char *smkPath)
           videoDesc.FramesPerSecond, videoDesc.AudioStreamCount);
     {
         DWORD *raw = (DWORD *)&videoDesc;
-        XDBGF("XmvDbg: rawdesc sizeof=%u dwords=%08lX %08lX %08lX %08lX %08lX %08lX %08lX %08lX\n",
+        XDBGF("XmvDbg: rawdesc sizeof=%u dwords=%08lX %08lX %08lX %08lX\n",
               (unsigned int)sizeof(videoDesc),
-              raw[0], raw[1], raw[2], raw[3], raw[4], raw[5], raw[6], raw[7]);
+              raw[0], raw[1], raw[2], raw[3]);
     }
 
     if (videoDesc.AudioStreamCount)
