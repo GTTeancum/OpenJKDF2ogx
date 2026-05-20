@@ -16,6 +16,10 @@ extern "C" void std3D_Present(void);
 extern int jkGame_isDDraw;
 extern int jkCutscene_isRendering;
 
+unsigned int stdDisplay_xboxFlipCalls = 0;
+unsigned int stdDisplay_xboxFlipSuppressed = 0;
+unsigned int stdDisplay_xboxFlipMenuDraws = 0;
+
 uint32_t Video_menuTexId = 0;
 uint32_t Video_overlayTexId = 0;
 rdColor24 stdDisplay_masterPalette[256];
@@ -197,8 +201,7 @@ int stdDisplay_ClearRect(stdVBuffer *buf, int fillColor, rdRect *rect)
 
 int stdDisplay_DDrawGdiSurfaceFlip()
 {
-    static unsigned int flipCalls = 0;
-    flipCalls++;
+    unsigned int flipCalls = ++stdDisplay_xboxFlipCalls;
 
     if (!stdDisplay_xboxModeSet && !Video_menuBuffer.surface_lock_alloc)
     {
@@ -210,6 +213,7 @@ int stdDisplay_DDrawGdiSurfaceFlip()
 
     if (jkGame_isDDraw && !jkCutscene_isRendering)
     {
+        stdDisplay_xboxFlipSuppressed++;
         if (stdDisplay_xboxCreditsDebug)
             XDBGF("CreditsDbg: Flip call=%u suppressed jkGame_isDDraw=%d cutscene=%d sig=%08X\n",
                   flipCalls, jkGame_isDDraw, jkCutscene_isRendering, stdDisplay_xboxVbufSig(&Video_menuBuffer));
@@ -232,6 +236,7 @@ int stdDisplay_DDrawGdiSurfaceFlip()
               Video_menuBuffer.format.width_in_bytes);
     }
 
+    stdDisplay_xboxFlipMenuDraws++;
     std3D_StartScene();
     std3D_DrawMenuVBuffer8(&Video_menuBuffer, stdDisplay_masterPalette);
     if (stdDisplay_xboxPostMenuDrawFunc)

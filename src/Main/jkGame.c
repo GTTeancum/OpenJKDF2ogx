@@ -31,6 +31,12 @@
 #include "Platform/Xbox/xbox_splitscreen.h"
 #endif
 
+#if defined(TARGET_XBOX) && defined(XBOX_PERF_SMOKE)
+extern unsigned int stdDisplay_xboxFlipCalls;
+extern unsigned int stdDisplay_xboxFlipSuppressed;
+extern unsigned int stdDisplay_xboxFlipMenuDraws;
+#endif
+
 #if defined(TARGET_TWL)
 #include <nds.h>
 #endif
@@ -460,10 +466,14 @@ int jkGame_Update()
             playerSector = (player && player->sector) ? player->sector->id : -1;
             spanFrames = s_perfFrameTotal - s_perfFrameLast;
             fps100 = spanMs > 0 ? (spanFrames * 100000) / spanMs : 0;
-            XPERF("Perf: frame=%d spanFrames=%d spanMs=%d fps=%d.%02d totalMs=%d map='%s' worldSectors=%d worldSurfaces=%d playerSector=%d drawnSectors=%d faces=%d geoThings=%d nonGeoThings=%d result=%d\n",
+            XPERF("Perf: frame=%d spanFrames=%d spanMs=%d fps=%d.%02d totalMs=%d ddraw=%d flips=%u flipSupp=%u flipMenu=%u map='%s' worldSectors=%d worldSurfaces=%d playerSector=%d drawnSectors=%d faces=%d geoThings=%d nonGeoThings=%d result=%d\n",
                   s_perfFrameTotal, spanFrames, spanMs,
                   fps100 / 100, fps100 % 100,
                   jkGame_Update_End - s_perfMsStart,
+                  jkGame_isDDraw,
+                  stdDisplay_xboxFlipCalls,
+                  stdDisplay_xboxFlipSuppressed,
+                  stdDisplay_xboxFlipMenuDraws,
                   world ? world->map_jkl_fname : "(null)",
                   world ? world->numSectors : -1,
                   world ? world->numSurfaces : -1,

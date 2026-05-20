@@ -36,6 +36,34 @@ function Copy-IfExists($path, $destDir) {
     }
 }
 
+function Get-FpsStats($lines) {
+    $samples = @()
+    foreach ($line in $lines) {
+        if ($line -match 'fps=([0-9]+)\.([0-9]+).*totalMs=([0-9]+)') {
+            $samples += [pscustomobject]@{
+                Fps = [double]($matches[1] + '.' + $matches[2])
+                TotalMs = [int]$matches[3]
+            }
+        }
+    }
+
+    if ($samples.Count -eq 0) {
+        return [pscustomobject]@{ Count = 0; Avg = 0; StableCount = 0; StableAvg = 0; Min = 0; Max = 0 }
+    }
+
+    $stable = @($samples | Where-Object { $_.TotalMs -ge 10000 })
+    if ($stable.Count -eq 0) { $stable = $samples }
+
+    return [pscustomobject]@{
+        Count = $samples.Count
+        Avg = [math]::Round((($samples | Measure-Object -Property Fps -Average).Average), 2)
+        StableCount = $stable.Count
+        StableAvg = [math]::Round((($stable | Measure-Object -Property Fps -Average).Average), 2)
+        Min = [math]::Round((($samples | Measure-Object -Property Fps -Minimum).Minimum), 2)
+        Max = [math]::Round((($samples | Measure-Object -Property Fps -Maximum).Maximum), 2)
+    }
+}
+
 for ($i = 1; $i -le $Iterations; $i++) {
     $runDir = Join-Path $outRoot ('run_{0:D2}' -f $i)
     New-Item -ItemType Directory -Force -Path $runDir | Out-Null
@@ -77,11 +105,15 @@ for ($i = 1; $i -le $Iterations; $i++) {
     $heartbeats = 0
     $fatalCount = 0
     $perfLines = @()
+    $allPerfLines = @()
+    $fpsStats = Get-FpsStats @()
     $tail = @()
     if (Test-Path $gameLog) {
         $heartbeats = @(Select-String -Path $gameLog -Pattern '^Perf:').Count
         $fatalCount = @(Select-String -Path $gameLog -Pattern 'Received Exception|FATAL|Out of memory|E_OUTOFMEMORY|D3D Error|Unhandled|Could not load level').Count
-        $perfLines = @(Select-String -Path $gameLog -Pattern '^Perf:' | Select-Object -Last 12 | ForEach-Object { $_.Line })
+        $allPerfLines = @(Select-String -Path $gameLog -Pattern '^Perf: frame=' | ForEach-Object { $_.Line })
+        $fpsStats = Get-FpsStats $allPerfLines
+        $perfLines = @($allPerfLines | Select-Object -Last 12)
         $tail = @(Get-Content $gameLog -Tail 80)
     }
 
@@ -100,6 +132,12 @@ for ($i = 1; $i -le $Iterations; $i++) {
         "heartbeatCount=$heartbeats"
         "gameFatalCount=$fatalCount"
         "emuFatalCount=$emuFatal"
+        "fpsSamples=$($fpsStats.Count)"
+        "fpsAvg=$($fpsStats.Avg)"
+        "fpsStableSamples=$($fpsStats.StableCount)"
+        "fpsStableAvg=$($fpsStats.StableAvg)"
+        "fpsMin=$($fpsStats.Min)"
+        "fpsMax=$($fpsStats.Max)"
         "perfTail:"
         $perfLines
         "logTail:"
