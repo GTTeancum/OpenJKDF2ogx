@@ -274,6 +274,18 @@ void jkGuiTitle_WorldLoadCallback(flex_t percentage)
     if ( jkGuiTitle_loadPercent != (__int64)percentage )
     {
         jkGuiTitle_loadPercent = (__int64)percentage;
+#if defined(TARGET_XBOX) && defined(XBOX_PERF_SMOKE)
+        {
+            static int s_lastLoggedPercent = -1;
+            int percentInt = (int)jkGuiTitle_loadPercent;
+            if (percentInt != s_lastLoggedPercent)
+            {
+                xbox_debug_PerfPrintf("TitleLoad: percent=%d which=%d\n",
+                                      percentInt, jkGuiTitle_whichLoading);
+                s_lastLoggedPercent = percentInt;
+            }
+        }
+#endif
         if ( jkGuiTitle_whichLoading == 1 )
         {
             v1 = (percentage - 60.0) * 0.05 * 100.0;
@@ -396,6 +408,10 @@ void jkGuiTitle_ShowLoading(char *a1, wchar_t *a2)
 
 void jkGuiTitle_LoadingFinalize()
 {
+#if defined(TARGET_XBOX) && defined(XBOX_PERF_SMOKE)
+    xbox_debug_PerfPrintf("TitleLoad: finalize enter which=%d world=%p\n",
+                          jkGuiTitle_whichLoading, sithWorld_pCurrentWorld);
+#endif
 #ifdef QOL_IMPROVEMENTS
     int shouldSkip = jkPlayer_bFastMissionText || sithNet_isMulti || !sithWorld_pCurrentWorld;
 #ifdef TARGET_XBOX
@@ -441,4 +457,8 @@ void jkGuiTitle_LoadingFinalize()
     jkGui_SetModeGame();
     sithWorld_SetLoadPercentCallback(0);
     jkGuiRend_sub_50FDB0();
+#if defined(TARGET_XBOX) && defined(XBOX_PERF_SMOKE)
+    xbox_debug_PerfPrintf("TitleLoad: finalize exit which=%d world=%p\n",
+                          jkGuiTitle_whichLoading, sithWorld_pCurrentWorld);
+#endif
 }

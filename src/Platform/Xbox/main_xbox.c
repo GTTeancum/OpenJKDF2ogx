@@ -170,7 +170,10 @@ void __cdecl main(void)
 #ifdef XBOX_PERF_SMOKE
     {
         char smokeArgs[160];
-        Main_Startup((char *)xbox_read_smoke_autostart_args(smokeArgs, sizeof(smokeArgs)));
+        const char *startupArgs = xbox_read_smoke_autostart_args(smokeArgs, sizeof(smokeArgs));
+        XPERF("Smoke: Main_Startup args='%s'\n", startupArgs);
+        Main_Startup((char *)startupArgs);
+        XPERF("Smoke: Main_Startup returned\n");
     }
 #else
     Main_Startup("");
