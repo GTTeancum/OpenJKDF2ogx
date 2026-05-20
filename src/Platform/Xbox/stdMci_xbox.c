@@ -8,7 +8,6 @@
  */
 
 #define CINTERFACE
-#define STB_VORBIS_NO_STDIO
 #define STB_VORBIS_NO_FAST_SCALED_FLOAT
 #define STB_VORBIS_HEADER_ONLY
 
@@ -167,6 +166,29 @@ static int stdMci_TryOpenPath(const char *path)
     stb_vorbis_info info;
 
     stdMci_CloseVorbis();
+
+#ifdef TARGET_XBOX
+    stdMci_vorbis = stb_vorbis_open_filename(path, &err, NULL);
+    if (stdMci_vorbis)
+    {
+        stdMci_oggData = NULL;
+        stdMci_oggBytes = 0;
+        info = stb_vorbis_get_info(stdMci_vorbis);
+        stdMci_channels = info.channels;
+        stdMci_sampleRate = info.sample_rate;
+        if (stdMci_channels < 1 || stdMci_channels > 2 || stdMci_sampleRate <= 0)
+        {
+            XDBGF("stdMci: unsupported streamed OGG format ch=%d rate=%d\n", stdMci_channels, stdMci_sampleRate);
+            stdMci_CloseVorbis();
+            return 0;
+        }
+
+        XDBGF("stdMci: opened stream %s ch=%d rate=%d\n",
+              path, stdMci_channels, stdMci_sampleRate);
+        return 1;
+    }
+#endif
+
     if (!stdMci_ReadWholeFile(path, &stdMci_oggData, &stdMci_oggBytes))
         return 0;
 
@@ -201,6 +223,12 @@ static int stdMci_OpenTrackFile(int track)
     path[sizeof(path)-1] = 0;
     if (stdMci_TryOpenPath(path)) return 1;
 
+#ifdef TARGET_XBOX
+    _snprintf(path, sizeof(path)-1, "D:\\Music\\Track%d.ogg", track);
+    path[sizeof(path)-1] = 0;
+    if (stdMci_TryOpenPath(path)) return 1;
+#endif
+
     _snprintf(path, sizeof(path)-1, "Music\\Track%d.ogg", track);
     path[sizeof(path)-1] = 0;
     if (stdMci_TryOpenPath(path)) return 1;
@@ -214,6 +242,12 @@ static int stdMci_OpenTrackFile(int track)
         _snprintf(path, sizeof(path)-1, "\\Music\\Track%02d.ogg", track);
         path[sizeof(path)-1] = 0;
         if (stdMci_TryOpenPath(path)) return 1;
+
+#ifdef TARGET_XBOX
+        _snprintf(path, sizeof(path)-1, "D:\\Music\\Track%02d.ogg", track);
+        path[sizeof(path)-1] = 0;
+        if (stdMci_TryOpenPath(path)) return 1;
+#endif
     }
 
     return 0;

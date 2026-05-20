@@ -170,3 +170,25 @@ Risk tags:
   from about `90.6 MB` free physical memory in the comparable music-enabled run
   to about `92.5 MB` before the track transition and about `93.9 MB` after
   `Track13.ogg` loaded.
+
+### 009 - Stream Xbox OGG Music From File
+
+- Change: enable the stdio-backed `stb_vorbis_open_filename()` path for the Xbox
+  MCI music backend and prefer direct file streaming from `D:\Music\TrackNN.ogg`.
+  The old full-file memory load remains as a fallback if filename streaming
+  fails.
+- Risk: `RISK:HIGH`
+- Reason: the previous backend kept the full compressed OGG in memory while
+  decoding into a tiny DirectSound stream buffer. Track 12 alone was about
+  `5.5 MB`, which is a large avoidable allocation on real Xbox hardware.
+- Build: `cmd /c build_xbox.bat` succeeded.
+- Smoke run:
+  `build\xbox\smoke_runs\20260519_210503-normal-fmv5-autostart-01narshadda-stream-music`
+- Outcome: reached
+  `static,fmv,autostart,level-load,gameplay-show-done,first-tick,xbox-frame`;
+  stayed alive for the 300-second watchdog with no fatal patterns. The log shows
+  `stdMci: opened stream D:\Music\Track12.ogg` and
+  `stdMci: opened stream D:\Music\Track13.ogg`, with zero
+  `stdMci: read candidate` or `stdMci: read loaded` lines. Tail DirectSound
+  allocation samples held around `98.0 MB` free physical memory, removing the
+  previous multi-megabyte OGG load/drop pattern.
