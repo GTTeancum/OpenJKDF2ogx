@@ -3209,6 +3209,26 @@ void sithRender_RenderThings()
     flex_t clipRadius; // [esp+Ch] [ebp-10h]
     uint32_t i; // [esp+14h] [ebp-8h]
     BOOL v16; // [esp+18h] [ebp-4h]
+#if defined(TARGET_XBOX) && defined(XBOX_PERF_SMOKE)
+    static unsigned int s_perfThingsLastMs = 0;
+    static unsigned long s_perfThingsSectorVisits = 0;
+    static unsigned long s_perfThingsCandidates = 0;
+    static unsigned long s_perfThingsVisible = 0;
+    static unsigned long s_perfThingsDrawn = 0;
+    static unsigned long s_perfThingsModel = 0;
+    static unsigned long s_perfThingsSprite = 0;
+    static unsigned long s_perfThingsPolyline = 0;
+    static unsigned long s_perfThingsParticle = 0;
+    static unsigned long s_perfThingsRenderMs = 0;
+    static unsigned long s_perfThingsFlushMs = 0;
+    static unsigned long s_perfThingsLastDrawMs = 0;
+    static unsigned long s_perfThingsLastDrawCount = 0;
+    unsigned int perfThingsNowMs;
+    unsigned int perfThingsStartMs;
+    unsigned int perfThingsEndMs;
+    unsigned int perfThingsFlushStartMs;
+    int perfThingsRet;
+#endif
 
     // MoTS added
     sithThing* lastDrawn = NULL;
@@ -3222,6 +3242,9 @@ void sithRender_RenderThings()
 
     for ( i = 0; i < sithRender_numSectors2; i++ )
     {
+#if defined(TARGET_XBOX) && defined(XBOX_PERF_SMOKE)
+        s_perfThingsSectorVisits++;
+#endif
         v1 = sithRender_aSectors2[i];
         if ( sithRender_lightingIRMode )
         {
@@ -3248,6 +3271,9 @@ void sithRender_RenderThings()
               && (thingIter->thingflags & SITH_TF_LEVELGEO) == 0
               && ((sithCamera_currentCamera->cameraPerspective & 0xFC) != 0 || thingIter != sithCamera_currentCamera->primaryFocus) )
             {
+#if defined(TARGET_XBOX) && defined(XBOX_PERF_SMOKE)
+                s_perfThingsCandidates++;
+#endif
                 rdMatrix_TransformPoint34(&thingIter->screenPos, &thingIter->position, &rdCamera_pCurCamera->view_matrix);
                 
                 //printf("%f %f %f ; %f %f %f\n", thingIter->screenPos.x, thingIter->screenPos.y, thingIter->screenPos.z, thingIter->position.x, thingIter->position.y, thingIter->position.z);
@@ -3371,6 +3397,17 @@ void sithRender_RenderThings()
 #endif
                     if ( clippingVal == SPHERE_FULLY_OUTSIDE || sithRender_008d1668) // MoTS added: sithRender_008d1668
                         continue;
+#if defined(TARGET_XBOX) && defined(XBOX_PERF_SMOKE)
+                    s_perfThingsVisible++;
+                    switch (thingIter->rdthing.type)
+                    {
+                        case RD_THINGTYPE_MODEL: s_perfThingsModel++; break;
+                        case RD_THINGTYPE_SPRITE3: s_perfThingsSprite++; break;
+                        case RD_THINGTYPE_POLYLINE: s_perfThingsPolyline++; break;
+                        case RD_THINGTYPE_PARTICLECLOUD: s_perfThingsParticle++; break;
+                        default: break;
+                    }
+#endif
                     curWorld = sithWorld_pCurrentWorld;
 
                     flex_t yval = thingIter->screenPos.y;
@@ -3510,8 +3547,20 @@ void sithRender_RenderThings()
                         continue;
                     }
 
+#if defined(TARGET_XBOX) && defined(XBOX_PERF_SMOKE)
+                    perfThingsStartMs = stdPlatform_GetTimeMsec();
+                    perfThingsRet = sithRender_RenderThing(thingIter);
+                    perfThingsEndMs = stdPlatform_GetTimeMsec();
+                    s_perfThingsRenderMs += perfThingsEndMs - perfThingsStartMs;
+                    if (perfThingsRet)
+                    {
+                        s_perfThingsDrawn++;
+                        ++sithRender_nongeoThingsDrawn;
+                    }
+#else
                     if (sithRender_RenderThing(thingIter) ) // MOTS added: flag check
                         ++sithRender_nongeoThingsDrawn;
+#endif
                 }
             }
         }
@@ -3519,25 +3568,84 @@ void sithRender_RenderThings()
 
     // DSi doesn't really have Z buffer options, so just batch everything
 //#ifndef TARGET_TWL
+#if defined(TARGET_XBOX) && defined(XBOX_PERF_SMOKE)
+    perfThingsFlushStartMs = stdPlatform_GetTimeMsec();
+#endif
     rdCache_Flush();
+#if defined(TARGET_XBOX) && defined(XBOX_PERF_SMOKE)
+    perfThingsEndMs = stdPlatform_GetTimeMsec();
+    s_perfThingsFlushMs += perfThingsEndMs - perfThingsFlushStartMs;
+#endif
 //#endif
 
     // MoTS added
     if (lastDrawn) 
     {
+#if defined(TARGET_XBOX) && defined(XBOX_PERF_SMOKE)
+        perfThingsStartMs = stdPlatform_GetTimeMsec();
+        perfThingsRet = sithRender_RenderThing(lastDrawn);
+        perfThingsEndMs = stdPlatform_GetTimeMsec();
+        s_perfThingsLastDrawMs += perfThingsEndMs - perfThingsStartMs;
+        s_perfThingsLastDrawCount++;
+        if (perfThingsRet) {
+            s_perfThingsDrawn++;
+            ++sithRender_nongeoThingsDrawn;
+        }
+#else
         if (sithRender_RenderThing(lastDrawn)) {
             ++sithRender_nongeoThingsDrawn;
         }
+#endif
 
         // DSi doesn't really have Z buffer options, so just batch everything
 //#ifndef TARGET_TWL
+#if defined(TARGET_XBOX) && defined(XBOX_PERF_SMOKE)
+        perfThingsFlushStartMs = stdPlatform_GetTimeMsec();
+#endif
         rdCache_Flush();
+#if defined(TARGET_XBOX) && defined(XBOX_PERF_SMOKE)
+        perfThingsEndMs = stdPlatform_GetTimeMsec();
+        s_perfThingsFlushMs += perfThingsEndMs - perfThingsFlushStartMs;
+#endif
 //#endif
     }
 
     if (sithRender_008d1668) {
         rdSetCullFlags(1);
     }
+#if defined(TARGET_XBOX) && defined(XBOX_PERF_SMOKE)
+    perfThingsNowMs = stdPlatform_GetTimeMsec();
+    if (!s_perfThingsLastMs)
+        s_perfThingsLastMs = perfThingsNowMs;
+    if (perfThingsNowMs - s_perfThingsLastMs >= 5000) {
+        XPERF("PerfThings: sectors=%lu cand=%lu vis=%lu drawn=%lu mdl=%lu spr=%lu ply=%lu pcl=%lu renderMs=%lu flushMs=%lu lastDraw=%lu lastDrawMs=%lu\n",
+              s_perfThingsSectorVisits,
+              s_perfThingsCandidates,
+              s_perfThingsVisible,
+              s_perfThingsDrawn,
+              s_perfThingsModel,
+              s_perfThingsSprite,
+              s_perfThingsPolyline,
+              s_perfThingsParticle,
+              s_perfThingsRenderMs,
+              s_perfThingsFlushMs,
+              s_perfThingsLastDrawCount,
+              s_perfThingsLastDrawMs);
+        s_perfThingsSectorVisits = 0;
+        s_perfThingsCandidates = 0;
+        s_perfThingsVisible = 0;
+        s_perfThingsDrawn = 0;
+        s_perfThingsModel = 0;
+        s_perfThingsSprite = 0;
+        s_perfThingsPolyline = 0;
+        s_perfThingsParticle = 0;
+        s_perfThingsRenderMs = 0;
+        s_perfThingsFlushMs = 0;
+        s_perfThingsLastDrawCount = 0;
+        s_perfThingsLastDrawMs = 0;
+        s_perfThingsLastMs = perfThingsNowMs;
+    }
+#endif
     
 }
 
