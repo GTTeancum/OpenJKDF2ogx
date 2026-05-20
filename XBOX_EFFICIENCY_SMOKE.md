@@ -104,3 +104,20 @@ Risk tags:
 - Risk: `RISK:LOW`
 - Reason: autonomous smoke should not interrupt a manual hardware/emulator
   observation that is already in progress.
+
+### 006 - Throttle Texture Diagnostics
+
+- Change: reduce the Xbox texture diagnostic budgets for texture create,
+  subimage, texture stage, and direct movie draw logging from large
+  kitchen-sink values to 12 lines each.
+- Risk: `RISK:LOW`
+- Reason: the FMV/texture diagnosis has already shown the relevant path; keeping
+  hundreds of repeated `CutsceneTrace: TexSubImp` lines per smoke run adds log
+  I/O pressure and hides the useful level-load tail.
+- Build: `cmd /c build_xbox.bat` succeeded.
+- Smoke run:
+  `build\xbox\smoke_runs\20260519_203354-normal-fmv5-autostart-01narshadda-throttled-texlog`
+- Outcome: reached
+  `static,fmv,autostart,level-load,gameplay-show-done,first-tick,xbox-frame`;
+  stayed alive for the 300-second watchdog with no fatal patterns. Texture
+  diagnostic lines dropped from 272 to 36 on the comparable smoke path.

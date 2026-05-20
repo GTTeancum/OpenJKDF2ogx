@@ -85,15 +85,15 @@ void LocalDebugBreak(){
 }
 #endif
 
-static int g_xboxTexImageDiagBudget = 96;
-static int g_xboxTexSubDiagBudget = 160;
-static int g_xboxTexStageDiagBudget = 96;
+static int g_xboxTexImageDiagBudget = 12;
+static int g_xboxTexSubDiagBudget = 12;
+static int g_xboxTexStageDiagBudget = 12;
 static int g_xboxDrawDiagBudget = 96;
 static int g_xboxSwapDiagBudget = 48;
 static LPDIRECT3DTEXTURE8 g_xboxMovieLinearTex = NULL;
 static DWORD g_xboxMovieLinearW = 0;
 static DWORD g_xboxMovieLinearH = 0;
-static int g_xboxMovieDirectDiagBudget = 96;
+static int g_xboxMovieDirectDiagBudget = 12;
 
 // Globals
 bool g_force16bitTextures;
