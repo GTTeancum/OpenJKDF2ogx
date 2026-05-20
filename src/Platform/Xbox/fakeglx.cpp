@@ -1450,7 +1450,17 @@ public:
 	}
 
 	inline void Begin(GLuint drawMode){
-		m_pD3DDev->Begin((D3DPRIMITIVETYPE)(drawMode+1));
+		D3DPRIMITIVETYPE dptPrimitiveType;
+		switch (drawMode) {
+		case GL_POINTS: dptPrimitiveType = D3DPT_POINTLIST; break;
+		case GL_LINES: dptPrimitiveType = D3DPT_LINELIST; break;
+		case GL_LINE_STRIP: dptPrimitiveType = D3DPT_LINESTRIP; break;
+		case GL_TRIANGLES: dptPrimitiveType = D3DPT_TRIANGLELIST; break;
+		case GL_TRIANGLE_STRIP: dptPrimitiveType = D3DPT_TRIANGLESTRIP; break;
+		case GL_TRIANGLE_FAN: dptPrimitiveType = D3DPT_TRIANGLEFAN; break;
+		default: dptPrimitiveType = (D3DPRIMITIVETYPE)(drawMode + 1); break;
+		}
+		m_pD3DDev->Begin(dptPrimitiveType);
         m_needEnd = true;
 	}
 

@@ -358,6 +358,22 @@ unsigned int std3D_xboxFrameVerts = 0;
 unsigned int std3D_xboxFrameTexUploads = 0;
 unsigned int std3D_xboxFrameBitmapUploads = 0;
 
+#if defined(TARGET_XBOX) && defined(XBOX_PERF_SMOKE)
+static unsigned long g_perfDrlMs = 0;
+static unsigned long g_perfDrlCalls = 0;
+static unsigned long g_perfDrlTris = 0;
+static unsigned long g_perfDrlLines = 0;
+static unsigned long g_perfDrlTriBegins = 0;
+static unsigned long g_perfDrlLineBegins = 0;
+static unsigned long g_perfDrlTextured = 0;
+static unsigned long g_perfDrlUntextured = 0;
+static unsigned long g_perfDrlBinds = 0;
+static unsigned long g_perfDrlSamplerChanges = 0;
+static unsigned long g_perfDrlFlagChanges = 0;
+static unsigned long g_perfDrlTextureToggles = 0;
+static unsigned long g_perfDrlLastLogMs = 0;
+#endif
+
 /* ====================================================================== */
 /* std3D_Startup                                                          */
 /* ====================================================================== */
@@ -1079,6 +1095,20 @@ extern int xbox_get_camera_params(float *fov, float *aspect,
 void std3D_DrawRenderList(void)
 {
     int i;
+#if defined(TARGET_XBOX) && defined(XBOX_PERF_SMOKE)
+    unsigned long perfStartMs = (unsigned long)GetTickCount();
+    unsigned long perfTriBegins = 0;
+    unsigned long perfLineBegins = 0;
+    unsigned long perfSamplerChanges = 0;
+    unsigned long perfFlagChanges = 0;
+    unsigned long perfTextureToggles = 0;
+    unsigned long perfListTris = 0;
+    unsigned long perfListLines = 0;
+    unsigned long perfTexturedTris = 0;
+    unsigned long perfUntexturedTris = 0;
+    unsigned long perfBindSwitches = 0;
+    int perfTextureEnabled = -1;
+#endif
     if (!g_initialized || !g_sceneOpen)
     {
         static int s_xboxDrlClosedDbg = 0;
@@ -1107,6 +1137,10 @@ void std3D_DrawRenderList(void)
     std3D_xboxFrameTris += (unsigned int)GL_numTris;
     std3D_xboxFrameVerts += (unsigned int)GL_numVertices;
     std3D_DebugLineKV(10, "DRAWN", GL_numTris);
+#if defined(TARGET_XBOX) && defined(XBOX_PERF_SMOKE)
+    perfListTris = (unsigned long)GL_numTris;
+    perfListLines = (unsigned long)GL_numLines;
+#endif
 
     /* ---------------------------------------------------------------- */
     /* HW projection setup.                                              */
@@ -1215,6 +1249,14 @@ void std3D_DrawRenderList(void)
      * surfaces missing textures stay diagnosable. */
 #define STD3D_WIREFRAME       0
 #define STD3D_FORCE_WHITE_UNTEX 1
+#if defined(TARGET_XBOX)
+#define STD3D_BATCH_TRI_RUNS 1
+#else
+#define STD3D_BATCH_TRI_RUNS 0
+#endif
+/* DANGEROUS PERF: batching is intentionally enabled for normal Xbox builds.
+ * FakeGL Begin() now maps GL_TRIANGLES to D3DPT_TRIANGLELIST explicitly, so
+ * consecutive same-state tris can share one Begin/End without stripifying. */
 /* Diagnostic: re-emit each tri as a green line overlay after the textured
  * pass.  Confirmed (via hardware test): warp is UV/affine, not tri-level. */
 #define STD3D_WIREFRAME_OVERLAY 0
@@ -1251,13 +1293,19 @@ void std3D_DrawRenderList(void)
         V3F_ENGINE_TO_GL(a);
 #else
         {
+            int batch_end = i + 1;
             int textured = (t->texture
                             && t->texture->texture_loaded
                             && t->texture->texture_id != 0
                             && g_pfnBindTexture);
+            unsigned int id = textured ? (unsigned int)t->texture->texture_id : 0u;
+            int sampler_flags = textured ? (t->flags & (STD3D_TRI_FLAG_CLAMP_X | STD3D_TRI_FLAG_CLAMP_Y | STD3D_TRI_FLAG_NEAREST)) : 0;
 
             if (textured) {
                 if (t->flags != last_flags) {
+#if defined(TARGET_XBOX) && defined(XBOX_PERF_SMOKE)
+                    perfFlagChanges++;
+#endif
                     glEnable(GL_BLEND);
                     if (g_xboxScreenSpaceRenderList) glDisable(GL_CULL_FACE);
                     else                            glEnable(GL_CULL_FACE);
@@ -1290,8 +1338,6 @@ void std3D_DrawRenderList(void)
             }
 
             if (textured) {
-                unsigned int id = (unsigned int)t->texture->texture_id;
-                int sampler_flags = t->flags & (STD3D_TRI_FLAG_CLAMP_X | STD3D_TRI_FLAG_CLAMP_Y | STD3D_TRI_FLAG_NEAREST);
                 if (id != last_id) {
                     g_pfnBindTexture(GL_TEXTURE_2D, id);
                     last_id = id;
@@ -1307,16 +1353,60 @@ void std3D_DrawRenderList(void)
                     glTexParameterf(GL_TEXTURE_2D, GL_TEXTURE_MIN_FILTER, filter);
                     glTexParameterf(GL_TEXTURE_2D, GL_TEXTURE_MAG_FILTER, filter);
                     last_sampler_flags = sampler_flags;
+#if defined(TARGET_XBOX) && defined(XBOX_PERF_SMOKE)
+                    perfSamplerChanges++;
+#endif
                 }
+#if defined(TARGET_XBOX) && defined(XBOX_PERF_SMOKE)
+                if (perfTextureEnabled != 1) {
+                    perfTextureToggles++;
+                    perfTextureEnabled = 1;
+                }
+#endif
                 glEnable(GL_TEXTURE_2D);
                 textured_tris++;
             } else {
+#if defined(TARGET_XBOX) && defined(XBOX_PERF_SMOKE)
+                if (perfTextureEnabled != 0) {
+                    perfTextureToggles++;
+                    perfTextureEnabled = 0;
+                }
+#endif
                 glDisable(GL_TEXTURE_2D);
                 last_id = 0;
                 last_sampler_flags = -1;
                 untextured_tris++;
             }
 
+#if STD3D_BATCH_TRI_RUNS
+            while (batch_end < GL_numTris)
+            {
+                rdTri *nt = &GL_tmpTris[batch_end];
+                int ntextured = (nt->texture
+                                 && nt->texture->texture_loaded
+                                 && nt->texture->texture_id != 0
+                                 && g_pfnBindTexture);
+                unsigned int nid = ntextured ? (unsigned int)nt->texture->texture_id : 0u;
+                int nsampler_flags = ntextured ? (nt->flags & (STD3D_TRI_FLAG_CLAMP_X | STD3D_TRI_FLAG_CLAMP_Y | STD3D_TRI_FLAG_NEAREST)) : 0;
+
+                if (ntextured != textured)
+                    break;
+                if (nt->flags != t->flags)
+                    break;
+                if (nid != id)
+                    break;
+                if (nsampler_flags != sampler_flags)
+                    break;
+
+                if (ntextured) textured_tris++;
+                else           untextured_tris++;
+                batch_end++;
+            }
+#endif
+
+#if defined(TARGET_XBOX) && defined(XBOX_PERF_SMOKE)
+            perfTriBegins++;
+#endif
             glBegin(GL_TRIANGLES);
             /* Per-vertex lighting modulation.
              *
@@ -1362,32 +1452,44 @@ void std3D_DrawRenderList(void)
 #define V_COLOR_B(v) (float)( (v)->color        & 0xFF) / 255.0f
 #define V_COLOR_A(v) (float)((((v)->color >> 24) & 0xFF) ? (((v)->color >> 24) & 0xFF) : 0xFF) / 255.0f
 #define V_COLOR_RGB_NONZERO(v) (((v)->color & 0x00FFFFFFu) != 0u)
-            if (textured) {
-                glColor4f(a->lightLevel, a->lightLevel, a->lightLevel, V_COLOR_A(a));
-                glTexCoord2f(a->tu, a->tv);
-                V3F_ENGINE_TO_GL(a);
-                glColor4f(b->lightLevel, b->lightLevel, b->lightLevel, V_COLOR_A(b));
-                glTexCoord2f(b->tu, b->tv);
-                V3F_ENGINE_TO_GL(b);
-                glColor4f(c->lightLevel, c->lightLevel, c->lightLevel, V_COLOR_A(c));
-                glTexCoord2f(c->tu, c->tv);
-                V3F_ENGINE_TO_GL(c);
-            } else {
-                if (V_COLOR_RGB_NONZERO(a)) glColor4f(V_COLOR_R(a), V_COLOR_G(a), V_COLOR_B(a), 1.0f);
-                else                        glColor4f(a->lightLevel, a->lightLevel, a->lightLevel, 1.0f);
-                V3F_ENGINE_TO_GL(a);
-                if (V_COLOR_RGB_NONZERO(b)) glColor4f(V_COLOR_R(b), V_COLOR_G(b), V_COLOR_B(b), 1.0f);
-                else                        glColor4f(b->lightLevel, b->lightLevel, b->lightLevel, 1.0f);
-                V3F_ENGINE_TO_GL(b);
-                if (V_COLOR_RGB_NONZERO(c)) glColor4f(V_COLOR_R(c), V_COLOR_G(c), V_COLOR_B(c), 1.0f);
-                else                        glColor4f(c->lightLevel, c->lightLevel, c->lightLevel, 1.0f);
-                V3F_ENGINE_TO_GL(c);
+            {
+                int bi;
+                for (bi = i; bi < batch_end; ++bi)
+                {
+                    rdTri *bt = &GL_tmpTris[bi];
+                    D3DVERTEX *ba = &GL_tmpVertices[bt->v1];
+                    D3DVERTEX *bb = &GL_tmpVertices[bt->v2];
+                    D3DVERTEX *bc = &GL_tmpVertices[bt->v3];
+
+                    if (textured) {
+                        glColor4f(ba->lightLevel, ba->lightLevel, ba->lightLevel, V_COLOR_A(ba));
+                        glTexCoord2f(ba->tu, ba->tv);
+                        V3F_ENGINE_TO_GL(ba);
+                        glColor4f(bb->lightLevel, bb->lightLevel, bb->lightLevel, V_COLOR_A(bb));
+                        glTexCoord2f(bb->tu, bb->tv);
+                        V3F_ENGINE_TO_GL(bb);
+                        glColor4f(bc->lightLevel, bc->lightLevel, bc->lightLevel, V_COLOR_A(bc));
+                        glTexCoord2f(bc->tu, bc->tv);
+                        V3F_ENGINE_TO_GL(bc);
+                    } else {
+                        if (V_COLOR_RGB_NONZERO(ba)) glColor4f(V_COLOR_R(ba), V_COLOR_G(ba), V_COLOR_B(ba), 1.0f);
+                        else                         glColor4f(ba->lightLevel, ba->lightLevel, ba->lightLevel, 1.0f);
+                        V3F_ENGINE_TO_GL(ba);
+                        if (V_COLOR_RGB_NONZERO(bb)) glColor4f(V_COLOR_R(bb), V_COLOR_G(bb), V_COLOR_B(bb), 1.0f);
+                        else                         glColor4f(bb->lightLevel, bb->lightLevel, bb->lightLevel, 1.0f);
+                        V3F_ENGINE_TO_GL(bb);
+                        if (V_COLOR_RGB_NONZERO(bc)) glColor4f(V_COLOR_R(bc), V_COLOR_G(bc), V_COLOR_B(bc), 1.0f);
+                        else                         glColor4f(bc->lightLevel, bc->lightLevel, bc->lightLevel, 1.0f);
+                        V3F_ENGINE_TO_GL(bc);
+                    }
+                }
             }
 #undef V_COLOR_R
 #undef V_COLOR_G
 #undef V_COLOR_B
 #undef V_COLOR_A
 #undef V_COLOR_RGB_NONZERO
+            i = batch_end - 1;
         }
 #endif
 
@@ -1399,6 +1501,11 @@ void std3D_DrawRenderList(void)
         std3D_DebugLineKV(3, "UNTRI", untextured_tris);
         std3D_DebugLineKV(4, "BIND",  bind_switches);
         std3D_DebugLineKV(14, "UVOOR", (int)g_uvOOR);
+#if defined(TARGET_XBOX) && defined(XBOX_PERF_SMOKE)
+        perfTexturedTris = (unsigned long)textured_tris;
+        perfUntexturedTris = (unsigned long)untextured_tris;
+        perfBindSwitches = (unsigned long)bind_switches;
+#endif
     }
 #endif
 
@@ -1442,6 +1549,9 @@ void std3D_DrawRenderList(void)
 #define V_COLOR_G(v) (float)(((v)->color >>  8) & 0xFF) / 255.0f
 #define V_COLOR_B(v) (float)( (v)->color        & 0xFF) / 255.0f
 #define V_COLOR_RGB_NONZERO(v) (((v)->color & 0x00FFFFFFu) != 0u)
+#if defined(TARGET_XBOX) && defined(XBOX_PERF_SMOKE)
+            perfLineBegins++;
+#endif
             glBegin(GL_LINES);
             if (V_COLOR_RGB_NONZERO(a)) glColor4f(V_COLOR_R(a), V_COLOR_G(a), V_COLOR_B(a), 1.0f);
             else                        glColor4f(a->lightLevel, a->lightLevel, a->lightLevel, 1.0f);
@@ -1461,6 +1571,49 @@ void std3D_DrawRenderList(void)
     GL_verticesDone = 0;
     GL_numTris      = 0;
     GL_numLines     = 0;
+
+#if defined(TARGET_XBOX) && defined(XBOX_PERF_SMOKE)
+    {
+        unsigned long nowMs = (unsigned long)GetTickCount();
+        g_perfDrlMs += nowMs - perfStartMs;
+        g_perfDrlCalls++;
+        g_perfDrlTris += perfListTris;
+        g_perfDrlLines += perfListLines;
+        g_perfDrlTriBegins += perfTriBegins;
+        g_perfDrlLineBegins += perfLineBegins;
+        g_perfDrlTextured += perfTexturedTris;
+        g_perfDrlUntextured += perfUntexturedTris;
+        g_perfDrlBinds += perfBindSwitches;
+        g_perfDrlSamplerChanges += perfSamplerChanges;
+        g_perfDrlFlagChanges += perfFlagChanges;
+        g_perfDrlTextureToggles += perfTextureToggles;
+
+        if (!g_perfDrlLastLogMs)
+            g_perfDrlLastLogMs = nowMs;
+        if (nowMs - g_perfDrlLastLogMs >= 5000)
+        {
+            XPERF("PerfDRL: calls=%lu ms=%lu tris=%lu lines=%lu triBegins=%lu lineBegins=%lu textured=%lu untextured=%lu binds=%lu samplers=%lu flags=%lu texToggles=%lu\n",
+                  g_perfDrlCalls, g_perfDrlMs, g_perfDrlTris, g_perfDrlLines,
+                  g_perfDrlTriBegins, g_perfDrlLineBegins,
+                  g_perfDrlTextured, g_perfDrlUntextured, g_perfDrlBinds,
+                  g_perfDrlSamplerChanges, g_perfDrlFlagChanges,
+                  g_perfDrlTextureToggles);
+            g_perfDrlMs = 0;
+            g_perfDrlCalls = 0;
+            g_perfDrlTris = 0;
+            g_perfDrlLines = 0;
+            g_perfDrlTriBegins = 0;
+            g_perfDrlLineBegins = 0;
+            g_perfDrlTextured = 0;
+            g_perfDrlUntextured = 0;
+            g_perfDrlBinds = 0;
+            g_perfDrlSamplerChanges = 0;
+            g_perfDrlFlagChanges = 0;
+            g_perfDrlTextureToggles = 0;
+            g_perfDrlLastLogMs = nowMs;
+        }
+    }
+#endif
 }
 
 /* ====================================================================== */
