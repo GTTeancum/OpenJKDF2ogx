@@ -357,6 +357,7 @@ unsigned int std3D_xboxFrameTris = 0;
 unsigned int std3D_xboxFrameVerts = 0;
 unsigned int std3D_xboxFrameTexUploads = 0;
 unsigned int std3D_xboxFrameBitmapUploads = 0;
+static int std3D_XboxApplySamplerFlags(unsigned int id, int sampler_flags);
 
 #if defined(TARGET_XBOX) && defined(XBOX_PERF_SMOKE)
 static unsigned long g_perfDrlMs = 0;
@@ -1345,16 +1346,10 @@ void std3D_DrawRenderList(void)
                     bind_switches++;
                 }
                 if (sampler_flags != last_sampler_flags) {
-                    GLfloat filter = (sampler_flags & STD3D_TRI_FLAG_NEAREST) ? (GLfloat)GL_NEAREST : (GLfloat)GL_LINEAR;
-                    glTexParameterf(GL_TEXTURE_2D, GL_TEXTURE_WRAP_S,
-                                    (sampler_flags & STD3D_TRI_FLAG_CLAMP_X) ? (GLfloat)GL_CLAMP : (GLfloat)GL_REPEAT);
-                    glTexParameterf(GL_TEXTURE_2D, GL_TEXTURE_WRAP_T,
-                                    (sampler_flags & STD3D_TRI_FLAG_CLAMP_Y) ? (GLfloat)GL_CLAMP : (GLfloat)GL_REPEAT);
-                    glTexParameterf(GL_TEXTURE_2D, GL_TEXTURE_MIN_FILTER, filter);
-                    glTexParameterf(GL_TEXTURE_2D, GL_TEXTURE_MAG_FILTER, filter);
+                    int sampler_applied = std3D_XboxApplySamplerFlags(id, sampler_flags);
                     last_sampler_flags = sampler_flags;
 #if defined(TARGET_XBOX) && defined(XBOX_PERF_SMOKE)
-                    perfSamplerChanges++;
+                    if (sampler_applied) perfSamplerChanges++;
 #endif
                 }
 #if defined(TARGET_XBOX) && defined(XBOX_PERF_SMOKE)
@@ -1648,6 +1643,8 @@ static int             g_atcLogBudget   = 24;
 static rdDDrawSurface *g_loadedSurfaces[STD3D_MAX_TEXTURES];
 static unsigned int    g_loadedTextureIds[STD3D_MAX_TEXTURES];
 static int             g_loadedTextureSlots = 0;
+static int             g_textureSamplerFlags[STD3D_MAX_TEXTURES];
+static unsigned char   g_textureSamplerValid[STD3D_MAX_TEXTURES];
 
 /* Scratch buffer for per-texture RGBA conversion.  Max source we expect
  * is 256x256 (most JK textures ≤ 128x128).  Buffer is scratch — FakeGL's
@@ -1656,6 +1653,31 @@ static int             g_loadedTextureSlots = 0;
 #define STD3D_TEX_SCRATCH_W  1024
 #define STD3D_TEX_SCRATCH_H  512
 static unsigned char g_texScratch[STD3D_TEX_SCRATCH_W * STD3D_TEX_SCRATCH_H * 4];
+
+static int std3D_XboxApplySamplerFlags(unsigned int id, int sampler_flags)
+{
+    GLfloat filter;
+
+    if (id < STD3D_MAX_TEXTURES
+        && g_textureSamplerValid[id]
+        && g_textureSamplerFlags[id] == sampler_flags) {
+        return 0;
+    }
+
+    filter = (sampler_flags & STD3D_TRI_FLAG_NEAREST) ? (GLfloat)GL_NEAREST : (GLfloat)GL_LINEAR;
+    glTexParameterf(GL_TEXTURE_2D, GL_TEXTURE_WRAP_S,
+                    (sampler_flags & STD3D_TRI_FLAG_CLAMP_X) ? (GLfloat)GL_CLAMP : (GLfloat)GL_REPEAT);
+    glTexParameterf(GL_TEXTURE_2D, GL_TEXTURE_WRAP_T,
+                    (sampler_flags & STD3D_TRI_FLAG_CLAMP_Y) ? (GLfloat)GL_CLAMP : (GLfloat)GL_REPEAT);
+    glTexParameterf(GL_TEXTURE_2D, GL_TEXTURE_MIN_FILTER, filter);
+    glTexParameterf(GL_TEXTURE_2D, GL_TEXTURE_MAG_FILTER, filter);
+
+    if (id < STD3D_MAX_TEXTURES) {
+        g_textureSamplerValid[id] = 1;
+        g_textureSamplerFlags[id] = sampler_flags;
+    }
+    return 1;
+}
 
 static int std3D_XboxTrackTexture(rdDDrawSurface *texture, unsigned int id)
 {
@@ -3232,6 +3254,10 @@ void std3D_PurgeTextureEntry(int i)
         std3D_XboxClearSurface(surface);
 
     g_loadedSurfaces[i] = 0;
+    if (g_loadedTextureIds[i] < STD3D_MAX_TEXTURES) {
+        g_textureSamplerValid[g_loadedTextureIds[i]] = 0;
+        g_textureSamplerFlags[g_loadedTextureIds[i]] = 0;
+    }
     g_loadedTextureIds[i] = 0;
     if (i == g_loadedTextureSlots - 1) {
         while (g_loadedTextureSlots > 0
