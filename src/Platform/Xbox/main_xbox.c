@@ -214,6 +214,9 @@ void __cdecl main(void)
      * -------------------------------------------------------------- */
     { static int loopCount = 0;
 #ifdef XBOX_PERF_SMOKE
+#ifndef XBOX_PERF_PHASE_TRACE
+#define XBOX_PERF_PHASE_TRACE 0
+#endif
     static DWORD s_perfLoopLastMs = 0;
     static unsigned long s_perfStartMs = 0;
     static unsigned long s_perfGuiMs = 0;
@@ -260,7 +263,7 @@ void __cdecl main(void)
         /* if (loopCount < 5) XDBG("main: -> StartScene\n"); */
 #ifdef XBOX_PERF_SMOKE
         { DWORD t0 = GetTickCount();
-          int traceFrame = s_perfTraceNextFrame;
+          int traceFrame = XBOX_PERF_PHASE_TRACE ? s_perfTraceNextFrame : 0;
           if (traceFrame) XPERF("PerfPhase: loop=%d before StartScene\n", loopCount);
 #endif
         std3D_StartScene();
