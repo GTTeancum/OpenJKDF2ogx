@@ -355,6 +355,8 @@ static int       GL_numLines     = 0;
 unsigned int std3D_xboxFrameDrawLists = 0;
 unsigned int std3D_xboxFrameTris = 0;
 unsigned int std3D_xboxFrameVerts = 0;
+unsigned int std3D_xboxFrameTexUploads = 0;
+unsigned int std3D_xboxFrameBitmapUploads = 0;
 
 /* ====================================================================== */
 /* std3D_Startup                                                          */
@@ -813,6 +815,8 @@ int std3D_StartScene(void)
         std3D_xboxFrameDrawLists = 0;
         std3D_xboxFrameTris = 0;
         std3D_xboxFrameVerts = 0;
+        std3D_xboxFrameTexUploads = 0;
+        std3D_xboxFrameBitmapUploads = 0;
 
         /* Reset per-frame vertex-bbox accumulators on outer transition. */
         g_bboxXmin =  1e30f; g_bboxXmax = -1e30f;
@@ -1748,6 +1752,7 @@ std3D_atc_do_upload:
     texture->height         = h;
 
     g_texUploaded++;
+    std3D_xboxFrameTexUploads++;
     std3D_DebugLineKV(1, "TUP", g_texUploaded);
 
     if (0 && g_atcLogBudget > 0) {
@@ -2110,6 +2115,7 @@ static int xbox_upload_bitmap_mip(stdBitmap_local *bm, int mipIdx, int is_alpha_
     bm->aTextureIds[mipIdx]   = id;
     bm->abLoadedToGPU[mipIdx] = 1;
     std3D_XboxTrackUIBitmapTexture(bm, mipIdx, id, padW, padH);
+    std3D_xboxFrameBitmapUploads++;
 
     { static int _n = 0;
       if (_n < 16) {
