@@ -35,6 +35,7 @@ static int xbox_debug_ShouldLogText(const char *msg)
     if (!strncmp(msg, "Perf:", 5)) return 1;
     if (!strncmp(msg, "PerfGame:", 9)) return 1;
     if (!strncmp(msg, "PerfUpdate:", 11)) return 1;
+    if (!strncmp(msg, "PerfRender:", 11)) return 1;
     if (!strncmp(msg, "PerfPhase:", 10)) return 1;
     if (!strncmp(msg, "===", 3)) return 1;
     if (!strncmp(msg, "Smoke:", 6)) return 1;
@@ -153,7 +154,8 @@ void xbox_debug_Print(const char *msg)
         FlushFileBuffers(g_hLogFile);
 #else
         if (!strncmp(msg, "Perf:", 5) || !strncmp(msg, "PerfGame:", 9) ||
-            !strncmp(msg, "PerfUpdate:", 11) || !strncmp(msg, "PerfPhase:", 10) ||
+            !strncmp(msg, "PerfUpdate:", 11) || !strncmp(msg, "PerfRender:", 11) ||
+            !strncmp(msg, "PerfPhase:", 10) ||
             !strncmp(msg, "Smoke:", 6) ||
             !strncmp(msg, "main:", 5) || !strncmp(msg, "Main_Startup:", 13) ||
             !strncmp(msg, "TitleLoad:", 10) ||

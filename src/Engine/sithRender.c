@@ -506,6 +506,25 @@ void sithRender_Draw()
      * flooding. */
     static int xb_drawCalls = 0;
     static int xb_exitGeo0 = 0, xb_exitNoCam = 0, xb_exitFull = 0;
+#ifdef XBOX_PERF_SMOKE
+    static unsigned int s_perfRenderLastMs = 0;
+    static unsigned int s_perfRenderFrames = 0;
+    static unsigned long s_perfRenderClipMs = 0;
+    static unsigned long s_perfRenderLightMs = 0;
+    static unsigned long s_perfRenderGeoMs = 0;
+    static unsigned long s_perfRenderThingsMs = 0;
+    static unsigned long s_perfRenderAlphaMs = 0;
+    static unsigned long s_perfRenderTotalMs = 0;
+    static int s_perfRenderMaxSectors = 0;
+    static int s_perfRenderMaxSectors2 = 0;
+    static int s_perfRenderMaxSurfaces = 0;
+    unsigned int perfRenderStartMs = stdPlatform_GetTimeMsec();
+    unsigned int perfRenderClipEndMs = perfRenderStartMs;
+    unsigned int perfRenderLightEndMs = perfRenderStartMs;
+    unsigned int perfRenderGeoEndMs = perfRenderStartMs;
+    unsigned int perfRenderThingsEndMs = perfRenderStartMs;
+    unsigned int perfRenderAlphaEndMs = perfRenderStartMs;
+#endif
     xb_drawCalls++;
     std3D_DebugLineKV(0, "DRAW",   xb_drawCalls);
     std3D_DebugLineKV(1, "GEO0",   xb_exitGeo0);
@@ -748,6 +767,9 @@ void sithRender_Draw()
         }
     }
 #endif
+#if defined(TARGET_XBOX) && defined(XBOX_PERF_SMOKE)
+    perfRenderClipEndMs = stdPlatform_GetTimeMsec();
+#endif
 #ifdef TARGET_TWL
     int testClipEnd = stdPlatform_GetTimeMsec();
 #endif
@@ -809,6 +831,9 @@ void sithRender_Draw()
         }
     }
 #endif
+#if defined(TARGET_XBOX) && defined(XBOX_PERF_SMOKE)
+    perfRenderLightEndMs = stdPlatform_GetTimeMsec();
+#endif
 #ifdef TARGET_TWL
     int testLightsEnd = stdPlatform_GetTimeMsec();
 
@@ -824,6 +849,9 @@ void sithRender_Draw()
     { static int _srl=0; if(_srl<1){ XDBGF("sithRender_Draw: RenderLevelGeo done faces=%d\n", rdCache_numProcFaces); _srl++; } }
     std3D_DebugLineKV(4, "PFACES", rdCache_numProcFaces);
 #endif
+#if defined(TARGET_XBOX) && defined(XBOX_PERF_SMOKE)
+    perfRenderGeoEndMs = stdPlatform_GetTimeMsec();
+#endif
 
 #ifdef TARGET_TWL
     int testLevelGeoEnd = stdPlatform_GetTimeMsec();
@@ -834,6 +862,9 @@ void sithRender_Draw()
     // TWL: 10-20ms
     if ( sithRender_numSectors2 )
         sithRender_RenderThings();
+#if defined(TARGET_XBOX) && defined(XBOX_PERF_SMOKE)
+    perfRenderThingsEndMs = stdPlatform_GetTimeMsec();
+#endif
 
 #ifdef TARGET_TWL
     int testThingsEnd = stdPlatform_GetTimeMsec();
@@ -844,6 +875,9 @@ void sithRender_Draw()
     // TWL: 0ms
     if ( sithRender_numSurfaces )
         sithRender_RenderAlphaSurfaces();
+#if defined(TARGET_XBOX) && defined(XBOX_PERF_SMOKE)
+    perfRenderAlphaEndMs = stdPlatform_GetTimeMsec();
+#endif
 
     rdSetCullFlags(3);
 #ifdef QOL_IMPROVEMENTS
@@ -861,6 +895,38 @@ void sithRender_Draw()
 #endif
 
 #ifdef TARGET_XBOX
+#ifdef XBOX_PERF_SMOKE
+    s_perfRenderFrames++;
+    s_perfRenderClipMs += perfRenderClipEndMs - perfRenderStartMs;
+    s_perfRenderLightMs += perfRenderLightEndMs - perfRenderClipEndMs;
+    s_perfRenderGeoMs += perfRenderGeoEndMs - perfRenderLightEndMs;
+    s_perfRenderThingsMs += perfRenderThingsEndMs - perfRenderGeoEndMs;
+    s_perfRenderAlphaMs += perfRenderAlphaEndMs - perfRenderThingsEndMs;
+    s_perfRenderTotalMs += perfRenderAlphaEndMs - perfRenderStartMs;
+    if (sithRender_numSectors > s_perfRenderMaxSectors) s_perfRenderMaxSectors = sithRender_numSectors;
+    if (sithRender_numSectors2 > s_perfRenderMaxSectors2) s_perfRenderMaxSectors2 = sithRender_numSectors2;
+    if (sithRender_numSurfaces > s_perfRenderMaxSurfaces) s_perfRenderMaxSurfaces = sithRender_numSurfaces;
+    if (!s_perfRenderLastMs)
+        s_perfRenderLastMs = perfRenderAlphaEndMs;
+    if (perfRenderAlphaEndMs - s_perfRenderLastMs >= 5000) {
+        XPERF("PerfRender: frames=%u clipMs=%lu lightMs=%lu geoMs=%lu thingsMs=%lu alphaMs=%lu totalMs=%lu maxSec=%d maxSec2=%d maxAlpha=%d\n",
+              s_perfRenderFrames, s_perfRenderClipMs, s_perfRenderLightMs,
+              s_perfRenderGeoMs, s_perfRenderThingsMs, s_perfRenderAlphaMs,
+              s_perfRenderTotalMs, s_perfRenderMaxSectors,
+              s_perfRenderMaxSectors2, s_perfRenderMaxSurfaces);
+        s_perfRenderFrames = 0;
+        s_perfRenderClipMs = 0;
+        s_perfRenderLightMs = 0;
+        s_perfRenderGeoMs = 0;
+        s_perfRenderThingsMs = 0;
+        s_perfRenderAlphaMs = 0;
+        s_perfRenderTotalMs = 0;
+        s_perfRenderMaxSectors = 0;
+        s_perfRenderMaxSectors2 = 0;
+        s_perfRenderMaxSurfaces = 0;
+        s_perfRenderLastMs = perfRenderAlphaEndMs;
+    }
+#endif
     xb_exitFull++;
 #endif
 }
