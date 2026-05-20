@@ -190,6 +190,9 @@ void sithThing_SetHandler(sithThing_handler_t handler)
 void sithThing_TickAll(flex_t deltaSeconds, int deltaMs)
 {
     sithThing* pThingIter; // esi
+#if defined(TARGET_XBOX)
+    int xboxTickCall = -1;
+#endif
 
 #if defined(TARGET_XBOX)
     /* Phase 4 Step A: trace per-thing tick to locate hang.  Throttled
@@ -199,6 +202,7 @@ void sithThing_TickAll(flex_t deltaSeconds, int deltaMs)
         MEMORYSTATUS memStatus;
         memStatus.dwLength = sizeof(memStatus);
         GlobalMemoryStatus(&memStatus);
+        xboxTickCall = _e;
         XDBGF("TickAll: enter call=%d numThings=%d ds=%f dms=%d world=%p player=%p phys=%lu page=%lu\n",
               _e,
               sithWorld_pCurrentWorld ? sithWorld_pCurrentWorld->numThings : -999,
@@ -207,7 +211,10 @@ void sithThing_TickAll(flex_t deltaSeconds, int deltaMs)
               sithWorld_pCurrentWorld ? (void*)sithWorld_pCurrentWorld->playerThing : (void*)0,
               memStatus.dwAvailPhys,
               memStatus.dwAvailPageFile);
-        _e++; } }
+        _e++;
+    } else {
+        xboxTickCall = _e++;
+    } }
 #endif
 
     if ( sithWorld_pCurrentWorld->numThings < 0 )
@@ -232,6 +239,19 @@ void sithThing_TickAll(flex_t deltaSeconds, int deltaMs)
                   (float)pThingIter->physicsParams.vel.y,
                   (float)pThingIter->physicsParams.vel.z);
             _t++; } }
+        if (xboxTickCall >= 2 && xboxTickCall <= 4 && i >= 64 && i <= 80) {
+            XDBGF("TickFocus: call=%d thing[%d] pre type=%d ctrl=%d move=%d flags=%X jk=%X life=%d sect=%p pos=(%f,%f,%f) vel=(%f,%f,%f)\n",
+                  xboxTickCall, i, (int)pThingIter->type, (int)pThingIter->controlType,
+                  (int)pThingIter->moveType, (unsigned)pThingIter->thingflags,
+                  (unsigned)pThingIter->jkFlags, pThingIter->lifeLeftMs,
+                  (void*)pThingIter->sector,
+                  (float)pThingIter->position.x,
+                  (float)pThingIter->position.y,
+                  (float)pThingIter->position.z,
+                  (float)pThingIter->physicsParams.vel.x,
+                  (float)pThingIter->physicsParams.vel.y,
+                  (float)pThingIter->physicsParams.vel.z);
+        }
 #endif
 #ifdef TARGET_TWL
         int bCanUpdateOffscreen = (((uint8_t)jkPlayer_currentTickIdx + (pThingIter->thingIdx & 0xFF)) & 0x3F) == 0;
@@ -281,6 +301,10 @@ void sithThing_TickAll(flex_t deltaSeconds, int deltaMs)
             }
 
 #if defined(TARGET_XBOX)
+            if (xboxTickCall >= 2 && xboxTickCall <= 4 && i >= 64 && i <= 80) {
+                XDBGF("TickFocus: call=%d thing[%d] phase=type pre type=%d ds=%f dms=%d\n",
+                      xboxTickCall, i, (int)pThingIter->type, (float)deltaSeconds, deltaMs);
+            }
             { static int _p0 = 0; if (_p0 < 96) {
                 XDBGF("TickAll: thing[%d] phase=type pre type=%d ds=%f dms=%d\n",
                       i, (int)pThingIter->type, (float)deltaSeconds, deltaMs);
@@ -290,6 +314,10 @@ void sithThing_TickAll(flex_t deltaSeconds, int deltaMs)
             {
                 case SITH_THING_PLAYER:
 #if defined(TARGET_XBOX)
+                    if (xboxTickCall >= 2 && xboxTickCall <= 4 && i >= 64 && i <= 80) {
+                        XDBGF("TickFocus: call=%d thing[%d] phase=playerTick pre playerinfo=%p\n",
+                              xboxTickCall, i, (void*)pThingIter->actorParams.playerinfo);
+                    }
                     { static int _pp0 = 0; if (_pp0 < 32) {
                         XDBGF("TickAll: thing[%d] phase=playerTick pre playerinfo=%p\n",
                               i, (void*)pThingIter->actorParams.playerinfo);
@@ -297,18 +325,27 @@ void sithThing_TickAll(flex_t deltaSeconds, int deltaMs)
 #endif
                     sithPlayer_Tick(pThingIter->actorParams.playerinfo, deltaSeconds);
 #if defined(TARGET_XBOX)
+                    if (xboxTickCall >= 2 && xboxTickCall <= 4 && i >= 64 && i <= 80) {
+                        XDBGF("TickFocus: call=%d thing[%d] phase=playerTick post\n", xboxTickCall, i);
+                    }
                     { static int _pp1 = 0; if (_pp1 < 32) {
                         XDBGF("TickAll: thing[%d] phase=playerTick post\n", i);
                         _pp1++; } }
 #endif
                 case SITH_THING_ACTOR:
 #if defined(TARGET_XBOX)
+                    if (xboxTickCall >= 2 && xboxTickCall <= 4 && i >= 64 && i <= 80) {
+                        XDBGF("TickFocus: call=%d thing[%d] phase=actorTick pre\n", xboxTickCall, i);
+                    }
                     { static int _pa0 = 0; if (_pa0 < 96) {
                         XDBGF("TickAll: thing[%d] phase=actorTick pre\n", i);
                         _pa0++; } }
 #endif
                     sithActor_Tick(pThingIter, deltaMs);
 #if defined(TARGET_XBOX)
+                    if (xboxTickCall >= 2 && xboxTickCall <= 4 && i >= 64 && i <= 80) {
+                        XDBGF("TickFocus: call=%d thing[%d] phase=actorTick post\n", xboxTickCall, i);
+                    }
                     { static int _pa1 = 0; if (_pa1 < 96) {
                         XDBGF("TickAll: thing[%d] phase=actorTick post\n", i);
                         _pa1++; } }
@@ -320,12 +357,19 @@ void sithThing_TickAll(flex_t deltaSeconds, int deltaMs)
             }
             if ( sithThing_handler && pThingIter->jkFlags ) {
 #if defined(TARGET_XBOX)
+                if (xboxTickCall >= 2 && xboxTickCall <= 4 && i >= 64 && i <= 80) {
+                    XDBGF("TickFocus: call=%d thing[%d] phase=handler pre jk=%X\n",
+                          xboxTickCall, i, (unsigned)pThingIter->jkFlags);
+                }
                 { static int _ph0 = 0; if (_ph0 < 96) {
                     XDBGF("TickAll: thing[%d] phase=handler pre jk=%X\n", i, (unsigned)pThingIter->jkFlags);
                     _ph0++; } }
 #endif
                 sithThing_handler(pThingIter);
 #if defined(TARGET_XBOX)
+                if (xboxTickCall >= 2 && xboxTickCall <= 4 && i >= 64 && i <= 80) {
+                    XDBGF("TickFocus: call=%d thing[%d] phase=handler post\n", xboxTickCall, i);
+                }
                 { static int _ph1 = 0; if (_ph1 < 96) {
                     XDBGF("TickAll: thing[%d] phase=handler post\n", i);
                     _ph1++; } }
@@ -338,6 +382,18 @@ void sithThing_TickAll(flex_t deltaSeconds, int deltaMs)
                 if (bCanAlwaysUpdatePhysics || pThingIter->lastRenderedTickIdx >= jkPlayer_currentTickIdx-3 || bCanUpdateOffscreen)
 #endif
 #if defined(TARGET_XBOX)
+                if (xboxTickCall >= 2 && xboxTickCall <= 4 && i >= 64 && i <= 80) {
+                    XDBGF("TickFocus: call=%d thing[%d] phase=physicsMove pre vel=(%f,%f,%f) pos=(%f,%f,%f) sect=%p physflags=%X\n",
+                          xboxTickCall, i,
+                          (float)pThingIter->physicsParams.vel.x,
+                          (float)pThingIter->physicsParams.vel.y,
+                          (float)pThingIter->physicsParams.vel.z,
+                          (float)pThingIter->position.x,
+                          (float)pThingIter->position.y,
+                          (float)pThingIter->position.z,
+                          (void*)pThingIter->sector,
+                          (unsigned)pThingIter->physicsParams.physflags);
+                }
                 { static int _pm0 = 0; if (_pm0 < 96) {
                     XDBGF("TickAll: thing[%d] phase=physicsMove pre vel=(%f,%f,%f) pos=(%f,%f,%f) sect=%p physflags=%X\n",
                           i,
@@ -353,6 +409,16 @@ void sithThing_TickAll(flex_t deltaSeconds, int deltaMs)
 #endif
                 sithPhysics_ThingTick(pThingIter, deltaSeconds);
 #if defined(TARGET_XBOX)
+                if (xboxTickCall >= 2 && xboxTickCall <= 4 && i >= 64 && i <= 80) {
+                    XDBGF("TickFocus: call=%d thing[%d] phase=physicsMove post vel=(%f,%f,%f) vm=(%f,%f,%f)\n",
+                          xboxTickCall, i,
+                          (float)pThingIter->physicsParams.vel.x,
+                          (float)pThingIter->physicsParams.vel.y,
+                          (float)pThingIter->physicsParams.vel.z,
+                          (float)pThingIter->physicsParams.velocityMaybe.x,
+                          (float)pThingIter->physicsParams.velocityMaybe.y,
+                          (float)pThingIter->physicsParams.velocityMaybe.z);
+                }
                 { static int _pm1 = 0; if (_pm1 < 96) {
                     XDBGF("TickAll: thing[%d] phase=physicsMove post vel=(%f,%f,%f) vm=(%f,%f,%f)\n",
                           i,
@@ -375,12 +441,18 @@ void sithThing_TickAll(flex_t deltaSeconds, int deltaMs)
             if (bCanAlwaysUpdatePhysics || pThingIter->lastRenderedTickIdx >= jkPlayer_currentTickIdx-3 || bCanUpdateOffscreen)
 #endif
 #if defined(TARGET_XBOX)
+            if (xboxTickCall >= 2 && xboxTickCall <= 4 && i >= 64 && i <= 80) {
+                XDBGF("TickFocus: call=%d thing[%d] phase=tickPhysics pre\n", xboxTickCall, i);
+            }
             { static int _ptp0 = 0; if (_ptp0 < 96) {
                 XDBGF("TickAll: thing[%d] phase=tickPhysics pre\n", i);
                 _ptp0++; } }
 #endif
             sithThing_TickPhysics(pThingIter, deltaSeconds);
 #if defined(TARGET_XBOX)
+            if (xboxTickCall >= 2 && xboxTickCall <= 4 && i >= 64 && i <= 80) {
+                XDBGF("TickFocus: call=%d thing[%d] phase=tickPhysics post\n", xboxTickCall, i);
+            }
             { static int _ptp1 = 0; if (_ptp1 < 96) {
                 XDBGF("TickAll: thing[%d] phase=tickPhysics post\n", i);
                 _ptp1++; } }
@@ -392,12 +464,18 @@ void sithThing_TickAll(flex_t deltaSeconds, int deltaMs)
             sithPuppet_Tick(pThingIter, bActorCanUpdateEveryOther ? deltaSeconds * 2 : deltaSeconds);
 #else
 #if defined(TARGET_XBOX)
+            if (xboxTickCall >= 2 && xboxTickCall <= 4 && i >= 64 && i <= 80) {
+                XDBGF("TickFocus: call=%d thing[%d] phase=puppet pre\n", xboxTickCall, i);
+            }
             { static int _ppu0 = 0; if (_ppu0 < 96) {
                 XDBGF("TickAll: thing[%d] phase=puppet pre\n", i);
                 _ppu0++; } }
 #endif
             sithPuppet_Tick(pThingIter, deltaSeconds);
 #if defined(TARGET_XBOX)
+            if (xboxTickCall >= 2 && xboxTickCall <= 4 && i >= 64 && i <= 80) {
+                XDBGF("TickFocus: call=%d thing[%d] phase=puppet post\n", xboxTickCall, i);
+            }
             { static int _ppu1 = 0; if (_ppu1 < 96) {
                 XDBGF("TickAll: thing[%d] phase=puppet post\n", i);
                 _ppu1++; } }
