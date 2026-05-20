@@ -93,6 +93,38 @@ static DWORD WINAPI xboxXmv_PlayThread(void *arg)
     return FAILED(decoder->Play(XMVFLAG_NONE, NULL)) ? 1 : 0;
 }
 
+static DWORD xboxXmv_ReadSmokeLimitMs(void)
+{
+    HANDLE h;
+    char buf[32];
+    DWORD got = 0;
+    DWORD seconds = 0;
+    DWORD i;
+
+    h = CreateFileA("D:\\xbox_smoke_fmv_seconds.txt", GENERIC_READ, FILE_SHARE_READ,
+                    NULL, OPEN_EXISTING, FILE_ATTRIBUTE_NORMAL, NULL);
+    if (h == INVALID_HANDLE_VALUE)
+        return 0;
+
+    if (ReadFile(h, buf, sizeof(buf) - 1, &got, NULL) && got > 0)
+    {
+        buf[got] = 0;
+        for (i = 0; i < got; ++i)
+        {
+            if (buf[i] < '0' || buf[i] > '9')
+                break;
+            seconds = seconds * 10 + (DWORD)(buf[i] - '0');
+        }
+    }
+    CloseHandle(h);
+
+    if (seconds == 0 || seconds > 600)
+        return 0;
+
+    XDBGF("XmvDbg: smoke auto-skip armed seconds=%lu\n", seconds);
+    return seconds * 1000;
+}
+
 extern "C" int stdControl_XboxMovieSkipRequested(int *outPort, const char **outReason);
 
 extern "C" int xboxXmv_PlayForSmkPath(const char *smkPath)
@@ -103,6 +135,8 @@ extern "C" int xboxXmv_PlayForSmkPath(const char *smkPath)
     HANDLE thread;
     HRESULT hr;
     int terminated = 0;
+    DWORD smokeLimitMs;
+    DWORD playbackStartMs;
 
     if (!smkPath || !xboxXmv_FindForSmkPath(smkPath, xmvPath, sizeof(xmvPath)))
         return 0;
@@ -129,6 +163,8 @@ extern "C" int xboxXmv_PlayForSmkPath(const char *smkPath)
     }
 
     XDBG("XmvDbg: using stdControl-owned controller handles for skip polling\n");
+    smokeLimitMs = xboxXmv_ReadSmokeLimitMs();
+    playbackStartMs = GetTickCount();
 
     thread = CreateThread(NULL, 0, xboxXmv_PlayThread, decoder, 0, NULL);
     if (!thread)
@@ -147,6 +183,15 @@ extern "C" int xboxXmv_PlayForSmkPath(const char *smkPath)
 
         if (waitResult == WAIT_OBJECT_0)
             break;
+
+        if (smokeLimitMs && (DWORD)(GetTickCount() - playbackStartMs) >= smokeLimitMs)
+        {
+            XDBGF("XmvDbg: smoke auto-skip fired elapsedMs=%lu limitMs=%lu\n",
+                  (DWORD)(GetTickCount() - playbackStartMs), smokeLimitMs);
+            terminated = 1;
+            decoder->TerminateImmediately();
+            goto wait_done;
+        }
 
         if (stdControl_XboxMovieSkipRequested(&skipPort, &skipReason))
         {

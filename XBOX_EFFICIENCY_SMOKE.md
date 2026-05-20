@@ -58,3 +58,49 @@ Risk tags:
 - Outcome: reached `fmv`; no fatal patterns. Log confirms
   `released large UI bitmap textures count=12`, all from startup/title UI
   uploads, before XMV playback starts.
+
+### 003 - Smoke FMV Time Limit
+
+- Change: add an optional smoke-only marker file,
+  `D:\xbox_smoke_fmv_seconds.txt`, that causes XMV playback to auto-terminate
+  after the requested number of seconds. The smoke harness can create it with
+  `-FmvLimitSeconds`; normal builds and hardware runs without the file are
+  unchanged.
+- Risk: `RISK:LOW`
+- Reason: full normal-boot smoke stayed in the intro XMV for 180 seconds, so it
+  could not exercise FMV cleanup followed by level load.
+- Build: `cmd /c build_xbox.bat` succeeded.
+- Smoke run: `build\xbox\smoke_runs\20260519_201503-normal-fmv5-level-after-large-ui-release`
+- Outcome: XMV auto-skip armed and fired after 5 seconds, released cutscene/menu
+  state, then loaded `static.jkl`. It did not reach gameplay because the normal
+  main menu stayed open after static load.
+
+### 004 - Smoke Menu Autostart
+
+- Change: add an optional smoke-only marker file,
+  `D:\xbox_smoke_autostart_level.txt`, that makes the real Xbox main menu call
+  the normal single-player loader for the requested level. The smoke harness can
+  create it with `-AutoStartLevel`.
+- Risk: `RISK:LOW`
+- Reason: autonomous smoke must exercise FMV -> static cleanup -> normal
+  single-player level load without hand-driving the menu or bypassing the
+  post-FMV startup path.
+- Build: `cmd /c build_xbox.bat` succeeded.
+- Smoke run: `build\xbox\smoke_runs\20260519_202323-normal-fmv5-autostart-01narshadda`
+- Outcome: reached `static,fmv,autostart,level-load`, then CXBX-R exited
+  during `01narshadda.jkl` model loading with no game-side fatal string.
+- Follow-up smoke run:
+  `build\xbox\smoke_runs\20260519_202610-normal-fmv5-autostart-01narshadda-rerun`
+- Follow-up outcome: reached
+  `static,fmv,autostart,level-load,gameplay-show-done,first-tick,xbox-frame`;
+  stayed alive for the 300-second watchdog with no fatal patterns. The first
+  exit did not reproduce.
+
+### 005 - Respect Existing CXBX-R Sessions
+
+- Change: before a smoke run, if any CXBX-R process is already running, wait
+  three minutes and check again. If it is still running, abort the smoke run
+  instead of killing the existing emulator session.
+- Risk: `RISK:LOW`
+- Reason: autonomous smoke should not interrupt a manual hardware/emulator
+  observation that is already in progress.

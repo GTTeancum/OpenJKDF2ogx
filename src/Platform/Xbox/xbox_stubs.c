@@ -139,8 +139,8 @@ void jkGuiMain_Show(void)
         items_ok = jkHudInv_InitItems();
         xbox_debug_Printf("jkGuiMain_Show: jkHudInv_InitItems -> %d\n", items_ok);
 
-    xbox_debug_Print("jkGuiMain_Show: auto-starting 01narshaddaa.jkl\n");
-    jkMain_SwitchTo5("01narshaddaa.jkl");
+    xbox_debug_Print("jkGuiMain_Show: auto-starting 01narshadda.jkl\n");
+    jkMain_SwitchTo5("01narshadda.jkl");
         /* SwitchTo5 sets jkSmack_gameMode=3 which doesn't match any init
          * branch in jkMain_GameplayShow.  Override to 0 = fresh level load
          * so sithMain_Mode1Init gets called. */

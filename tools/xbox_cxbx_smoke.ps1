@@ -4,7 +4,9 @@ param(
     [string]$CxbxRoot = "C:\Games\Emulators\CXBX",
     [string]$AppDir = "C:\Games\Emulators\CXBX\openJKDF2x",
     [string]$BuildDir = "C:\Programming\GitHub\OpenJKDF2ogx\build\xbox\release",
-    [string]$OutRoot = "C:\Programming\GitHub\OpenJKDF2ogx\build\xbox\smoke_runs"
+    [string]$OutRoot = "C:\Programming\GitHub\OpenJKDF2ogx\build\xbox\smoke_runs",
+    [int]$FmvLimitSeconds = 0,
+    [string]$AutoStartLevel = ""
 )
 
 $ErrorActionPreference = "Stop"
@@ -21,6 +23,8 @@ $stdoutPath = Join-Path $runDir "cxbxr-stdout.txt"
 $stderrPath = Join-Path $runDir "cxbxr-stderr.txt"
 $summaryPath = Join-Path $runDir "summary.txt"
 $copiedGameLog = Join-Path $runDir "debug_openjkdf2.txt"
+$fmvLimitPath = Join-Path $AppDir "xbox_smoke_fmv_seconds.txt"
+$autoStartPath = Join-Path $AppDir "xbox_smoke_autostart_level.txt"
 
 function Get-CxbxProcesses {
     Get-CimInstance Win32_Process |
@@ -40,6 +44,30 @@ function Stop-CxbxProcesses {
     }
 }
 
+function Wait-ForCxbxFree {
+    param([int]$WaitSeconds = 180)
+
+    $running = @(Get-CxbxProcesses)
+    if ($running.Count -eq 0) {
+        return $true
+    }
+
+    Write-Output "cxbxBusy=True"
+    Write-Output "cxbxBusyProcessIds=$($running.ProcessId -join ',')"
+    Write-Output "waitingSeconds=$WaitSeconds"
+    Start-Sleep -Seconds $WaitSeconds
+
+    $running = @(Get-CxbxProcesses)
+    if ($running.Count -eq 0) {
+        Write-Output "cxbxBusyAfterWait=False"
+        return $true
+    }
+
+    Write-Output "cxbxBusyAfterWait=True"
+    Write-Output "cxbxBusyProcessIdsAfterWait=$($running.ProcessId -join ',')"
+    return $false
+}
+
 function Count-Matches($Path, $Patterns) {
     if (!(Test-Path -LiteralPath $Path)) { return 0 }
     return @(
@@ -56,6 +84,7 @@ function Get-ReachedStates($Path) {
     $states = New-Object System.Collections.Generic.List[string]
     if (Test-LogPattern $Path "sithWorld_Load: opened OK 'jkl\\static\.jkl'") { $states.Add("static") }
     if (Test-LogPattern $Path "CutsceneTrace:|XmvDbg|XMV") { $states.Add("fmv") }
+    if (Test-LogPattern $Path "jkGuiMain_Show: smoke autostart") { $states.Add("autostart") }
     if (Test-LogPattern $Path "GameplayShow:.*loading level|sithWorld_Load: opened OK 'jkl\\01narshadda\.jkl'") { $states.Add("level-load") }
     if (Test-LogPattern $Path "sithWorld_Load: section end things") { $states.Add("level-things") }
     if (Test-LogPattern $Path "GameplayShow: done") { $states.Add("gameplay-show-done") }
@@ -71,12 +100,26 @@ if (!(Test-Path -LiteralPath $AppDir)) { throw "Missing CXBX-R app directory: $A
 
 New-Item -ItemType Directory -Path $runDir -Force | Out-Null
 
+if (!(Wait-ForCxbxFree -WaitSeconds 180)) {
+    "aborted=Existing CXBX-R process still running after wait" |
+        Set-Content -LiteralPath $summaryPath -Encoding ASCII
+    exit 3
+}
+
 Stop-CxbxProcesses
 Start-Sleep -Seconds 2
 
 Copy-Item -LiteralPath $xbeSrc -Destination $xbeDst -Force
 Remove-Item -LiteralPath $gameLog -Force -ErrorAction SilentlyContinue
 Remove-Item -LiteralPath $fallbackGameLog -Force -ErrorAction SilentlyContinue
+Remove-Item -LiteralPath $fmvLimitPath -Force -ErrorAction SilentlyContinue
+Remove-Item -LiteralPath $autoStartPath -Force -ErrorAction SilentlyContinue
+if ($FmvLimitSeconds -gt 0) {
+    Set-Content -LiteralPath $fmvLimitPath -Value ([string]$FmvLimitSeconds) -Encoding ASCII
+}
+if ($AutoStartLevel.Length -gt 0) {
+    Set-Content -LiteralPath $autoStartPath -Value $AutoStartLevel -Encoding ASCII
+}
 
 $start = Get-Date
 $proc = Start-Process `
@@ -113,6 +156,8 @@ $end = Get-Date
 
 Stop-CxbxProcesses
 Start-Sleep -Seconds 1
+Remove-Item -LiteralPath $fmvLimitPath -Force -ErrorAction SilentlyContinue
+Remove-Item -LiteralPath $autoStartPath -Force -ErrorAction SilentlyContinue
 
 $activeLogAfter = if (Test-Path -LiteralPath $gameLog) { $gameLog } elseif (Test-Path -LiteralPath $fallbackGameLog) { $fallbackGameLog } else { $null }
 if ($activeLogAfter) {
@@ -156,6 +201,8 @@ $summary.Add("runDir=$runDir")
 $summary.Add("start=$($start.ToString('s'))")
 $summary.Add("durationSeconds=$duration")
 $summary.Add("watchdogSeconds=$WatchdogSeconds")
+$summary.Add("fmvLimitSeconds=$FmvLimitSeconds")
+$summary.Add("autoStartLevel=$AutoStartLevel")
 $summary.Add("loader=$loader")
 $summary.Add("xbeSource=$xbeSrc")
 $summary.Add("xbeDest=$xbeDst")

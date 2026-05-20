@@ -43,6 +43,34 @@ static wchar_t jkGuiMain_versionBuffer[64];
 static int jkGuiMain_bIdk = 1;
 static int jkGuiCutscenes_initted;
 
+#ifdef TARGET_XBOX
+static int jkGuiMain_XboxReadSmokeAutostartLevel(char *out, size_t outSize)
+{
+    FILE *f;
+    size_t len;
+
+    if (!out || outSize == 0)
+        return 0;
+
+    out[0] = 0;
+    f = fopen("D:\\xbox_smoke_autostart_level.txt", "rb");
+    if (!f)
+        return 0;
+
+    len = fread(out, 1, outSize - 1, f);
+    fclose(f);
+    out[len] = 0;
+
+    while (len && (out[len - 1] == '\r' || out[len - 1] == '\n' || out[len - 1] == ' ' || out[len - 1] == '\t'))
+    {
+        out[len - 1] = 0;
+        len--;
+    }
+
+    return len != 0;
+}
+#endif
+
 static int32_t jkGuiMain_listboxIdk[2] = {0xd, 0xe};
 
 static jkGuiElement jkGuiMain_cutscenesElements[5] = {
@@ -497,6 +525,24 @@ void jkGuiMain_Show()
     stdBitmap_EnsureData(jkGui_stdBitmaps[JKGUI_BM_BK_MAIN]);
 
     jkGui_SetModeMenu(jkGui_stdBitmaps[JKGUI_BM_BK_MAIN]->palette);
+
+#ifdef TARGET_XBOX
+    {
+        char smokeLevel[128];
+        if (jkGuiMain_XboxReadSmokeAutostartLevel(smokeLevel, sizeof(smokeLevel)))
+        {
+            XDBGF("jkGuiMain_Show: smoke autostart level '%s'\n", smokeLevel);
+            if (jkMain_LoadLevelSingleplayer("JK1", smokeLevel))
+            {
+                XDBG("jkGuiMain_Show: smoke autostart scheduled\n");
+                jkGui_SetModeGame();
+                return;
+            }
+            XDBG("jkGuiMain_Show: smoke autostart failed, falling through to menu\n");
+        }
+    }
+#endif
+
     if ( !jkGuiMain_bIdk || (jkGuiMain_bIdk = 0, jkGuiPlayer_ShowNewPlayer(1), !stdComm_dword_8321F8)
 #if !defined(TARGET_NO_MULTIPLAYER_MENUS) && !defined(TARGET_XBOX)
         || jkGuiMultiplayer_Show2() != 1 
