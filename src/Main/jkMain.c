@@ -3,8 +3,13 @@
 #ifdef TARGET_XBOX
 #include "xbox_debug.h"
 #include "Platform/Xbox/xbox_splitscreen.h"
+#ifdef XBOX_VERBOSE_FORMAT_LOGS
 #define JKTRACE(msg) xbox_debug_Print(msg)
 #define JKTRACEF xbox_debug_Printf
+#else
+#define JKTRACE(msg)
+#define JKTRACEF if (0) xbox_debug_Printf
+#endif
 #else
 #define JKTRACE(msg)
 #define JKTRACEF(fmt, ...)

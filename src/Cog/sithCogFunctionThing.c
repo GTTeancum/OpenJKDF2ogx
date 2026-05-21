@@ -780,7 +780,7 @@ void sithCogFunctionThing_SetInv(sithCog *ctx)
         binIdx = sithInventory_SelectWeaponFollowing(binIdx);
     }
 
-#ifdef TARGET_XBOX
+#if defined(TARGET_XBOX) && defined(XBOX_VERBOSE_FORMAT_LOGS)
     /* Diagnostic — log every SetInv cog call so we can see what cog
        grants the bryar / fists / ammo at level start. */
     { static int _si = 0;
@@ -1484,7 +1484,7 @@ void sithCogFunctionThing_SetCurInvWeapon(sithCog *ctx)
     if (Main_bMotsCompat && binIdx < SITHBIN_ENERGY) {
         binIdx = sithInventory_SelectWeaponFollowing(binIdx);
     }
-#ifdef TARGET_XBOX
+#if defined(TARGET_XBOX) && defined(XBOX_VERBOSE_FORMAT_LOGS)
     { static int _sciw = 0;
       if (_sciw < 16) {
           xbox_debug_Printf("CogVerb SetCurInvWeapon: cog=%p thing=%p bin=%u\n",

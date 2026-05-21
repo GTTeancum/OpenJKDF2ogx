@@ -923,7 +923,7 @@ int sithWeapon_SelectWeapon(sithThing *player, int binIdx, int a3)
     //printf("%x\n", sithWeapon_8BD024);
 
     v4 = sithInventory_GetCurWeapon(player);
-#ifdef TARGET_XBOX
+#if defined(TARGET_XBOX) && defined(XBOX_VERBOSE_FORMAT_LOGS)
     /* Guard: AutoSelectWeapon can return -1 ("no weapon found"); even
      * though sithCogFunction_SelectWeapon gates that off, defend
      * against any out-of-range binIdx or null playerinfo — both
@@ -1123,7 +1123,7 @@ int sithWeapon_AutoSelect(sithThing *player, int weapIdx)
         sithItemDescriptor* desc =  &sithInventory_aDescriptors[i];
         if (desc->flags & ITEMINFO_WEAPON)
         {
-#ifdef TARGET_XBOX
+#if defined(TARGET_XBOX) && defined(XBOX_VERBOSE_FORMAT_LOGS)
             /* Guard: GetBinAmount/GetAvailable check the -136 sentinel
              * but not NULL, and on Xbox playerinfo can be NULL during
              * early cog STARTUP — that crash takes the level load down. */
@@ -1143,7 +1143,7 @@ int sithWeapon_AutoSelect(sithThing *player, int weapIdx)
             if (desc->cog)
             {
                 flex_t v5 = sithCog_SendMessageEx(desc->cog, SITH_MESSAGE_AUTOSELECT, SENDERTYPE_SYSTEM, weapIdx, SENDERTYPE_THING, player->thingIdx, 0, 0.0, 0.0, 0.0, 0.0);
-#ifdef TARGET_XBOX
+#if defined(TARGET_XBOX) && defined(XBOX_VERBOSE_FORMAT_LOGS)
                 { static int _as2=0; if(_as2<32){
                     xbox_debug_Printf("AutoSelect bin=%d AUTOSELECT_reply=%f\n", i, (double)v5);
                     _as2++; }}
@@ -1156,7 +1156,7 @@ int sithWeapon_AutoSelect(sithThing *player, int weapIdx)
             }
         }
     }
-#ifdef TARGET_XBOX
+#if defined(TARGET_XBOX) && defined(XBOX_VERBOSE_FORMAT_LOGS)
     { static int _asr=0; if(_asr<8){
         xbox_debug_Printf("AutoSelect result: bin=%d priority=%f\n", v7, (double)a1a); _asr++; }}
 #endif

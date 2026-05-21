@@ -1296,7 +1296,7 @@ void sithCogFunction_SelectWeapon(sithCog *ctx)
         binIdx = sithInventory_SelectWeaponFollowing(binIdx);
     }
 
-#ifdef TARGET_XBOX
+#if defined(TARGET_XBOX) && defined(XBOX_VERBOSE_FORMAT_LOGS)
     { static int _sw=0; if(_sw<16){
         xbox_debug_Printf("CogVerb SelectWeapon: cog=%p thing=%p bin=%d\n",
                           (void*)ctx, (void*)player, binIdx); _sw++; }}
@@ -1318,7 +1318,7 @@ void sithCogFunction_AssignWeapon(sithCog *ctx)
         binIdx = sithInventory_SelectWeaponFollowing(binIdx);
     }
 
-#ifdef TARGET_XBOX
+#if defined(TARGET_XBOX) && defined(XBOX_VERBOSE_FORMAT_LOGS)
     { static int _aw=0; if(_aw<16){
         xbox_debug_Printf("CogVerb AssignWeapon: cog=%p thing=%p bin=%d\n",
                           (void*)ctx, (void*)player, binIdx); _aw++; }}
@@ -1336,7 +1336,7 @@ void sithCogFunction_AutoSelectWeapon(sithCog *ctx)
     int weapIdx = sithCogExec_PopInt(ctx);
     sithThing* player = sithCogExec_PopThing(ctx);
 
-#ifdef TARGET_XBOX
+#if defined(TARGET_XBOX) && defined(XBOX_VERBOSE_FORMAT_LOGS)
     { static int _asw=0; if(_asw<16){
         xbox_debug_Printf("CogVerb AutoSelectWeapon: cog=%p thing=%p weap=%d\n",
                           (void*)ctx, (void*)player, weapIdx); _asw++; }}

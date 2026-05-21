@@ -337,7 +337,7 @@ void sithInventory_SetCurWeapon(sithThing *player, int idx)
     if (!player || !player->actorParams.playerinfo) return; // Added: Prevent nullptr deref
 
     player->actorParams.playerinfo->curWeapon = idx;
-#ifdef TARGET_XBOX
+#if defined(TARGET_XBOX) && defined(XBOX_VERBOSE_FORMAT_LOGS)
     {
         static int _scw = 0;
         if (_scw < 16) {

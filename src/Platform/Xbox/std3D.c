@@ -893,6 +893,12 @@ static unsigned long g_hwPerfTris = 0;
 static unsigned long g_hwPerfVerts = 0;
 static unsigned long g_hwPerfTexUploads = 0;
 static unsigned long g_hwPerfBitmapUploads = 0;
+static unsigned int g_hwPerfLastPresentMs = 0;
+static unsigned int g_hwPerfMaxPresentMs = 0;
+static unsigned long g_hwPerfHitches50 = 0;
+static unsigned long g_hwPerfHitches100 = 0;
+static unsigned long g_hwPerfHitches250 = 0;
+static unsigned long g_hwPerfHitches500 = 0;
 #endif
 
 void std3D_Present(void)
@@ -906,6 +912,7 @@ void std3D_Present(void)
 #if defined(TARGET_XBOX) && !defined(XBOX_PERF_SMOKE)
     {
         unsigned int nowMs;
+        unsigned int frameMs;
         unsigned long spanMs;
         unsigned long fps100;
 
@@ -913,6 +920,17 @@ void std3D_Present(void)
         if (!g_hwPerfStartMs) {
             g_hwPerfStartMs = nowMs;
         }
+        if (g_hwPerfLastPresentMs) {
+            frameMs = nowMs - g_hwPerfLastPresentMs;
+            if (frameMs > g_hwPerfMaxPresentMs) {
+                g_hwPerfMaxPresentMs = frameMs;
+            }
+            if (frameMs >= 50U) g_hwPerfHitches50++;
+            if (frameMs >= 100U) g_hwPerfHitches100++;
+            if (frameMs >= 250U) g_hwPerfHitches250++;
+            if (frameMs >= 500U) g_hwPerfHitches500++;
+        }
+        g_hwPerfLastPresentMs = nowMs;
 
         g_hwPerfFrames++;
         g_hwPerfDrawLists += (unsigned long)std3D_xboxFrameDrawLists;
@@ -924,11 +942,16 @@ void std3D_Present(void)
         spanMs = (unsigned long)(nowMs - g_hwPerfStartMs);
         if (spanMs >= 10000UL) {
             fps100 = (spanMs > 0) ? ((g_hwPerfFrames * 100000UL) / spanMs) : 0;
-            XPERF("PerfHW: spanMs=%lu frames=%lu fps=%lu.%02lu drawLists=%lu tris=%lu verts=%lu texUp=%lu uiUp=%lu cutscene=%d credits=%d\n",
+            XPERF("PerfHW: spanMs=%lu frames=%lu fps=%lu.%02lu maxFrameMs=%u h50=%lu h100=%lu h250=%lu h500=%lu drawLists=%lu tris=%lu verts=%lu texUp=%lu uiUp=%lu cutscene=%d credits=%d\n",
                   spanMs,
                   g_hwPerfFrames,
                   fps100 / 100UL,
                   fps100 % 100UL,
+                  g_hwPerfMaxPresentMs,
+                  g_hwPerfHitches50,
+                  g_hwPerfHitches100,
+                  g_hwPerfHitches250,
+                  g_hwPerfHitches500,
                   g_hwPerfDrawLists,
                   g_hwPerfTris,
                   g_hwPerfVerts,
@@ -943,6 +966,11 @@ void std3D_Present(void)
             g_hwPerfVerts = 0;
             g_hwPerfTexUploads = 0;
             g_hwPerfBitmapUploads = 0;
+            g_hwPerfMaxPresentMs = 0;
+            g_hwPerfHitches50 = 0;
+            g_hwPerfHitches100 = 0;
+            g_hwPerfHitches250 = 0;
+            g_hwPerfHitches500 = 0;
         }
     }
 #endif

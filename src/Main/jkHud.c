@@ -1041,7 +1041,7 @@ void jkHud_DrawGPU()
     }
 #endif
 
-#ifdef TARGET_XBOX
+#if defined(TARGET_XBOX) && defined(XBOX_VERBOSE_FORMAT_LOGS)
     /* One-shot diagnostic: did we reach jkHud_DrawGPU and what do the
      * key bitmap pointers look like?  NULL pointers mean stdBitmap_Load
      * failed silently (file not in GOB).  Non-NULL but no UI draws
