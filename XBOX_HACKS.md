@@ -161,18 +161,40 @@ solid-color/textured path instead of the translucent path.
 
 # Hacks & Tech Debt
 
-## Hold next-weapon for a modern weapon wheel idea
+## Xbox-native weapon wheel / Force wheel controls
 
-**Status:** Idea / feasible, not implemented.
+**Status:** Open design / implementation item.
 **Severity:** UX polish. Current Xbox weapon cycling works, but JK's PC-era
-linear next/previous weapon flow is clumsy on a controller once the player
-has several weapons.
+linear next/previous weapon and Force-power flow is clumsy on a controller
+once the player has several weapons or powers.
 
-**Idea:** Keep tap behavior exactly as-is for Black/White weapon cycling,
-but treat a long hold on "next weapon" as a weapon wheel. While held, pause
-or slow input enough to select with the right stick / left stick, then equip
-on release. This is the same general console pattern used by modern games
-like Fallout 76: tap cycles, hold opens a radial selector.
+**Weapon wheel spec:** Black/White should be weapon controls. Tap cycles
+previous/next weapon respectively. Hold either button opens the weapon wheel.
+Slot layout is ten slots split into two vertical arcs: weapons 1-5 down the
+left side, weapon 6 at the top of the right side, then down through weapon
+10. Do not render slot numbers. Each slot should show a weapon icon, or a
+scaled weapon pickup model if that is the better available asset path.
+Unavailable weapons are greyed out. The text below the wheel shows the
+selected weapon and ammo, also greyed out if unavailable, using exactly:
+`[weapon name] - ([ammo count])`, for example `Rocket Launcher - (9)`.
+Enforcer behavior: if the player has two pistols, selecting Enforcer selects
+both; otherwise it selects the single pistol.
+
+**Force wheel spec:** Y/B should mirror the same tap/hold behavior for Force
+powers. Tap cycles previous/next Force power respectively. Hold opens a
+fourteen-slot Force wheel. The four neutral powers occupy the top slots,
+two left and two right. Light-side powers fill the left side. Dark-side
+powers fill the right side. Bottom text shows the selected Force title and
+level using exactly: `[force power] - (level N)`, for example
+`Force Heal - (level 3)`.
+
+**Input rules while a wheel is open:** Only right-stick look should be
+arrested for wheel selection. The player should still be able to walk,
+jump, fire, etc. Scoreboard and pause controls should be blocked while a
+wheel is open.
+
+**Related control remap:** RS becomes crouch toggle. D-pad inventory shortcuts:
+Up = field light, Left = IR goggles, Right = bacta.
 
 **Feasibility:** Good. The Xbox input layer already has per-controller
 held/press state and split-screen active-controller routing:
@@ -187,24 +209,27 @@ held/press state and split-screen active-controller routing:
   and the COG-backed weapon bins).
 
 **Likely implementation shape:**
-1. Detect a hold threshold for `KEY_JOY1_B11` in the Xbox control path or a
-   small Xbox-only gameplay overlay module. Preserve normal tap-to-cycle if
-   the button is released before the threshold.
-2. While held, render an Xbox-only radial overlay after HUD draw for the
-   active local slot. The wheel should only include carried/selectable
-   weapon bins.
-3. Use stick angle to choose the highlighted weapon. On release, call the
-   same weapon-select route the existing inventory/COG flow uses, rather
-   than bypassing COG scripts.
-4. For split-screen, keep the wheel per active local player and clip it to
+1. Detect hold thresholds for Black/White and Y/B in the Xbox control path
+   or a small Xbox-only gameplay overlay module. Preserve normal tap cycling
+   if released before the threshold.
+2. While held, render an Xbox-only overlay after HUD draw for the active
+   local slot. The weapon wheel is ten slots; the Force wheel is fourteen.
+3. Use right-stick angle to choose the highlighted slot while suppressing
+   only right-stick look axis output.
+4. On release, call the same weapon/Force selection routes the existing
+   inventory/COG flow uses, rather than bypassing scripts.
+5. For split-screen, keep the wheel per active local player and clip it to
    that player's viewport/quadrant.
 
 **Caveats:**
-- Do not steal short taps; next/previous weapon muscle memory must remain.
+- Do not steal short taps; next/previous weapon and Force cycling muscle
+  memory must remain.
 - Some JK weapons rely on COG replies / inventory state, so direct bin
   mutation is the wrong path.
 - The UI should be optional or Xbox-only; keyboard/mouse builds should not
   inherit controller-wheel behavior.
+- Do not render slot numbers; visual identity comes from icons/models and
+  the bottom selected-item text.
 
 ## sithGamesave_Load hijacked into a soft respawn — [FIXED]
 
