@@ -528,7 +528,11 @@ void jkMain_EscapeMenuLeave(int a2, int a3)
     int v3; // eax
 
     if ( !sithNet_isMulti )
+    {
         sithTime_Resume();
+        if (a3 == JK_GAMEMODE_GAMEPLAY || a3 == JK_GAMEMODE_MOTS_CUTSCENE)
+            sithSoundMixer_PauseSong(0);
+    }
 
     // MOTS added
     if ( a3 != JK_GAMEMODE_GAMEPLAY && a3 != JK_GAMEMODE_MOTS_CUTSCENE)

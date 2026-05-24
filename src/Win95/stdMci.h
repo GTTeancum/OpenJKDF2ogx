@@ -21,6 +21,7 @@ void stdMci_Shutdown();
 int stdMci_Play(uint8_t trackFrom, uint8_t trackTo);
 void stdMci_SetVolume(flex_t vol);
 void stdMci_Stop();
+void stdMci_Pause(int pause);
 int stdMci_CheckStatus();
 flex_d_t stdMci_GetTrackLength(int track);
 

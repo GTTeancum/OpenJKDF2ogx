@@ -12,6 +12,9 @@
 #include "Gui/jkGUIRend.h"
 #include "Gui/jkGUI.h"
 #include "Gui/jkGUIDialog.h"
+#ifdef TARGET_XBOX
+#include "Gui/jkGUIXboxKeyboard.h"
+#endif
 #include "Cog/jkCog.h"
 #include "Main/jkStrings.h"
 #include "Win95/stdDisplay.h"
@@ -279,6 +282,14 @@ void jkGuiPlayer_ShowNewPlayer(int a1)
                 jkGuiPlayer_menuNewElements[3].wstr = jkGuiPlayer_awTmp_555D28;
                 _memset(jkGuiPlayer_awTmp_555D28, 0, 16 * sizeof(wchar_t));
                 jkGuiPlayer_menuNewElements[3].selectedTextEntry = 16;
+#ifdef TARGET_XBOX
+                jkGuiPlayer_menuNewElements[3].clickHandlerFunc = jkGuiXboxKeyboard_TextBoxClicked;
+                if (jkGuiXboxKeyboard_Show(jkGuiPlayer_awTmp_555D28, 16, jkStrings_GetUniStringWithFallback("GUI_NEW_PLAYER")) < 0 && !v15)
+                {
+                    v14 = 1;
+                    continue;
+                }
+#endif
                 jkGuiPlayer_menuNewElements[8].unistr = 0;
                 jkGuiPlayer_menuNewElements[5].selectedTextEntry = 0;
                 jkGuiPlayer_menuNewElements[6].selectedTextEntry = 1;

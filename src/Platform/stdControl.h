@@ -76,9 +76,11 @@ BOOL stdControl_IsSystemKeyboardShowing();
 
 #ifdef TARGET_XBOX
 void stdControl_XboxSetLookOptions(int sensitivity, int invertLook, int vibration);
+void stdControl_XboxSetLookOptionsEx(int sensitivity, int invertLook, int vibration, int deadzonePercent);
 int stdControl_XboxGetLookSensitivity(void);
 int stdControl_XboxGetInvertLook(void);
 int stdControl_XboxGetVibration(void);
+int stdControl_XboxGetDeadzone(void);
 void stdControl_XboxSetActiveController(int port);
 int stdControl_XboxGetConnectedMask(void);
 int stdControl_XboxMovieSkipRequested(int *outPort, const char **outReason);

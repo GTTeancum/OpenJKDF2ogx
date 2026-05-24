@@ -103,6 +103,11 @@ void stdMci_Stop()
         jk_mciSendCommandA(stdMci_mciId, MCI_STOP, 0, 0);
 }
 
+void stdMci_Pause(int pause)
+{
+    (void)pause;
+}
+
 int stdMci_CheckStatus()
 {
     MCI_STATUS_PARMS statusParms;
@@ -201,6 +206,11 @@ void stdMci_Stop()
     if (stdMci_music) {
         stdMci_music = 0;
     }
+}
+
+void stdMci_Pause(int pause)
+{
+    (void)pause;
 }
 
 int stdMci_CheckStatus()
@@ -427,6 +437,16 @@ void stdMci_Stop()
         Mix_FreeMusic(stdMci_music);
         stdMci_music = NULL;
     }
+}
+
+void stdMci_Pause(int pause)
+{
+    if (!stdMci_music)
+        return;
+    if (pause)
+        Mix_PauseMusic();
+    else
+        Mix_ResumeMusic();
 }
 
 int stdMci_CheckStatus()

@@ -2,6 +2,7 @@
 
 #ifdef TARGET_XBOX
 #include "Platform/Xbox/xbox_debug.h"
+#include "Platform/Xbox/xbox_wheels.h"
 #endif
 
 #include "Gameplay/sithInventory.h"
@@ -1573,6 +1574,10 @@ LABEL_116:
     memset(tmp, 0, 32);
     stdString_snprintf(tmp, 32, "%03d", fps);
     stdFont_DrawAsciiGPU(jkHud_pMsgFontSft, jkHud_leftBlitX, jkHud_leftBlitY, 999, tmp, 1, jkPlayer_hudScale);
+#endif
+
+#ifdef TARGET_XBOX
+    xbox_wheels_Draw(jkHud_pMsgFontSft);
 #endif
 
 #ifdef SDL2_RENDER

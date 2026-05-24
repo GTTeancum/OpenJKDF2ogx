@@ -319,16 +319,13 @@ int sithMain_Tick()
         //sithWorld_pCurrentWorld->playerThing->physicsParams.physflags &= ~SITH_PF_USEGRAVITY;
 
 #ifdef TARGET_XBOX
-        { static int _tst=0; if(_tst<1){ XDBG("sithTick: enter else\n"); _tst++; } }
 #endif
         ++jkPlayer_currentTickIdx;
         sithMain_sub_4C4D80();
 #ifdef TARGET_XBOX
-        { static int _ts1=0; if(_ts1<1){ XDBG("sithTick: ResumeMusic\n"); _ts1++; } }
 #endif
         sithSoundMixer_ResumeMusic(0);
 #ifdef TARGET_XBOX
-        { static int _ts2=0; if(_ts2<1){ XDBG("sithTick: TimeTick\n"); _ts2++; } }
 #endif
         sithTime_Tick();
 
@@ -342,14 +339,12 @@ int sithMain_Tick()
             sithTime_physicsRolloverFrames = rolloverCombine - (((flex_d_t)wholeFramesToApply) * DELTA_PHYSTICK_FPS);
 
 #ifdef TARGET_XBOX
-            { static int _ts3=0; if(_ts3<1){ XDBGF("sithTick: dt=%f frames=%u\n",(float)sithTime_deltaSeconds,(unsigned)wholeFramesToApply); _ts3++; } }
 #endif
             if (wholeFramesToApply > 0)
             {
                 /* Only read controls when physics frames will actually run.
                  * wholeFramesToApply==0 (sithTime stubbed) → skip entirely. */
 #ifdef TARGET_XBOX
-                { static int _ts4=0; if(_ts4<1){ XDBG("sithTick: ReadControls\n"); _ts4++; } }
 #endif
                 #ifdef TARGET_XBOX
                 if (xboxSplitScreen_IsEnabled())
@@ -360,7 +355,6 @@ int sithMain_Tick()
                 if ( g_sithMode != 2 )
                 {
 #ifdef TARGET_XBOX
-                    { static int _ts5=0; if(_ts5<1){ XDBG("sithTick: ControlTick\n"); _ts5++; } }
 #endif
                     #ifdef TARGET_XBOX
                     if (xboxSplitScreen_IsEnabled())
@@ -370,7 +364,6 @@ int sithMain_Tick()
                     sithControl_Tick(sithTime_deltaSeconds, sithTime_deltaMs);
                 }
 #ifdef TARGET_XBOX
-                { static int _tsFR=0; if(_tsFR<1){ XDBG("sithTick: FinishRead\n"); _tsFR++; } }
 #endif
                 #ifdef TARGET_XBOX
                 if (xboxSplitScreen_IsEnabled())
@@ -394,11 +387,9 @@ int sithMain_Tick()
             for (int i = 0; i < wholeFramesToApply; i++)
             {
 #ifdef TARGET_XBOX
-                { static int _tsL=0; if(_tsL<24){ XDBGF("sithTick: loop i=%d/%u curMs=%u dms=%u ds=%f SoundMixerTick\n", i, (unsigned)wholeFramesToApply, (unsigned)sithTime_curMs, (unsigned)sithTime_deltaMs, (float)sithTime_deltaSeconds); _tsL++; } }
 #endif
                 sithSoundMixer_Tick(sithTime_deltaSeconds);
 #ifdef TARGET_XBOX
-                { static int _tsE=0; if(_tsE<24){ XDBG("sithTick: EventAdv\n"); _tsE++; } }
 #endif
                 sithEvent_Advance();
 
@@ -408,32 +399,23 @@ int sithMain_Tick()
                 if ( (g_debugmodeFlags & DEBUGFLAG_NO_AIEVENTS) == 0  && (!sithNet_isMulti || sithNet_isMulti && sithNet_isServer))
                 {
 #ifdef TARGET_XBOX
-                    { static int _tsA=0; if(_tsA<24){ XDBG("sithTick: AITickAll\n"); _tsA++; } }
 #endif
                     sithAI_TickAll();
                 }
 
 #ifdef TARGET_XBOX
-                { static int _tsS=0; if(_tsS<24){ XDBG("sithTick: SurfaceTick\n"); _tsS++; } }
 #endif
                 sithSurface_Tick(sithTime_deltaSeconds);
 #ifdef TARGET_XBOX
-                { static int _tsTh=0; if(_tsTh<24){ XDBGF("sithTick: ThingTickAll pre i=%d numThings=%d player=%p world=%p\n", i, sithWorld_pCurrentWorld ? sithWorld_pCurrentWorld->numThings : -999, sithWorld_pCurrentWorld ? (void*)sithWorld_pCurrentWorld->playerThing : (void*)0, (void*)sithWorld_pCurrentWorld); _tsTh++; } }
 #endif
                 sithThing_TickAll(sithTime_deltaSeconds, sithTime_deltaMs);
 #ifdef TARGET_XBOX
-                { static int _tsTh2=0; if(_tsTh2<24){ XDBGF("sithTick: ThingTickAll post i=%d\n", i); _tsTh2++; } }
-                { static int _tsMo=0; if(_tsMo<24){ XDBG("sithTick: MotsTick\n"); _tsMo++; } }
 #endif
                 sithThing_MotsTick(0x1F, 0, 0);
 #ifdef TARGET_XBOX
-                { static int _tsMo2=0; if(_tsMo2<24){ XDBG("sithTick: MotsTick post\n"); _tsMo2++; } }
-                { static int _tsCg=0; if(_tsCg<24){ XDBG("sithTick: CogTickAll\n"); _tsCg++; } }
 #endif
                 sithCogScript_TickAll();
 #ifdef TARGET_XBOX
-                { static int _tsCg2=0; if(_tsCg2<24){ XDBG("sithTick: CogTickAll post\n"); _tsCg2++; } }
-                { static int _tsX=0; if(_tsX<24){ XDBG("sithTick: loop end\n"); _tsX++; } }
 #endif
 
                 // COG scripts will sleep for periods of time based on sithTime_curMs,
@@ -452,7 +434,6 @@ int sithMain_Tick()
 #endif
         {
 #ifdef TARGET_XBOX
-            { static int _tsF=0; if(_tsF<1){ XDBG("sithTick: non-stepped SoundMixerTick\n"); _tsF++; } }
 #endif
             sithSoundMixer_Tick(sithTime_deltaSeconds);
             sithEvent_Advance();
@@ -498,19 +479,15 @@ int sithMain_Tick()
 
         //sithAI_PrintThings();
 #ifdef TARGET_XBOX
-        { static int _ts6=0; if(_ts6<1){ XDBG("sithTick: Console\n"); _ts6++; } }
 #endif
         sithConsole_AdvanceLogBuf();
 #ifdef TARGET_XBOX
-        { static int _ts7=0; if(_ts7<1){ XDBG("sithTick: HandleTimeLimit\n"); _ts7++; } }
 #endif
         sithMulti_HandleTimeLimit(sithTime_deltaMs);
 #ifdef TARGET_XBOX
-        { static int _ts8=0; if(_ts8<1){ XDBG("sithTick: GamesaveFlush\n"); _ts8++; } }
 #endif
         sithGamesave_Flush();
 #ifdef TARGET_XBOX
-        { static int _ts9=0; if(_ts9<1){ XDBG("sithTick: return0\n"); _ts9++; } }
 #endif
 
         sithMain_tickEndMs = stdPlatform_GetTimeMsec();

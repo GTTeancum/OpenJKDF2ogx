@@ -48,6 +48,7 @@ static int stdMci_channels = 2;
 static int stdMci_sampleRate = 44100;
 static int stdMci_nextChunk = 0;
 static int stdMci_musicPlaying = 0;
+static int stdMci_musicPaused = 0;
 static flex_t stdMci_volume = 1.0f;
 
 #ifdef TARGET_XBOX
@@ -417,6 +418,7 @@ void stdMci_Shutdown(void)
     stdMci_trackFrom = 0;
     stdMci_trackTo = 0;
     stdMci_trackCurrent = 0;
+    stdMci_musicPaused = 0;
     stdMci_bIsGOG = 1;
 }
 
@@ -426,6 +428,7 @@ int stdMci_Play(uint8_t trackFrom, uint8_t trackTo)
     stdMci_trackFrom = trackFrom;
     stdMci_trackTo = trackTo < trackFrom ? trackFrom : trackTo;
     stdMci_trackCurrent = trackFrom;
+    stdMci_musicPaused = 0;
 
 #ifdef TARGET_XBOX
     if (stdMci_SmokeMusicDisabled())
@@ -467,11 +470,38 @@ void stdMci_SetVolume(flex_t vol)
         IDirectSoundBuffer_SetVolume(stdMci_pBuffer, stdMci_VolToDS(vol));
 }
 
+void stdMci_Pause(int pause)
+{
+    if (!stdMci_musicPlaying || !stdMci_pBuffer)
+        return;
+
+    if (pause)
+    {
+        if (!stdMci_musicPaused)
+        {
+            IDirectSoundBuffer_Stop(stdMci_pBuffer);
+            stdMci_musicPaused = 1;
+            XDBG("stdMci: pause music\n");
+        }
+        return;
+    }
+
+    if (stdMci_musicPaused)
+    {
+        if (SUCCEEDED(IDirectSoundBuffer_Play(stdMci_pBuffer, 0, 0, DSBPLAY_LOOPING)))
+        {
+            stdMci_musicPaused = 0;
+            XDBG("stdMci: resume music\n");
+        }
+    }
+}
+
 void stdMci_Stop(void)
 {
     if (stdMci_musicPlaying)
         XDBG("stdMci: stop music\n");
     stdMci_musicPlaying = 0;
+    stdMci_musicPaused = 0;
     stdMci_ReleaseBuffer();
     stdMci_CloseVorbis();
 }
@@ -501,6 +531,9 @@ int stdMci_CheckStatus(void)
 #endif
         return 0;
     }
+
+    if (stdMci_musicPaused)
+        return 1;
 
     if (FAILED(IDirectSoundBuffer_GetCurrentPosition(stdMci_pBuffer, &playCursor, &writeCursor)))
     {

@@ -227,6 +227,17 @@ void sithPlayer_Tick(sithPlayerInfo *playerInfo, flex_t a2)
                 {
                     if ( (v3->sector->flags & SITH_SECTOR_FALLDEATH) != 0 && !(g_debugmodeFlags & DEBUGFLAG_NOCLIP)) // Added: noclip
                     {
+#ifdef TARGET_XBOX
+                        XDBGF("FallDeath: begin thing=%d sector=%p pos=(%.3f,%.3f,%.3f) vel=(%.3f,%.3f,%.3f)\n",
+                              v3->thingIdx,
+                              (void*)v3->sector,
+                              (double)v3->position.x,
+                              (double)v3->position.y,
+                              (double)v3->position.z,
+                              (double)v3->physicsParams.vel.x,
+                              (double)v3->physicsParams.vel.y,
+                              (double)v3->physicsParams.vel.z);
+#endif
                         v3->thingflags |= SITH_TF_DEAD;
                         v3->actorParams.typeflags |= SITH_AF_FALLING_TO_DEATH;
                         sithCamera_SetCameraFocus(&sithCamera_cameras[1], v3, 0);
@@ -239,7 +250,27 @@ void sithPlayer_Tick(sithPlayerInfo *playerInfo, flex_t a2)
         {
             pPalEffect->fade -= a2 * 0.7;
             if (pPalEffect->fade <= 0.0)
-                sithPlayer_HandleSentDeathPkt(v3);
+            {
+                if (v3 == sithPlayer_pLocalPlayerThing && !sithNet_isMulti)
+                {
+#ifdef TARGET_XBOX
+                    XDBGF("FallDeath: fade complete, entering death prompt thing=%d curMs=%u fade=%.3f\n",
+                          v3->thingIdx,
+                          (unsigned)sithTime_curMs,
+                          (double)pPalEffect->fade);
+#endif
+                    v3->actorParams.typeflags &= ~SITH_AF_FALLING_TO_DEATH;
+                    sithControl_death_msgtimer = sithTime_curMs + 3000;
+                    sithPhysics_ThingStop(v3);
+                    sithCamera_SetCameraFocus(sithCamera_cameras, v3, 0);
+                    sithCamera_SetCameraFocus(&sithCamera_cameras[1], v3, 0);
+                    sithCamera_SetCurrentCamera(sithCamera_cameras);
+                }
+                else
+                {
+                    sithPlayer_HandleSentDeathPkt(v3);
+                }
+            }
         }
     }
 }
@@ -247,6 +278,16 @@ void sithPlayer_Tick(sithPlayerInfo *playerInfo, flex_t a2)
 void sithPlayer_debug_loadauto(sithThing *player)
 {
     char v1[128]; // [esp+4h] [ebp-80h] BYREF
+#ifdef TARGET_XBOX
+    XDBGF("RespawnLoad: enter player=%p thing=%d auto='%s' submode=%X dbg=%X dead=%d falling=%d\n",
+          (void*)player,
+          player ? player->thingIdx : -1,
+          sithGamesave_autosave_fname,
+          (unsigned)g_submodeFlags,
+          (unsigned)g_debugmodeFlags,
+          player ? (int)((player->thingflags & SITH_TF_DEAD) != 0) : -1,
+          player ? (int)((player->actorParams.typeflags & SITH_AF_FALLING_TO_DEATH) != 0) : -1);
+#endif
 
     if ( (g_submodeFlags & 1) != 0 || (g_debugmodeFlags & DEBUGFLAG_IN_EDITOR) != 0 )
     {
@@ -356,6 +397,16 @@ void sithPlayer_HandleSentDeathPkt(sithThing *thing)
     char v4[128]; // [esp+8h] [ebp-80h] BYREF
 
     v1 = thing->actorParams.playerinfo;
+#ifdef TARGET_XBOX
+    XDBGF("DeathPkt: thing=%d local=%d multi=%d flags=%X af=%X health=%.3f sector=%p\n",
+          thing ? thing->thingIdx : -1,
+          thing == sithPlayer_pLocalPlayerThing,
+          sithNet_isMulti,
+          thing ? (unsigned)thing->thingflags : 0,
+          thing ? (unsigned)thing->actorParams.typeflags : 0,
+          thing ? (double)thing->actorParams.health : 0.0,
+          thing ? (void*)thing->sector : (void*)0);
+#endif
 
     if ( thing == sithPlayer_pLocalPlayerThing)
         sithDSSThing_SendDeath(thing, thing, 1, -1, 255);

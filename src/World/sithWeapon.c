@@ -7,6 +7,7 @@ extern "C" void xbox_debug_Printf(const char*, ...);
 #include "World/sithThing.h"
 #include "World/jkPlayer.h"
 #include "World/sithSector.h"
+#include "World/sithWorld.h"
 #include "Engine/sithCollision.h"
 #include "World/sithActor.h"
 #include "World/sithSurface.h"
@@ -34,6 +35,34 @@ int sithWeapon_mots_5a3258 = -1;
 int sithWeapon_motsAConv[10] = {
     10, 11, 2, 3, 4, 5, 6, 7, 8, 9
 };
+
+static void sithWeapon_UpdateSaberCamera(sithThing *player, int binIdx)
+{
+    int wantsSaberCam;
+
+    if (!jkPlayer_setSaberCam)
+        return;
+    if (!player || !sithCamera_currentCamera)
+        return;
+    if (sithWorld_pCurrentWorld && sithWorld_pCurrentWorld->cameraFocus != player)
+        return;
+    if ((sithCamera_currentCamera->cameraPerspective & 0xFC) &&
+        sithCamera_currentCamera->cameraPerspective != 4)
+        return;
+
+    wantsSaberCam = (binIdx == SITHBIN_LIGHTSABER || binIdx == SITHBIN_MOTS_LIGHTSABER);
+
+    if (wantsSaberCam)
+    {
+        sithCamera_curCameraIdx = 1;
+        sithCamera_SetCurrentCamera(&sithCamera_cameras[1]);
+    }
+    else
+    {
+        sithCamera_curCameraIdx = 0;
+        sithCamera_SetCurrentCamera(&sithCamera_cameras[0]);
+    }
+}
 
 void sithWeapon_InitDefaults()
 {
@@ -984,6 +1013,7 @@ int sithWeapon_SelectWeapon(sithThing *player, int binIdx, int a3)
 
     sithWeapon_8BD024 = binIdx;
     sithWeapon_senderIndex = a3 != 0;
+    sithWeapon_UpdateSaberCamera(player, binIdx);
 
     // MoTS added
     if (Main_bMotsCompat) {

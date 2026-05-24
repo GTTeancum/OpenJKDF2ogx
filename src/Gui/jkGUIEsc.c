@@ -20,6 +20,7 @@
 #include "Main/jkStrings.h"
 #include "Main/jkMain.h"
 #include "Dss/sithMulti.h"
+#include "Devices/sithSoundMixer.h"
 
 enum jkGuiEscButton_t
 {
@@ -146,6 +147,8 @@ void jkGuiEsc_Shutdown()
 void jkGuiEsc_Show()
 {
     int32_t v3; // eax
+
+    sithSoundMixer_PauseSong(1);
 
     if ( sithNet_isMulti )
     {

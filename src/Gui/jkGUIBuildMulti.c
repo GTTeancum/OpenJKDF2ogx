@@ -10,6 +10,9 @@
 #include "Gui/jkGUIRend.h"
 #include "Gui/jkGUI.h"
 #include "Gui/jkGUIDialog.h"
+#ifdef TARGET_XBOX
+#include "Gui/jkGUIXboxKeyboard.h"
+#endif
 #include "General/stdFileUtil.h"
 #include "General/stdFnames.h"
 #include "Main/jkStrings.h"
@@ -39,6 +42,81 @@
 // MOTS added
 int jkGuiBuildMulti_jediRank = 0;
 
+#ifdef TARGET_XBOX
+enum
+{
+    JKGUIMULTI_XBTN_WHITE = 0,
+    JKGUIMULTI_XBTN_BLACK,
+    JKGUIMULTI_XBTN_LT,
+    JKGUIMULTI_XBTN_RT,
+    JKGUIMULTI_XBTN_COUNT
+};
+
+static const char *jkGuiBuildMulti_xboxButtonPaths[JKGUIMULTI_XBTN_COUNT] = {
+    "ui\\bm\\xbtn_white.bm",
+    "ui\\bm\\xbtn_black.bm",
+    "ui\\bm\\xbtn_lt.bm",
+    "ui\\bm\\xbtn_rt.bm",
+};
+static stdBitmap *jkGuiBuildMulti_xboxButtonBitmaps[JKGUIMULTI_XBTN_COUNT];
+
+static void jkGuiBuildMulti_XboxLoadButtonGlyphs(void)
+{
+    int i;
+    for (i = 0; i < JKGUIMULTI_XBTN_COUNT; i++)
+    {
+        if (!jkGuiBuildMulti_xboxButtonBitmaps[i])
+            jkGuiBuildMulti_xboxButtonBitmaps[i] = stdBitmap_LoadPartial((char*)jkGuiBuildMulti_xboxButtonPaths[i], 1, 0);
+    }
+}
+
+static void jkGuiBuildMulti_XboxUnloadButtonGlyphs(void)
+{
+    int i;
+    for (i = 0; i < JKGUIMULTI_XBTN_COUNT; i++)
+    {
+        if (jkGuiBuildMulti_xboxButtonBitmaps[i])
+        {
+            stdBitmap_Free(jkGuiBuildMulti_xboxButtonBitmaps[i]);
+            jkGuiBuildMulti_xboxButtonBitmaps[i] = NULL;
+        }
+    }
+}
+
+static void jkGuiBuildMulti_XboxButtonGlyphDraw(jkGuiElement *element, jkGuiMenu *menu, stdVBuffer *vbuf, BOOL redraw)
+{
+    stdBitmap *bitmap;
+    rdRect srcRect;
+    int idx = element->selectedTextEntry;
+
+    if (redraw)
+        jkGuiRend_CopyVBuffer(menu, &element->rect);
+
+    if (idx < 0 || idx >= JKGUIMULTI_XBTN_COUNT)
+        return;
+
+    jkGuiBuildMulti_XboxLoadButtonGlyphs();
+    bitmap = jkGuiBuildMulti_xboxButtonBitmaps[idx];
+    if (!bitmap)
+        return;
+
+    stdBitmap_EnsureData(bitmap);
+    if (!bitmap->mipSurfaces || !bitmap->mipSurfaces[0])
+        return;
+
+    srcRect.x = 0;
+    srcRect.y = 0;
+    srcRect.width = element->rect.width;
+    if (srcRect.width > bitmap->mipSurfaces[0]->format.width)
+        srcRect.width = bitmap->mipSurfaces[0]->format.width;
+    srcRect.height = element->rect.height;
+    if (srcRect.height > bitmap->mipSurfaces[0]->format.height)
+        srcRect.height = bitmap->mipSurfaces[0]->format.height;
+
+    stdDisplay_VBufferCopy(vbuf, bitmap->mipSurfaces[0], element->rect.x, element->rect.y, &srcRect, 1);
+}
+#endif
+
 static jkGuiElement jkGuiBuildMulti_buttons[17] =
 {
   { ELEMENT_TEXT, 0, 5, "GUI_EDIT_CHARACTER", 3, { 240, 20, 400, 40 }, 1, 0, NULL, NULL, NULL, NULL, { 0, 0, 0, 0, 0, { 0, 0, 0, 0 } }, 0 },
@@ -50,10 +128,17 @@ static jkGuiElement jkGuiBuildMulti_buttons[17] =
   { ELEMENT_CUSTOM, 0, 0, NULL, 0, { 315, 115, 260, 260 }, 1, 0, NULL, jkGuiBuildMulti_ModelDrawer, NULL, NULL, { 0, 0, 0, 0, 0, { 0, 0, 0, 0 } }, 0 },
   { ELEMENT_CUSTOM, 0, 0, NULL, 0, { 80, 115, 50, 260 }, 1, 0, NULL, jkGuiBuildMulti_SaberDrawer, NULL, NULL, { 0, 0, 0, 0, 0, { 0, 0, 0, 0 } }, 0 },
   { ELEMENT_TEXT, 0, 0, "GUI_MODEL", 3, { 336, 380, 216, 30 }, 1, 0, NULL, NULL, NULL, NULL, { 0, 0, 0, 0, 0, { 0, 0, 0, 0 } }, 0 },
+#ifdef TARGET_XBOX
+  { ELEMENT_CUSTOM, 0, 0, NULL, JKGUIMULTI_XBTN_LT, { 290, 375, 56, 38 }, 1, 0, NULL, jkGuiBuildMulti_XboxButtonGlyphDraw, NULL, NULL, { 0, 0, 0, 0, 0, { 0, 0, 0, 0 } }, 0 },
+  { ELEMENT_CUSTOM, 0, 0, NULL, JKGUIMULTI_XBTN_RT, { 542, 375, 56, 38 }, 1, 0, NULL, jkGuiBuildMulti_XboxButtonGlyphDraw, NULL, NULL, { 0, 0, 0, 0, 0, { 0, 0, 0, 0 } }, 0 },
+  { ELEMENT_CUSTOM, 0, 0, NULL, JKGUIMULTI_XBTN_WHITE, { 50, 373, 40, 40 }, 1, 0, NULL, jkGuiBuildMulti_XboxButtonGlyphDraw, NULL, NULL, { 0, 0, 0, 0, 0, { 0, 0, 0, 0 } }, 0 },
+  { ELEMENT_CUSTOM, 0, 0, NULL, JKGUIMULTI_XBTN_BLACK, { 110, 373, 40, 40 }, 1, 0, NULL, jkGuiBuildMulti_XboxButtonGlyphDraw, NULL, NULL, { 0, 0, 0, 0, 0, { 0, 0, 0, 0 } }, 0 },
+#else
   { ELEMENT_TEXT, 0, 2, NULL, 3, { 300, 380, 36, 30 }, 1, 0, NULL, NULL, NULL, NULL, { 0, 0, 0, 0, 0, { 0, 0, 0, 0 } }, 0 },
   { ELEMENT_TEXT, 0, 2, NULL, 3, { 552, 380, 36, 30 }, 1, 0, NULL, NULL, NULL, NULL, { 0, 0, 0, 0, 0, { 0, 0, 0, 0 } }, 0 },
   { ELEMENT_TEXT, 0, 2, NULL, 3, { 52, 380, 40, 30 }, 1, 0, NULL, NULL, NULL, NULL, { 0, 0, 0, 0, 0, { 0, 0, 0, 0 } }, 0 },
   { ELEMENT_TEXT, 0, 2, NULL, 3, { 112, 380, 40, 30 }, 1, 0, NULL, NULL, NULL, NULL, { 0, 0, 0, 0, 0, { 0, 0, 0, 0 } }, 0 },
+#endif
   { ELEMENT_TEXTBUTTON, -1, 2, "GUI_CANCEL", 3, { 20, 430, 170, 40 }, 1, 0, NULL, NULL, NULL, NULL, { 0, 0, 0, 0, 0, { 0, 0, 0, 0 } }, 0 },
   { ELEMENT_TEXTBUTTON, 109, 2, "GUI_FORCEPOWERS", 3, { 290, 430, 170, 40 }, 1, 0, NULL, NULL, NULL, NULL, { 0, 0, 0, 0, 0, { 0, 0, 0, 0 } }, 0 },
   { ELEMENT_TEXTBUTTON, 106, 2, "GUI_SAVE", 3, { 470, 430, 170, 40 }, 1, 0, NULL, NULL, NULL, NULL, { 0, 0, 0, 0, 0, { 0, 0, 0, 0 } }, 0 },
@@ -254,6 +339,9 @@ static int32_t jkGuiBuildMulti_numModels = 0;
 static int32_t jkGuiBuildMulti_numSabers = 0;
 static int32_t jkGuiBuildMulti_saberIdx = 0;
 static int32_t jkGuiBuildMulti_modelIdx = 0;
+#ifdef TARGET_XBOX
+static wchar_t jkGuiBuildMulti_wNoCharacters[] = L"No characters. Choose New.";
+#endif
 static jkMultiModelInfo *jkGuiBuildMulti_aModels = NULL;
 static int32_t jkGuiBuildMulti_renderOptions = 0x103;
 static rdVector3 jkGuiBuildMulti_projectRot;
@@ -1131,6 +1219,38 @@ int jkGuiBuildMulti_HandleXboxController(jkGuiMenu *pMenu, int focusDir)
     static int prevRt = 0;
     jkGuiElement selector;
 
+    if (pMenu == jkGuiBuildMulti_pNewCharacterMenu)
+    {
+        jkGuiElement *hovered = pMenu->lastMouseOverClickable;
+        int rankFocused = hovered == &jkGuiBuildMulti_pNewCharacterElements[7]
+            || hovered == &jkGuiBuildMulti_pNewCharacterElements[8]
+            || hovered == &jkGuiBuildMulti_pNewCharacterElements[9]
+            || hovered == &jkGuiBuildMulti_pNewCharacterElements[10];
+
+        if (jkGuiBuildMulti_pNewCharacterElements[9].bIsVisible && jkGuiBuildMulti_pNewCharacterElements[10].bIsVisible)
+        {
+            if ((rankFocused && focusDir == FOCUS_LEFT) || jkGuiBuildMulti_XboxReadEdge(KEY_JOY1_B10, &prevLb))
+            {
+                jkGuiBuildMulti_menuNewCharacter_rankArrowButtonClickHandler(&jkGuiBuildMulti_pNewCharacterElements[9], pMenu, 0, 0, 1);
+                pMenu->focusedElement = NULL;
+                jkGuiRend_ClickableMouseover(pMenu, &jkGuiBuildMulti_pNewCharacterElements[9]);
+                return 1;
+            }
+
+            if ((rankFocused && focusDir == FOCUS_RIGHT) || jkGuiBuildMulti_XboxReadEdge(KEY_JOY1_B11, &prevRb))
+            {
+                jkGuiBuildMulti_menuNewCharacter_rankArrowButtonClickHandler(&jkGuiBuildMulti_pNewCharacterElements[10], pMenu, 0, 0, 1);
+                pMenu->focusedElement = NULL;
+                jkGuiRend_ClickableMouseover(pMenu, &jkGuiBuildMulti_pNewCharacterElements[10]);
+                return 1;
+            }
+        }
+
+        if (pMenu != &jkGuiBuildMulti_menu)
+            prevLt = prevRt = 0;
+        return 0;
+    }
+
     if (pMenu != &jkGuiBuildMulti_menu)
     {
         prevLb = prevRb = prevLt = prevRt = 0;
@@ -1257,6 +1377,9 @@ void jkGuiBuildMulti_Shutdown()
     memset(&jkGuiBuildMulti_orthoProjection, 0, sizeof(jkGuiBuildMulti_orthoProjection));
     memset(&jkGuiBuildMulti_lightPos, 0, sizeof(jkGuiBuildMulti_lightPos));
     jkGuiBuildMulti_lastModelDrawMs = 0;
+#ifdef TARGET_XBOX
+    jkGuiBuildMulti_XboxUnloadButtonGlyphs();
+#endif
 }
 
 void jkGuiBuildMulti_Load(char *pPathOut, int pathOutLen, wchar_t *pPlayerName, wchar_t *pCharName, int bCharPath)
@@ -1335,6 +1458,15 @@ int jkGuiBuildMulti_Show()
         v2 = jkGuiBuildMulti_Show2(&darr, &jkGuiBuildMulti_menuEditCharacter_buttons[3], 0, 9, v1);
         jkGuiBuildMulti_sub_41D680(&jkGuiBuildMulti_menuEditCharacter, jkGuiBuildMulti_menuEditCharacter_buttons[3].selectedTextEntry);
         v3 = 1;
+#ifdef TARGET_XBOX
+        jkGuiBuildMulti_menuEditCharacter_buttons[14].bIsVisible = v2 != 0;
+        jkGuiBuildMulti_menuEditCharacter_buttons[15].bIsVisible = v2 != 0;
+        if (!v2)
+        {
+            jkGuiBuildMulti_menuEditCharacter_buttons[0].wstr = jkGuiBuildMulti_wNoCharacters;
+            jkGuiBuildMulti_menuEditCharacter.lastMouseOverClickable = &jkGuiBuildMulti_menuEditCharacter_buttons[13];
+        }
+#endif
         if ( v2 )
         {
             jkGuiRend_MenuSetReturnKeyShortcutElement(&jkGuiBuildMulti_menuEditCharacter, &jkGuiBuildMulti_menuEditCharacter_buttons[15]);
@@ -1343,7 +1475,13 @@ int jkGuiBuildMulti_Show()
         }
         else
         {
+#ifdef TARGET_XBOX
+            jkGuiRend_MenuSetReturnKeyShortcutElement(&jkGuiBuildMulti_menuEditCharacter, &jkGuiBuildMulti_menuEditCharacter_buttons[13]);
+            jkGuiRend_MenuSetEscapeKeyShortcutElement(&jkGuiBuildMulti_menuEditCharacter, &jkGuiBuildMulti_menuEditCharacter_buttons[12]);
+            v9 = jkGuiRend_DisplayAndReturnClicked(&jkGuiBuildMulti_menuEditCharacter);
+#else
             v9 = 100;
+#endif
         }
         switch ( v9 )
         {
@@ -1470,26 +1608,6 @@ int jkGuiBuildMulti_ShowNewCharacter(int rank, int bGameFormatIsJK, int bHasNoVa
     char v15[32]; // [esp+18h] [ebp-190h] BYREF
     char v18[128]; // [esp+128h] [ebp-80h] BYREF
 
-#ifdef TARGET_XBOX
-    int saveResult;
-
-    jkPlayer_SetRank(rank < 0 ? 0 : rank);
-    sithPlayer_SetBinAmt(SITHBIN_SPEND_STARS, (flex_d_t)jkPlayer_GetJediRank() * 3.0);
-    sithPlayer_SetBinAmt(SITHBIN_NEW_STARS, 0.0);
-    jkPlayer_personality = 1;
-    jkPlayer_SetAmmoMaximums(jkPlayer_personality);
-    jkPlayer_ResetPowers();
-    jk_snwprintf(jkGuiBuildMulti_aWchar_5594C8, 48, L"Character");
-    jkPlayer_SetPlayerName(jkGuiBuildMulti_aWchar_5594C8);
-    jkPlayer_mpcInfoSet = 0;
-
-    saveResult = jkGuiBuildMulti_ShowEditCharacter(1);
-    if (saveResult == 106)
-        jkPlayer_MPCWrite(&jkPlayer_playerInfos[playerThingIdx], jkPlayer_playerShortName, jkPlayer_name);
-
-    return saveResult;
-#endif
-
     // MOTS added
     Darray daPersonalities;
     char personalityTmp[128];
@@ -1526,6 +1644,10 @@ int jkGuiBuildMulti_ShowNewCharacter(int rank, int bGameFormatIsJK, int bHasNoVa
     jkGuiBuildMulti_pNewCharacterElements[14].wstr = jkGuiBuildMulti_aWchar_5594C8; // 11
     memset(jkGuiBuildMulti_aWchar_5594C8, 0, 0x20u);
     jkGuiBuildMulti_pNewCharacterElements[14].selectedTextEntry = 16; // 11
+#ifdef TARGET_XBOX
+    jkGuiBuildMulti_pNewCharacterElements[14].clickHandlerFunc = jkGuiXboxKeyboard_TextBoxClicked;
+    jkGuiXboxKeyboard_Show(jkGuiBuildMulti_aWchar_5594C8, 16, jkStrings_GetUniStringWithFallback("GUI_NEW_CHARACTER"));
+#endif
     if ( bHasNoValidChars )
     {
         jkGuiDialog_ErrorDialog(jkStrings_GetUniStringWithFallback("GUI_NOVALIDCHARTITLE"), jkStrings_GetUniStringWithFallback("GUI_NOVALIDCHARACTERS"));

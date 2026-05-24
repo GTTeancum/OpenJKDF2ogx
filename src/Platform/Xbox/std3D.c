@@ -941,8 +941,11 @@ void std3D_Present(void)
 
         spanMs = (unsigned long)(nowMs - g_hwPerfStartMs);
         if (spanMs >= 10000UL) {
+            MEMORYSTATUS memStatus;
+            memStatus.dwLength = sizeof(memStatus);
+            GlobalMemoryStatus(&memStatus);
             fps100 = (spanMs > 0) ? ((g_hwPerfFrames * 100000UL) / spanMs) : 0;
-            XPERF("PerfHW: spanMs=%lu frames=%lu fps=%lu.%02lu maxFrameMs=%u h50=%lu h100=%lu h250=%lu h500=%lu drawLists=%lu tris=%lu verts=%lu texUp=%lu uiUp=%lu cutscene=%d credits=%d\n",
+            XPERF("PerfHW: spanMs=%lu frames=%lu fps=%lu.%02lu maxFrameMs=%u h50=%lu h100=%lu h250=%lu h500=%lu drawLists=%lu tris=%lu verts=%lu texUp=%lu uiUp=%lu cutscene=%d credits=%d memPhys=%lu memPage=%lu\n",
                   spanMs,
                   g_hwPerfFrames,
                   fps100 / 100UL,
@@ -958,7 +961,9 @@ void std3D_Present(void)
                   g_hwPerfTexUploads,
                   g_hwPerfBitmapUploads,
                   jkCutscene_isRendering,
-                  stdDisplay_xboxCreditsDebug);
+                  stdDisplay_xboxCreditsDebug,
+                  (unsigned long)memStatus.dwAvailPhys,
+                  (unsigned long)memStatus.dwAvailPageFile);
             g_hwPerfStartMs = nowMs;
             g_hwPerfFrames = 0;
             g_hwPerfDrawLists = 0;
@@ -1406,12 +1411,16 @@ void std3D_DrawRenderList(void)
                     if (t->flags & 0x10000) glCullFace(GL_BACK);
                     else                    glCullFace(GL_FRONT);
 
+                    if (t->flags & 0x200) glDisable(GL_ALPHA_TEST);
+                    else                  glEnable(GL_ALPHA_TEST);
+
                     if (t->flags & 0x600) glBlendFunc(GL_ONE, GL_ONE_MINUS_SRC_ALPHA);
                     else                  glBlendFunc(GL_SRC_ALPHA, GL_ONE_MINUS_SRC_ALPHA);
 
                     last_flags = t->flags;
                 }
             } else if (last_flags != -2) {
+                glEnable(GL_ALPHA_TEST);
                 glDisable(GL_BLEND);
                 glDisable(GL_CULL_FACE);
                 glDepthFunc(GL_LEQUAL);
@@ -1864,6 +1873,14 @@ int std3D_AddToTextureCache(stdVBuffer *vbuf, rdDDrawSurface *texture,
         unsigned int g_bits = vbuf->format.fmt_g_bits;
         unsigned int tk     = vbuf->transparent_color;
         unsigned int j;
+        if (!vbuf->format.fmt_r_bits &&
+            !vbuf->format.fmt_g_bits &&
+            !vbuf->format.fmt_b_bits) {
+            /* Some 16-bit MATs in the wild only mark bpp/is16bit.  Treat
+             * that as RGB565; interpreting those pixels as RGB1555 uses the
+             * top red bit as alpha and turns broad texture ranges black. */
+            g_bits = 6;
+        }
 
         if (fail_logN < 6) {
             XDBGF("ATC 16bit OK: vbuf=%p w=%u h=%u rgb=(%u,%u,%u) tkey=0x%X\n",

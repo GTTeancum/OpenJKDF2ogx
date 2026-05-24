@@ -265,8 +265,12 @@ int rdMaterial_LoadEntry_Common(char *mat_fpath, rdMaterial *material, int creat
         texture->color_transparent = tex_header_1.unk_10;
         format.width = tex_header_1.width;
         format.height = tex_header_1.height;
+#ifdef RDMATERIAL_MINIMIZE_STRUCTS
         format.format.is16bit = material->texFormat.is16bit;
         format.format.bpp = material->texFormat.bpp;
+#else
+        _memcpy(&format.format, &material->texFormat, sizeof(format.format));
+#endif
         if ( texture->num_mipmaps )
           break;
 

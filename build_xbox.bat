@@ -245,6 +245,7 @@ for %%F in (
     src\Main\jkCredits.c
     src\Gui\jkGUI.c
     src\Gui\jkGUIRend.c
+    src\Gui\jkGUIXboxKeyboard.c
     src\Gui\jkGUIMain.c
     src\Gui\jkGUIPlayer.c
     src\Gui\jkGUISingleplayer.c
@@ -271,6 +272,7 @@ for %%F in (
     src\Platform\Xbox\xbox_xmv_player.cpp
     src\Platform\Xbox\xbox_world_helper.cpp
     src\Platform\Xbox\xbox_splitscreen.c
+    src\Platform\Xbox\xbox_wheels.c
     src\Platform\Xbox\main_xbox.c
     src\Platform\Xbox\stdControl_xbox.c
     src\Platform\Xbox\stdFile_xbox.c

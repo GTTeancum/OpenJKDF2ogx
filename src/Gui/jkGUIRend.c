@@ -51,6 +51,8 @@ static uint32_t jkGuiRend_mouseLatestMs = 0;
 static HCURSOR jkGuiRend_hCursor = 0;
 
 static int32_t jkGuiRend_CursorVisible = 1;
+static int jkGuiRend_IsControllerFocusable(jkGuiElement *element);
+static jkGuiElement* jkGuiRend_GetControllerClickTarget(jkGuiMenu *menu);
 static jkGuiElementHandlers jkGuiRend_elementHandlers[8] = 
 {
     {jkGuiRend_TextButtonEventHandler, jkGuiRend_TextButtonDraw, jkGuiRend_PlayClickSound},
@@ -251,6 +253,8 @@ LABEL_22:
 
 void jkGuiRend_UpdateDrawMenu(jkGuiMenu *menu)
 {
+    const char *newHint;
+
     if (!g_app_suspended || jkGuiRend_bIsSurfaceValid)
         return;
 
@@ -258,10 +262,12 @@ void jkGuiRend_UpdateDrawMenu(jkGuiMenu *menu)
     if ( idx >= 0 )
     {
         jkGuiElement* clickable = menu->lastMouseOverClickable;
+        newHint = 0;
         if ( clickable && clickable->hintText && clickable->bIsVisible && !clickable->enableHover )
-            menu->paElements[idx].str = clickable->hintText;
-        else
-            menu->paElements[idx].str = 0;
+            newHint = clickable->hintText;
+        if (menu->paElements[idx].str == newHint)
+            return;
+        menu->paElements[idx].str = newHint;
         jkGuiRend_UpdateAndDrawClickable(&menu->paElements[menu->clickableIdxIdk], menu, 1);
     }
 }
@@ -344,6 +350,15 @@ int32_t jkGuiRend_DisplayAndReturnClicked(jkGuiMenu *menu)
 
 #ifdef QOL_IMPROVEMENTS
     jkGuiRend_FocusElementDir(menu, FOCUS_NONE);
+#endif
+#ifdef TARGET_XBOX
+    if ((!menu->lastMouseOverClickable || menu->lastMouseOverClickable->type == ELEMENT_LISTBOX)
+        && jkGuiRend_IsControllerFocusable(menu->pReturnKeyShortcutElement))
+    {
+        menu->lastMouseOverClickable = menu->pReturnKeyShortcutElement;
+        if (menu->focusedElement && menu->focusedElement->type != ELEMENT_LISTBOX && menu->focusedElement->type != ELEMENT_TEXTBOX)
+            menu->focusedElement = NULL;
+    }
 #endif
 
     jkGuiRend_SetCursorVisible(1);
@@ -1156,6 +1171,24 @@ void jkGuiRend_ClickableMouseover(jkGuiMenu *menu, jkGuiElement *element)
     lastMouseOverClickable = menu->lastMouseOverClickable;
     if ( lastMouseOverClickable != element && (!element || element->bIsVisible) )
     {
+#ifdef TARGET_XBOX
+        static int s_xboxFocusLogCount = 0;
+        if (s_xboxFocusLogCount < 160
+            && ((lastMouseOverClickable && lastMouseOverClickable->rect.y >= 390)
+                || (element && element->rect.y >= 390)))
+        {
+            stdPlatform_Printf("XGuiFocus: menu=%p old=%d/%d y=%d new=%d/%d y=%d focused=%p\n",
+                menu,
+                lastMouseOverClickable ? (int)(lastMouseOverClickable - menu->paElements) : -1,
+                lastMouseOverClickable ? lastMouseOverClickable->hoverId : -1,
+                lastMouseOverClickable ? lastMouseOverClickable->rect.y : -1,
+                element ? (int)(element - menu->paElements) : -1,
+                element ? element->hoverId : -1,
+                element ? element->rect.y : -1,
+                menu->focusedElement);
+            s_xboxFocusLogCount++;
+        }
+#endif
         menu->lastMouseOverClickable = element;
         if ( lastMouseOverClickable )
             jkGuiRend_UpdateAndDrawClickable(lastMouseOverClickable, menu, 1);
@@ -1755,6 +1788,9 @@ int jkGuiRend_WindowHandler(HWND hWnd, UINT a2, WPARAM wParam, LPARAM lParam, LR
         }
 
         case WM_MOUSEMOVE:
+#ifdef TARGET_XBOX
+            return 1;
+#else
             mouseX = (uint16_t)(lParam & 0xFFFF);
             mouseY = lParam >> 16;
             jkGuiRend_mouseX = (uint16_t)lParam;
@@ -1763,6 +1799,7 @@ int jkGuiRend_WindowHandler(HWND hWnd, UINT a2, WPARAM wParam, LPARAM lParam, LR
             if ( jkGuiRend_activeMenu->lastMouseDownClickable )
                 jkGuiRend_InvokeEvent(jkGuiRend_activeMenu->lastMouseDownClickable, jkGuiRend_activeMenu, JKGUI_EVENT_MOUSEMOVED, wParam);
             return 1;
+#endif
 
         case WM_KEYFIRST:
             if ( wParam == VK_SHIFT || wParam == VK_LSHIFT || wParam == VK_RSHIFT )
@@ -1857,6 +1894,9 @@ void jkGuiRend_UpdateMouse()
     int32_t mouseY; // ecx
     struct tagPOINT Point; // [esp+0h] [ebp-8h]
 
+#ifdef TARGET_XBOX
+    return;
+#else
 #ifndef TARGET_XBOX
     if ( stdDisplay_pCurDevice->video_device[0].windowedMaybe )
     {
@@ -1871,6 +1911,7 @@ void jkGuiRend_UpdateMouse()
         mouseY = jkGuiRend_mouseY;
     }
     jkGuiRend_MouseMovedCallback(jkGuiRend_activeMenu, mouseX, mouseY);
+#endif
 }
 
 void jkGuiRend_FlipAndDraw(jkGuiMenu *menu, rdRect *drawRect)
@@ -2594,6 +2635,47 @@ void jkGuiRend_TextButtonDraw(jkGuiElement *element, jkGuiMenu *menu, stdVBuffer
 }
 
 // Added functions
+static int jkGuiRend_IsControllerFocusable(jkGuiElement *element)
+{
+    if (!element || !element->bIsVisible || element->enableHover)
+        return 0;
+
+    switch (element->type)
+    {
+        case ELEMENT_TEXTBUTTON:
+        case ELEMENT_PICBUTTON:
+        case ELEMENT_CHECKBOX:
+        case ELEMENT_LISTBOX:
+        case ELEMENT_TEXTBOX:
+        case ELEMENT_SLIDER:
+            return 1;
+        default:
+            return 0;
+    }
+}
+
+static jkGuiElement* jkGuiRend_GetControllerClickTarget(jkGuiMenu *menu)
+{
+    jkGuiElement *target;
+
+    if (!menu)
+        return NULL;
+
+    target = menu->lastMouseOverClickable;
+    if (jkGuiRend_IsControllerFocusable(target) && target->type != ELEMENT_LISTBOX)
+        return target;
+
+    target = menu->pReturnKeyShortcutElement;
+    if (jkGuiRend_IsControllerFocusable(target))
+        return target;
+
+    target = menu->focusedElement;
+    if (jkGuiRend_IsControllerFocusable(target) && target->type != ELEMENT_LISTBOX)
+        return target;
+
+    return NULL;
+}
+
 void jkGuiRend_FocusElementDir(jkGuiMenu *pMenu, int32_t dir)
 {
     int32_t idx = 0;
@@ -2629,13 +2711,7 @@ void jkGuiRend_FocusElementDir(jkGuiMenu *pMenu, int32_t dir)
                 continue;
             }
             
-            if (focusedElement->type != ELEMENT_TEXTBUTTON
-                && focusedElement->type != ELEMENT_PICBUTTON
-                && focusedElement->type != ELEMENT_CHECKBOX
-                && focusedElement->type != ELEMENT_LISTBOX
-                && focusedElement->type != ELEMENT_TEXTBOX
-                && focusedElement->type != ELEMENT_SLIDER
-                && focusedElement->type != ELEMENT_CUSTOM) {
+            if (!jkGuiRend_IsControllerFocusable(focusedElement)) {
                 focusedElement++;
                 continue;
             }
@@ -2749,13 +2825,7 @@ void jkGuiRend_FocusElementDir(jkGuiMenu *pMenu, int32_t dir)
             //continue;
         }
 
-        if (iter->type != ELEMENT_TEXTBUTTON
-            && iter->type != ELEMENT_PICBUTTON
-            && iter->type != ELEMENT_CHECKBOX
-            && iter->type != ELEMENT_LISTBOX
-            && iter->type != ELEMENT_TEXTBOX
-            && iter->type != ELEMENT_SLIDER
-            && iter->type != ELEMENT_CUSTOM) {
+        if (!jkGuiRend_IsControllerFocusable(iter)) {
             iter++;
             continue;
         }
@@ -2972,11 +3042,20 @@ void jkGuiRend_UpdateController()
 
         // HACK: Prevent player from killing themselves on load or save
         if (jkGuiRend_activeMenu != &jkGuiSaveLoad_menu && !(jkGuiRend_activeMenu == &jkGuiDialog_OkCancel_menu && jkGuiRend_lastActiveMenu == &jkGuiSaveLoad_menu)) {
-            jkGuiElement* prevFocusedElement = jkGuiRend_activeMenu->focusedElement;
-            jkGuiRend_WindowHandler(0, WM_KEYFIRST, VK_RETURN, 0, 0);
-            if (prevFocusedElement == jkGuiRend_activeMenu->focusedElement && pB1Menu == jkGuiRend_activeMenu) {
-                jkGuiRend_activeMenu->lastMouseDownClickable = jkGuiRend_activeMenu->lastMouseOverClickable;
-                jkGuiRend_InvokeClicked(jkGuiRend_activeMenu->lastMouseOverClickable, jkGuiRend_activeMenu, jkGuiRend_mouseX, jkGuiRend_mouseY, 1);
+            jkGuiElement* target = jkGuiRend_GetControllerClickTarget(jkGuiRend_activeMenu);
+            if (target) {
+                jkGuiRend_activeMenu->lastMouseDownClickable = target;
+                jkGuiRend_RenderFocused(jkGuiRend_activeMenu, target);
+                jkGuiRend_InvokeClicked(target, jkGuiRend_activeMenu, target->rect.x + 1, target->rect.y + 1, 1);
+            }
+            else {
+                jkGuiElement* prevFocusedElement = jkGuiRend_activeMenu->focusedElement;
+                jkGuiRend_WindowHandler(0, WM_KEYFIRST, VK_RETURN, 0, 0);
+                target = jkGuiRend_GetControllerClickTarget(jkGuiRend_activeMenu);
+                if (target && prevFocusedElement == jkGuiRend_activeMenu->focusedElement && pB1Menu == jkGuiRend_activeMenu) {
+                    jkGuiRend_activeMenu->lastMouseDownClickable = target;
+                    jkGuiRend_InvokeClicked(target, jkGuiRend_activeMenu, target->rect.x + 1, target->rect.y + 1, 1);
+                }
             }
             stdPlatform_Printf("a1\n");
         }
@@ -2988,9 +3067,10 @@ void jkGuiRend_UpdateController()
         if ((jkGuiRend_activeMenu == &jkGuiSaveLoad_menu || (jkGuiRend_activeMenu == &jkGuiDialog_OkCancel_menu && jkGuiRend_lastActiveMenu == &jkGuiSaveLoad_menu)) && jkGuiRend_B1Menu == jkGuiRend_activeMenu) {
             jkGuiElement* prevFocusedElement = jkGuiRend_activeMenu->focusedElement;
             jkGuiRend_WindowHandler(0, WM_KEYFIRST, VK_RETURN, 0, 0);
-            if (prevFocusedElement == jkGuiRend_activeMenu->focusedElement && pB1Menu == jkGuiRend_activeMenu) {
-                jkGuiRend_activeMenu->lastMouseDownClickable = jkGuiRend_activeMenu->lastMouseOverClickable;
-                jkGuiRend_InvokeClicked(jkGuiRend_activeMenu->lastMouseOverClickable, jkGuiRend_activeMenu, jkGuiRend_mouseX, jkGuiRend_mouseY, 1);
+            jkGuiElement* target = jkGuiRend_GetControllerClickTarget(jkGuiRend_activeMenu);
+            if (target && prevFocusedElement == jkGuiRend_activeMenu->focusedElement && pB1Menu == jkGuiRend_activeMenu) {
+                jkGuiRend_activeMenu->lastMouseDownClickable = target;
+                jkGuiRend_InvokeClicked(target, jkGuiRend_activeMenu, target->rect.x + 1, target->rect.y + 1, 1);
             }
             stdPlatform_Printf("a2\n");
         }

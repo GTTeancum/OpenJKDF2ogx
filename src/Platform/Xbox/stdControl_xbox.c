@@ -21,6 +21,7 @@
 #include "../../Main/jkSmack.h"
 #include "../../globals.h"
 #include "../../Platform/wuRegistry.h"
+#include "xbox_wheels.h"
 
 #define DIK_ESCAPE      0x01
 #define DIK_TAB         0x0F
@@ -36,6 +37,7 @@
 #define DIK_LCONTROL    0x1D    /* Crouch */
 #define DIK_LSHIFT      0x2A    /* Sprint (INPUT_FUNC_FAST) */
 #define DIK_CAPITAL     0x3A    /* Walk  (INPUT_FUNC_SLOW)  */
+#define DIK_F1          0x3B    /* Camera mode */
 #define DIK_LALT        0x38
 #define DIK_SPACE       0x39    /* Activate */
 #define DIK_RCONTROL    0x9D
@@ -110,6 +112,8 @@ static float g_lookSensY = 1.2f;
 static int   g_lookSensitivity = 50;
 static int   g_invertLookY = 0;
 static int   g_vibrationEnabled = 1;
+static int   g_deadzonePercent = 12;
+static int   g_stickDeadzone = STICK_DEADZONE;
 
 /* Key state array — indexed by DIK_ value OR engine-extended joy/mouse
  * key index.  Must be >= JK_NUM_KEYS = 0x100 + JK_NUM_EXTENDED_KEYS
@@ -128,6 +132,7 @@ static int   g_vibrationEnabled = 1;
  * frames-held. */
 void stdControl_ReadControls(void);
 void stdControl_XboxSetLookOptions(int sensitivity, int invertLook, int vibration);
+void stdControl_XboxSetLookOptionsEx(int sensitivity, int invertLook, int vibration, int deadzonePercent);
 
 void stdControl_SetKeydown(int keyNum, int bDown, unsigned int readTime)
 {
@@ -148,8 +153,8 @@ void stdControl_SetSDLKeydown(int keyNum, int bDown, unsigned int readTime)
 
 static float xbox_NormalizeStick(SHORT raw)
 {
-    if (raw > STICK_DEADZONE)  return (float)(raw - STICK_DEADZONE)  / (float)(32767 - STICK_DEADZONE);
-    if (raw < -STICK_DEADZONE) return (float)(raw + STICK_DEADZONE)  / (float)(32767 - STICK_DEADZONE);
+    if (raw > g_stickDeadzone)  return (float)(raw - g_stickDeadzone)  / (float)(32767 - g_stickDeadzone);
+    if (raw < -g_stickDeadzone) return (float)(raw + g_stickDeadzone)  / (float)(32767 - g_stickDeadzone);
     return 0.0f;
 }
 
@@ -196,6 +201,11 @@ int stdControl_Startup(void)
         wuRegistry_GetInt("xboxLookSensitivity", 50),
         wuRegistry_GetBool("xboxInvertLook", 0),
         wuRegistry_GetBool("xboxVibration", 1));
+    stdControl_XboxSetLookOptionsEx(
+        g_lookSensitivity,
+        g_invertLookY,
+        g_vibrationEnabled,
+        wuRegistry_GetInt("xboxDeadzone", 12));
 
     /* Mark our 4 joystick axes as enabled in stdControl_aJoysticks[].
      * Without this, sithControl_MapAxisFunc silently rejects every
@@ -234,6 +244,8 @@ void stdControl_Flush(void)
         memset(g_pads[i].axisValues, 0, sizeof(g_pads[i].axisValues));
         memset(g_pads[i].keyDown,    0, sizeof(g_pads[i].keyDown));
         memset(g_pads[i].keyPress,   0, sizeof(g_pads[i].keyPress));
+        memset(g_pads[i].prevAnalog, 0, sizeof(g_pads[i].prevAnalog));
+        g_pads[i].prevButtons = 0;
     }
     stdControl_ReadControls();
 }
@@ -245,6 +257,8 @@ static void stdControl_ReadController(int port)
     WORD buttons, changed;
     unsigned int tick;
     int i, cur, prev;
+    int gameplay;
+    int wheelOpen;
 
     /* Reset the press-edge accumulator at the top of every poll, matching
      * SDL2/stdControl.c:597 which `_memset(stdControl_aInput2, 0, ...)`
@@ -295,20 +309,39 @@ static void stdControl_ReadController(int port)
     /* Digital buttons */
     buttons = pad->wButtons;
     changed = buttons ^ g_prevButtons;
+    gameplay = (jkSmack_GetCurrentGuiState() == JK_GAMEMODE_GAMEPLAY);
+    wheelOpen = xbox_wheels_IsOpenForPort(port);
 
-    /* D-pad → inventory/skill cycle.  Engine's MapDefaultsJoystick
-     * (sithControl.c:2421-2424) binds NEXTINV/PREVINV/PREVSKILL/NEXTSKILL
-     * to KEY_JOY1_HUP/HDOWN/HLEFT/HRIGHT — write those slots directly. */
-    if (changed & XINPUT_GAMEPAD_DPAD_UP)    stdControl_SetKeydown(KEY_JOY1_HUP,    (buttons & XINPUT_GAMEPAD_DPAD_UP)    ? 1 : 0, tick);
-    if (changed & XINPUT_GAMEPAD_DPAD_DOWN)  stdControl_SetKeydown(KEY_JOY1_HDOWN,  (buttons & XINPUT_GAMEPAD_DPAD_DOWN)  ? 1 : 0, tick);
-    if (changed & XINPUT_GAMEPAD_DPAD_LEFT)  stdControl_SetKeydown(KEY_JOY1_HLEFT,  (buttons & XINPUT_GAMEPAD_DPAD_LEFT)  ? 1 : 0, tick);
-    if (changed & XINPUT_GAMEPAD_DPAD_RIGHT) stdControl_SetKeydown(KEY_JOY1_HRIGHT, (buttons & XINPUT_GAMEPAD_DPAD_RIGHT) ? 1 : 0, tick);
+    if (gameplay)
+    {
+        /* D-pad shortcuts: Up=field light, Left=IR goggles,
+         * Right=bacta, Down=toggle third-person camera. */
+        if ((changed & XINPUT_GAMEPAD_DPAD_UP) && (buttons & XINPUT_GAMEPAD_DPAD_UP))
+            xbox_wheels_ActivateInventoryBin(SITHBIN_FIELDLIGHT);
+        if ((changed & XINPUT_GAMEPAD_DPAD_LEFT) && (buttons & XINPUT_GAMEPAD_DPAD_LEFT))
+            xbox_wheels_ActivateInventoryBin(SITHBIN_IRGOGGLES);
+        if ((changed & XINPUT_GAMEPAD_DPAD_RIGHT) && (buttons & XINPUT_GAMEPAD_DPAD_RIGHT))
+            xbox_wheels_ActivateInventoryBin(SITHBIN_BACTATANK);
+        if (changed & XINPUT_GAMEPAD_DPAD_DOWN)
+            stdControl_SetKeydown(DIK_F1, (buttons & XINPUT_GAMEPAD_DPAD_DOWN) ? 1 : 0, tick);
+    }
+    else
+    {
+        if (changed & XINPUT_GAMEPAD_DPAD_UP)
+            stdControl_SetKeydown(KEY_JOY1_HUP, (buttons & XINPUT_GAMEPAD_DPAD_UP) ? 1 : 0, tick);
+        if (changed & XINPUT_GAMEPAD_DPAD_DOWN)
+            stdControl_SetKeydown(KEY_JOY1_HDOWN, (buttons & XINPUT_GAMEPAD_DPAD_DOWN) ? 1 : 0, tick);
+        if (changed & XINPUT_GAMEPAD_DPAD_LEFT)
+            stdControl_SetKeydown(KEY_JOY1_HLEFT, (buttons & XINPUT_GAMEPAD_DPAD_LEFT) ? 1 : 0, tick);
+        if (changed & XINPUT_GAMEPAD_DPAD_RIGHT)
+            stdControl_SetKeydown(KEY_JOY1_HRIGHT, (buttons & XINPUT_GAMEPAD_DPAD_RIGHT) ? 1 : 0, tick);
+    }
     /* Start → toggle pause (sithTime_Pause/Resume).  No menu — just freeze
      * the world clock.  When the menu is wired later this will move to a
      * proper "open pause overlay" call, but for now: press Start, sithTime
      * stops; press again, it resumes.  Avoids the DIK_ESCAPE → menu route
      * that we don't have a working menu for yet. */
-    if (changed & XINPUT_GAMEPAD_START)
+    if (!wheelOpen && (changed & XINPUT_GAMEPAD_START))
     {
         int down = (buttons & XINPUT_GAMEPAD_START) ? 1 : 0;
         if (down && jkSmack_currentGuiState != JK_GAMEMODE_ESCAPE)
@@ -318,17 +351,24 @@ static void stdControl_ReadController(int port)
             jkSmack_stopTick = 1;
         }
         stdControl_SetKeydown(DIK_ESCAPE, down, tick);
+        if (!gameplay)
+            stdControl_SetKeydown(KEY_JOY1_B7, down, tick);
     }
-    if (changed & XINPUT_GAMEPAD_BACK)       stdControl_SetKeydown(DIK_TAB,      (buttons & XINPUT_GAMEPAD_BACK)       ? 1 : 0, tick);
+    if (!wheelOpen && (changed & XINPUT_GAMEPAD_BACK))
+        stdControl_SetKeydown(DIK_TAB, (buttons & XINPUT_GAMEPAD_BACK) ? 1 : 0, tick);
 
-    /* R3 - sprint toggle (DIK_LSHIFT = INPUT_FUNC_FAST) */
+    /* L3 - sprint toggle (DIK_LSHIFT = INPUT_FUNC_FAST) */
     if ((changed & XINPUT_GAMEPAD_LEFT_THUMB) && (buttons & XINPUT_GAMEPAD_LEFT_THUMB))
     {
         g_sprintToggle = !g_sprintToggle;
         stdControl_SetKeydown(DIK_LSHIFT, g_sprintToggle, tick);
     }
-    if (changed & XINPUT_GAMEPAD_RIGHT_THUMB)
-        stdControl_SetKeydown(KEY_JOY1_B9, (buttons & XINPUT_GAMEPAD_RIGHT_THUMB) ? 1 : 0, tick);
+    /* R3 - crouch toggle. */
+    if ((changed & XINPUT_GAMEPAD_RIGHT_THUMB) && (buttons & XINPUT_GAMEPAD_RIGHT_THUMB))
+    {
+        g_crouchToggle = !g_crouchToggle;
+        stdControl_SetKeydown(DIK_C, g_crouchToggle, tick);
+    }
     g_prevButtons = buttons;
 
     /* Analog buttons — face */
@@ -339,16 +379,11 @@ static void stdControl_ReadController(int port)
         stdControl_SetKeydown(DIK_X, cur, tick);  /* A = Jump (DIK_X = 0x2D bound to INPUT_FUNC_JUMP at sithControl.c:1916) */
     }
     cur = (pad->bAnalogButtons[XB_BTN_X] > ANALOG_THRESHOLD); prev = (g_prevAnalog[XB_BTN_X] > ANALOG_THRESHOLD); if (cur != prev) { stdControl_SetKeydown(KEY_JOY1_B3, cur, tick); stdControl_SetKeydown(DIK_SPACE, cur, tick); }  /* X = GUI OK shortcut / Activate */
-    cur = (pad->bAnalogButtons[XB_BTN_Y] > ANALOG_THRESHOLD); prev = (g_prevAnalog[XB_BTN_Y] > ANALOG_THRESHOLD); if (cur != prev) stdControl_SetKeydown(DIK_RETURN,   cur, tick);  /* Y = Use Inventory */
-    /* Shoulders → weapon cycle.  Engine's MapDefaultsJoystick
-     * (sithControl.c:2426-2427) binds PREVWEAPON/NEXTWEAPON to
-     * KEY_JOY1_B10/B11 — write those slots directly so weapon select
-     * works without needing a DIK round-trip.  Black=PREV (B10),
-     * White=NEXT (B11).  This is what equips the bryar pistol since
-     * the level-startup cog explicitly leaves the player on weapon 0
-     * (fists) — the player must cycle to bin 2. */
-    cur = (pad->bAnalogButtons[XB_BTN_BLACK] > ANALOG_THRESHOLD); prev = (g_prevAnalog[XB_BTN_BLACK] > ANALOG_THRESHOLD); if (cur != prev) stdControl_SetKeydown(KEY_JOY1_B10, cur, tick);  /* Black = Prev Weapon */
-    cur = (pad->bAnalogButtons[XB_BTN_WHITE] > ANALOG_THRESHOLD); prev = (g_prevAnalog[XB_BTN_WHITE] > ANALOG_THRESHOLD); if (cur != prev) stdControl_SetKeydown(KEY_JOY1_B11, cur, tick);  /* White = Next Weapon */
+    cur = (pad->bAnalogButtons[XB_BTN_Y] > ANALOG_THRESHOLD); prev = (g_prevAnalog[XB_BTN_Y] > ANALOG_THRESHOLD); if (cur != prev && !gameplay) stdControl_SetKeydown(KEY_JOY1_B4, cur, tick);
+    cur = (pad->bAnalogButtons[XB_BTN_WHITE] > ANALOG_THRESHOLD); prev = (g_prevAnalog[XB_BTN_WHITE] > ANALOG_THRESHOLD); if (cur != prev && !gameplay) stdControl_SetKeydown(KEY_JOY1_B10, cur, tick);
+    cur = (pad->bAnalogButtons[XB_BTN_BLACK] > ANALOG_THRESHOLD); prev = (g_prevAnalog[XB_BTN_BLACK] > ANALOG_THRESHOLD); if (cur != prev && !gameplay) stdControl_SetKeydown(KEY_JOY1_B11, cur, tick);
+    /* Black/White and Y/B are handled by xbox_wheels_UpdateInput below:
+     * taps cycle, holds open the weapon/Force wheel. */
     /* Triggers → joystick fire buttons.  Engine's MapDefaultsJoystick
      * (sithControl.c:2399-2400) binds INPUT_FUNC_FIRE1 to KEY_JOY1_B17
      * and INPUT_FUNC_FIRE2 to KEY_JOY1_B16, so we write directly into
@@ -356,16 +391,11 @@ static void stdControl_ReadController(int port)
     cur = (pad->bAnalogButtons[XB_BTN_RT]    > ANALOG_THRESHOLD); prev = (g_prevAnalog[XB_BTN_RT]    > ANALOG_THRESHOLD); if (cur != prev) stdControl_SetKeydown(KEY_JOY1_B17, cur, tick);
     cur = (pad->bAnalogButtons[XB_BTN_LT]    > ANALOG_THRESHOLD); prev = (g_prevAnalog[XB_BTN_LT]    > ANALOG_THRESHOLD); if (cur != prev) stdControl_SetKeydown(KEY_JOY1_B16, cur, tick);
 
-    /* B - crouch toggle.
-     * DIK_C is the engine's DUCK key (sithControl.c:1939).  DIK_LCONTROL
-     * was the previous mapping and is actually bound to FIRE1
-     * (sithControl.c:1941) — so the toggle was firing the weapon once
-     * per tap instead of crouching.  Pre-edge-counter, that bug was
-     * dormant because the OR-overwrite zeroed pOut before FIRE1 saw it. */
+    /* B stays GUI cancel outside gameplay.  In gameplay it belongs to
+     * Force cycling/wheel; R3 owns crouch. */
     cur  = (pad->bAnalogButtons[XB_BTN_B] > ANALOG_THRESHOLD);
     prev = (g_prevAnalog[XB_BTN_B]         > ANALOG_THRESHOLD);
-    if (cur != prev) stdControl_SetKeydown(KEY_JOY1_B2, cur, tick); /* GUI cancel */
-    if (cur && !prev) { g_crouchToggle = !g_crouchToggle; stdControl_SetKeydown(DIK_C, g_crouchToggle, tick); }
+    if (!gameplay && cur != prev) stdControl_SetKeydown(KEY_JOY1_B2, cur, tick); /* GUI cancel */
 
     for (i = 0; i < 8; i++) g_prevAnalog[i] = pad->bAnalogButtons[i];
 
@@ -400,8 +430,24 @@ static void stdControl_ReadController(int port)
     /* Look (right stick): apply quadratic response curve before sensitivity
      * multiplier.  Small inputs become much smaller (precise aim), large
      * inputs stay near full speed.  Feels much less twitchy than linear. */
-    g_axisValues[XBOX_AXIS_LOOK_LR] =  xbox_LookCurve(xbox_NormalizeStick(pad->sThumbRX), 2.0f) * g_lookSensX;
-    g_axisValues[XBOX_AXIS_LOOK_UD] = -xbox_LookCurve(xbox_NormalizeStick(pad->sThumbRY), 2.0f) * g_lookSensY;
+    xbox_wheels_UpdateInput(port, tick, gameplay,
+                            pad->bAnalogButtons[XB_BTN_BLACK] > ANALOG_THRESHOLD,
+                            pad->bAnalogButtons[XB_BTN_WHITE] > ANALOG_THRESHOLD,
+                            pad->bAnalogButtons[XB_BTN_Y] > ANALOG_THRESHOLD,
+                            pad->bAnalogButtons[XB_BTN_B] > ANALOG_THRESHOLD,
+                            xbox_NormalizeStick(pad->sThumbRX),
+                            -xbox_NormalizeStick(pad->sThumbRY));
+
+    if (xbox_wheels_ShouldSuppressLook(port))
+    {
+        g_axisValues[XBOX_AXIS_LOOK_LR] = 0.0f;
+        g_axisValues[XBOX_AXIS_LOOK_UD] = 0.0f;
+    }
+    else
+    {
+        g_axisValues[XBOX_AXIS_LOOK_LR] =  xbox_LookCurve(xbox_NormalizeStick(pad->sThumbRX), 2.0f) * g_lookSensX;
+        g_axisValues[XBOX_AXIS_LOOK_UD] = -xbox_LookCurve(xbox_NormalizeStick(pad->sThumbRY), 2.0f) * g_lookSensY;
+    }
     if (g_invertLookY)
         g_axisValues[XBOX_AXIS_LOOK_UD] = -g_axisValues[XBOX_AXIS_LOOK_UD];
 
@@ -467,12 +513,21 @@ int  stdControl_IsSystemKeyboardShowing(void) { return 0; }
 
 void stdControl_XboxSetLookOptions(int sensitivity, int invertLook, int vibration)
 {
+    stdControl_XboxSetLookOptionsEx(sensitivity, invertLook, vibration, g_deadzonePercent);
+}
+
+void stdControl_XboxSetLookOptionsEx(int sensitivity, int invertLook, int vibration, int deadzonePercent)
+{
     float scale;
     if (sensitivity < 1) sensitivity = 1;
     if (sensitivity > 100) sensitivity = 100;
+    if (deadzonePercent < 0) deadzonePercent = 0;
+    if (deadzonePercent > 30) deadzonePercent = 30;
     g_lookSensitivity = sensitivity;
     g_invertLookY = invertLook ? 1 : 0;
     g_vibrationEnabled = vibration ? 1 : 0;
+    g_deadzonePercent = deadzonePercent;
+    g_stickDeadzone = (32767 * g_deadzonePercent) / 100;
 
     scale = (float)g_lookSensitivity / 50.0f;
     g_lookSensX = 1.25f * scale;
@@ -519,6 +574,7 @@ void stdControl_ReadControls(void)
 int stdControl_XboxGetLookSensitivity(void) { return g_lookSensitivity; }
 int stdControl_XboxGetInvertLook(void) { return g_invertLookY; }
 int stdControl_XboxGetVibration(void) { return g_vibrationEnabled; }
+int stdControl_XboxGetDeadzone(void) { return g_deadzonePercent; }
 
 void stdControl_XboxSetActiveController(int port)
 {

@@ -458,11 +458,9 @@ int rdCache_SendFaceListToHardware()
             flags_idk_ |= 0x200;
             red_and_alpha = 90;
 #ifdef TARGET_XBOX
-            /* Xbox keeps alpha test enabled for texture cutouts.  Probe whether
-             * face-translucent 3DO/world faces at alpha 90 are being discarded
-             * before blending by raising them just over the 0.5 alpha threshold. */
-            expected_alpha = 160;
-            red_and_alpha = 160;
+            /* Keep the original JK face translucency value.  The Xbox renderer
+             * disables alpha test for RD_FF_TEX_TRANSLUCENT faces so this
+             * alpha can blend instead of being discarded by the cutout test. */
 #endif
 #ifdef TARGET_XBOX
             {

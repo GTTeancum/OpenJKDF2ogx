@@ -526,6 +526,45 @@ int jkGame_Update()
     }
 #endif
 
+#if defined(TARGET_XBOX) && !defined(XBOX_PERF_SMOKE)
+    {
+        static int s_liveLastMs = 0;
+        static int s_liveFrame = 0;
+        int liveSpan = jkGame_Update_End - s_liveLastMs;
+        s_liveFrame++;
+        if (!s_liveLastMs || liveSpan >= 3000)
+        {
+            MEMORYSTATUS memStatus;
+            sithWorld *world = sithWorld_pCurrentWorld;
+            sithThing *player = world ? world->playerThing : NULL;
+            int sectorId = (player && player->sector) ? player->sector->id : -1;
+            memStatus.dwLength = sizeof(memStatus);
+            GlobalMemoryStatus(&memStatus);
+            XDBGF("LiveHB: frame=%d map='%s' player=%p flags=%X af=%X health=%.2f sector=%d pos=(%.3f,%.3f,%.3f) vel=(%.3f,%.3f,%.3f) faces=%d geo=%d nongeo=%d memPhys=%lu memPage=%lu result=%d\n",
+                  s_liveFrame,
+                  world ? world->map_jkl_fname : "(null)",
+                  (void*)player,
+                  player ? (unsigned)player->thingflags : 0,
+                  player ? (unsigned)player->actorParams.typeflags : 0,
+                  player ? (double)player->actorParams.health : 0.0,
+                  sectorId,
+                  player ? (double)player->position.x : 0.0,
+                  player ? (double)player->position.y : 0.0,
+                  player ? (double)player->position.z : 0.0,
+                  player ? (double)player->physicsParams.vel.x : 0.0,
+                  player ? (double)player->physicsParams.vel.y : 0.0,
+                  player ? (double)player->physicsParams.vel.z : 0.0,
+                  rdCache_drawnFaces,
+                  sithRender_geoThingsDrawn,
+                  sithRender_nongeoThingsDrawn,
+                  (unsigned long)memStatus.dwAvailPhys,
+                  (unsigned long)memStatus.dwAvailPageFile,
+                  result);
+            s_liveLastMs = jkGame_Update_End;
+        }
+    }
+#endif
+
 #if defined(TARGET_TWL)
     int jkGame_Delta_Start_ClearScreen = jkGame_Update_ClearScreen - jkGame_Update_Start;
     int jkGame_Delta_ClearScreen_AdvanceFrame = jkGame_Update_AdvanceFrame - jkGame_Update_ClearScreen;
