@@ -44,8 +44,10 @@ void Video_SwitchToGDI()
 
 #ifdef SDL2_RENDER
     rdCanvas_Free(Video_pCanvasOverlayMap);
+    Video_pCanvasOverlayMap = 0;
 #endif
     rdCanvas_Free(Video_pCanvas);
+    Video_pCanvas = 0;
     rdClose();
     if ( Video_modeStruct.b3DAccel )
     {

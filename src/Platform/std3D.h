@@ -135,6 +135,7 @@ void std3D_XboxSetViewport(int x, int y, int w, int h);
 void std3D_XboxResetViewport(void);
 void std3D_XboxSetScreenSpaceRenderList(int enable);
 void std3D_XboxDebugLogPaletteState(const char *tag);
+int std3D_XboxCaptureBackBufferRGB(int x, int y, int w, int h, unsigned char *outRgb, int outPitch);
 #endif
 
 #ifdef __cplusplus

@@ -53,6 +53,13 @@ static HCURSOR jkGuiRend_hCursor = 0;
 static int32_t jkGuiRend_CursorVisible = 1;
 static int jkGuiRend_IsControllerFocusable(jkGuiElement *element);
 static jkGuiElement* jkGuiRend_GetControllerClickTarget(jkGuiMenu *menu);
+#ifdef TARGET_XBOX
+static int32_t jkGuiRend_xboxBatchFlipDepth = 0;
+static int32_t jkGuiRend_xboxBatchFlipPending = 0;
+static void jkGuiRend_XboxBeginBatchFlip(void);
+static void jkGuiRend_XboxEndBatchFlip(jkGuiMenu *menu);
+static void jkGuiRend_XboxFlipOrBatch(jkGuiMenu *menu, rdRect *drawRect);
+#endif
 static jkGuiElementHandlers jkGuiRend_elementHandlers[8] = 
 {
     {jkGuiRend_TextButtonEventHandler, jkGuiRend_TextButtonDraw, jkGuiRend_PlayClickSound},
@@ -276,12 +283,29 @@ void jkGuiRend_Paint(jkGuiMenu *menu)
 {
 
     int32_t ret;
+#ifdef TARGET_XBOX
+    static unsigned int s_xboxPaintLogCount = 0;
+#endif
     
     jkGuiElement* lastFocused = menu->focusedElement;
     jkGuiElement* lastDown = menu->lastMouseDownClickable;
 
     if (!g_app_suspended || jkGuiRend_bIsSurfaceValid)
         return;
+
+#ifdef TARGET_XBOX
+    if (s_xboxPaintLogCount < 120 || (s_xboxPaintLogCount % 300) == 0)
+    {
+        stdPlatform_Printf("MenuFlickerDbg: Paint call=%u menu=%p hover=%ld focus=%ld down=%ld hintIdx=%d\n",
+            s_xboxPaintLogCount,
+            menu,
+            menu->lastMouseOverClickable ? (long)(menu->lastMouseOverClickable - menu->paElements) : -1L,
+            menu->focusedElement ? (long)(menu->focusedElement - menu->paElements) : -1L,
+            menu->lastMouseDownClickable ? (long)(menu->lastMouseDownClickable - menu->paElements) : -1L,
+            menu->clickableIdxIdk);
+    }
+    s_xboxPaintLogCount++;
+#endif
     
     stdControl_ShowCursor(0);
     stdDisplay_SetMasterPalette(jkGuiRend_palette);
@@ -313,7 +337,7 @@ void jkGuiRend_Paint(jkGuiMenu *menu)
         clickable = &menu->paElements[++clickableIdx];
     }
 
-#if defined(SDL2_RENDER) || defined(TARGET_TWL)
+#if defined(SDL2_RENDER) || defined(TARGET_TWL) || defined(TARGET_XBOX)
     menu->focusedElement = lastFocused;
     menu->lastMouseDownClickable = lastDown;
 #endif
@@ -916,7 +940,11 @@ void jkGuiRend_UpdateAndDrawClickable(jkGuiElement *clickable, jkGuiMenu *menu, 
         menu->lastMouseOverClickable = lastSave;
 #if !defined(SDL2_RENDER) || defined(TARGET_XBOX)
         if ( forceRedraw )
+#ifdef TARGET_XBOX
+            jkGuiRend_XboxFlipOrBatch(menu, drawRect);
+#else
             jkGuiRend_FlipAndDraw(menu, drawRect);
+#endif
 #endif
     }
     else if ( forceRedraw )
@@ -924,7 +952,11 @@ void jkGuiRend_UpdateAndDrawClickable(jkGuiElement *clickable, jkGuiMenu *menu, 
         jkGuiRend_CopyVBuffer(menu, drawRect);
 #if !defined(SDL2_RENDER) || defined(TARGET_XBOX)
         if ( forceRedraw )
+#ifdef TARGET_XBOX
+            jkGuiRend_XboxFlipOrBatch(menu, drawRect);
+#else
             jkGuiRend_FlipAndDraw(menu, drawRect);
+#endif
 #endif
     }
 
@@ -1167,27 +1199,30 @@ LABEL_23:
 void jkGuiRend_ClickableMouseover(jkGuiMenu *menu, jkGuiElement *element)
 {
     jkGuiElement *lastMouseOverClickable; // eax
+#ifdef TARGET_XBOX
+    static unsigned int s_xboxHoverLogCount = 0;
+#endif
 
     lastMouseOverClickable = menu->lastMouseOverClickable;
     if ( lastMouseOverClickable != element && (!element || element->bIsVisible) )
     {
 #ifdef TARGET_XBOX
-        static int s_xboxFocusLogCount = 0;
-        if (s_xboxFocusLogCount < 160
-            && ((lastMouseOverClickable && lastMouseOverClickable->rect.y >= 390)
-                || (element && element->rect.y >= 390)))
+        if (s_xboxHoverLogCount < 180 || (s_xboxHoverLogCount % 240) == 0)
         {
-            stdPlatform_Printf("XGuiFocus: menu=%p old=%d/%d y=%d new=%d/%d y=%d focused=%p\n",
+            stdPlatform_Printf("MenuFlickerDbg: Hover call=%u menu=%p old=%ld/%d y=%d new=%ld/%d y=%d focus=%ld hintIdx=%d\n",
+                s_xboxHoverLogCount,
                 menu,
-                lastMouseOverClickable ? (int)(lastMouseOverClickable - menu->paElements) : -1,
+                lastMouseOverClickable ? (long)(lastMouseOverClickable - menu->paElements) : -1L,
                 lastMouseOverClickable ? lastMouseOverClickable->hoverId : -1,
                 lastMouseOverClickable ? lastMouseOverClickable->rect.y : -1,
-                element ? (int)(element - menu->paElements) : -1,
+                element ? (long)(element - menu->paElements) : -1L,
                 element ? element->hoverId : -1,
                 element ? element->rect.y : -1,
-                menu->focusedElement);
-            s_xboxFocusLogCount++;
+                menu->focusedElement ? (long)(menu->focusedElement - menu->paElements) : -1L,
+                menu->clickableIdxIdk);
         }
+        s_xboxHoverLogCount++;
+        jkGuiRend_XboxBeginBatchFlip();
 #endif
         menu->lastMouseOverClickable = element;
         if ( lastMouseOverClickable )
@@ -1199,6 +1234,9 @@ void jkGuiRend_ClickableMouseover(jkGuiMenu *menu, jkGuiElement *element)
         {
             jkGuiRend_PlayWav(menu->soundHover);
         }
+#ifdef TARGET_XBOX
+        jkGuiRend_XboxEndBatchFlip(menu);
+#endif
     }
 }
 
@@ -2634,6 +2672,40 @@ void jkGuiRend_TextButtonDraw(jkGuiElement *element, jkGuiMenu *menu, stdVBuffer
     stdFont_Draw3(vbuf, menu->fonts[element->textType + v4], element->rect.y, &element->rect, v5, element->wstr, 1);
 }
 
+#ifdef TARGET_XBOX
+static void jkGuiRend_XboxBeginBatchFlip(void)
+{
+    jkGuiRend_xboxBatchFlipDepth++;
+}
+
+static void jkGuiRend_XboxEndBatchFlip(jkGuiMenu *menu)
+{
+    if (jkGuiRend_xboxBatchFlipDepth <= 0)
+    {
+        jkGuiRend_xboxBatchFlipDepth = 0;
+        return;
+    }
+
+    jkGuiRend_xboxBatchFlipDepth--;
+    if (!jkGuiRend_xboxBatchFlipDepth && jkGuiRend_xboxBatchFlipPending)
+    {
+        jkGuiRend_xboxBatchFlipPending = 0;
+        jkGuiRend_FlipAndDraw(menu, 0);
+    }
+}
+
+static void jkGuiRend_XboxFlipOrBatch(jkGuiMenu *menu, rdRect *drawRect)
+{
+    if (jkGuiRend_xboxBatchFlipDepth)
+    {
+        jkGuiRend_xboxBatchFlipPending = 1;
+        return;
+    }
+
+    jkGuiRend_FlipAndDraw(menu, drawRect);
+}
+#endif
+
 // Added functions
 static int jkGuiRend_IsControllerFocusable(jkGuiElement *element)
 {
@@ -2925,6 +2997,9 @@ void jkGuiRend_FocusElementDir(jkGuiMenu *pMenu, int32_t dir)
 #endif
     if ((element->type == ELEMENT_LISTBOX || element->type == ELEMENT_TEXTBOX) && jkGuiRend_sub_5103E0(element))
     {
+#ifdef TARGET_XBOX
+        jkGuiRend_XboxBeginBatchFlip();
+#endif
 //#if !defined(SDL2_RENDER) && !defined(TARGET_TWL)
         pMenu->focusedElement = element;
         pMenu->lastMouseOverClickable = element;
@@ -2948,6 +3023,9 @@ LABEL_22:
         if (element->type == ELEMENT_LISTBOX) {
             jkGuiRend_InvokeEvent(element, pMenu, JKGUI_EVENT_KEYDOWN, VK_SHIFT); // Just need to trigger the handler w/o any keys
         }
+#ifdef TARGET_XBOX
+        jkGuiRend_XboxEndBatchFlip(pMenu);
+#endif
     }
     else {
         // focusedElement is for textboxes and listboxes only
@@ -2961,6 +3039,9 @@ LABEL_22:
 // TODO: QOL ifdef?
 static jkGuiMenu* jkGuiRend_lastActiveMenu = NULL;
 static jkGuiMenu* jkGuiRend_B1Menu = NULL;
+#ifdef TARGET_XBOX
+int32_t jkGuiRend_xboxSuppressControllerConfirm = 0;
+#endif
 void jkGuiRend_UpdateController()
 {
     if (!jkGuiRend_activeMenu) {
@@ -3009,19 +3090,15 @@ void jkGuiRend_UpdateController()
     if (!jkGuiBuildMulti_HandleXboxController(jkGuiRend_activeMenu, focusDir)) {
         if (focusDir == FOCUS_LEFT) {
             jkGuiRend_FocusElementDir(jkGuiRend_activeMenu, FOCUS_LEFT);
-            stdPlatform_Printf("left\n");
         }
         else if (focusDir == FOCUS_RIGHT) {
             jkGuiRend_FocusElementDir(jkGuiRend_activeMenu, FOCUS_RIGHT);
-            stdPlatform_Printf("right\n");
         }
         else if (focusDir == FOCUS_UP) {
             jkGuiRend_FocusElementDir(jkGuiRend_activeMenu, FOCUS_UP);
-            stdPlatform_Printf("up\n");
         }
         else if (focusDir == FOCUS_DOWN) {
             jkGuiRend_FocusElementDir(jkGuiRend_activeMenu, FOCUS_DOWN);
-            stdPlatform_Printf("down\n");
         }
     }
 
@@ -3041,7 +3118,9 @@ void jkGuiRend_UpdateController()
         lastB1 = valB1; // Ugh, recursion junk
 
         // HACK: Prevent player from killing themselves on load or save
-        if (jkGuiRend_activeMenu != &jkGuiSaveLoad_menu && !(jkGuiRend_activeMenu == &jkGuiDialog_OkCancel_menu && jkGuiRend_lastActiveMenu == &jkGuiSaveLoad_menu)) {
+        if (!jkGuiRend_xboxSuppressControllerConfirm
+            && jkGuiRend_activeMenu != &jkGuiSaveLoad_menu
+            && !(jkGuiRend_activeMenu == &jkGuiDialog_OkCancel_menu && jkGuiRend_lastActiveMenu == &jkGuiSaveLoad_menu)) {
             jkGuiElement* target = jkGuiRend_GetControllerClickTarget(jkGuiRend_activeMenu);
             if (target) {
                 jkGuiRend_activeMenu->lastMouseDownClickable = target;
@@ -3057,7 +3136,6 @@ void jkGuiRend_UpdateController()
                     jkGuiRend_InvokeClicked(target, jkGuiRend_activeMenu, target->rect.x + 1, target->rect.y + 1, 1);
                 }
             }
-            stdPlatform_Printf("a1\n");
         }
     }
     else if (lastB1 && !valB1) {
@@ -3072,7 +3150,6 @@ void jkGuiRend_UpdateController()
                 jkGuiRend_activeMenu->lastMouseDownClickable = target;
                 jkGuiRend_InvokeClicked(target, jkGuiRend_activeMenu, target->rect.x + 1, target->rect.y + 1, 1);
             }
-            stdPlatform_Printf("a2\n");
         }
 
         if (jkGuiRend_activeMenu) {
@@ -3083,11 +3160,9 @@ void jkGuiRend_UpdateController()
 
     if (stdControl_ReadKey(KEY_JOY1_B2, &val) && val) {
         jkGuiRend_WindowHandler(0, WM_KEYFIRST, VK_ESCAPE, 0, 0);
-        stdPlatform_Printf("b\n");
     }
     if (stdControl_ReadKey(KEY_JOY1_B3, &val) && val) {
         //jkGuiRend_WindowHandler(0, WM_KEYFIRST, VK_TAB, 0, 0);
-        stdPlatform_Printf("x\n");
         if (jkGuiRend_activeMenu && jkGuiRend_activeMenu->pReturnKeyShortcutElement) {
             jkGuiRend_InvokeClicked(jkGuiRend_activeMenu->pReturnKeyShortcutElement, jkGuiRend_activeMenu, jkGuiRend_mouseX, jkGuiRend_mouseY, 1);
         }

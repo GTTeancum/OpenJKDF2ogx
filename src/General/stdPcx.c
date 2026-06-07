@@ -58,25 +58,26 @@ stdBitmap* stdPcx_Load(char *fpath, int create_ddraw_surface, int gpu_mem)
 
     mipSurface = bitmap->mipSurfaces[0];
     lockAlloc = (char*)mipSurface->surface_lock_alloc;
-    for (int i = 0; i < mipSurface->format.texture_size_in_bytes; i++ )
+    for (int i = 0; i < mipSurface->format.texture_size_in_bytes; )
     {
         uint8_t v11 = stdFGetc(fhand);
         if ((v11 & 0xC0) == 0xC0)
         {
             uint8_t v13 = stdFGetc(fhand);
             uint32_t v16 = (v11 & 0x3F);
-            uint32_t v15 = (v11 & 0x3F) - 1;
-            if (v11 & 0x3F)
+            uint32_t n;
+            if (v16 > mipSurface->format.texture_size_in_bytes - i)
+                v16 = mipSurface->format.texture_size_in_bytes - i;
+            for (n = 0; n < v16; n++)
             {
-                uint32_t v17 = (v13 | (v13 << 8) | (v13 << 16) | (v13 << 24));
-                _memset32(lockAlloc, v17, v16 >> 2);
-                _memset(&lockAlloc[v16 & ~3], v17, v16 & 3);
-                lockAlloc += v16;
+                *lockAlloc++ = v13;
+                i++;
             }
         }
         else
         {
             *lockAlloc++ = v11;
+            i++;
         }
     }
     stdDisplay_VBufferUnlock(*bitmap->mipSurfaces);
@@ -105,7 +106,12 @@ int stdPcx_Write(char *fpath, stdBitmap *bitmap)
     stdVBuffer *mipSurface;
     uint8_t* lockAlloc;
     stdPcx_Header pcxHeader;
+    int fhand;
 
+    if (!fpath || !bitmap || !bitmap->mipSurfaces || !bitmap->mipSurfaces[0] || !bitmap->palette)
+        return 0;
+
+    mipSurface = *bitmap->mipSurfaces;
     pcxHeader.magic = 10;
     pcxHeader.version = 5;
     pcxHeader.isRle = 1;
@@ -124,34 +130,38 @@ int stdPcx_Write(char *fpath, stdBitmap *bitmap)
     _memset(&pcxHeader.width, 0, 0x38u);
     *(uint16_t*)&pcxHeader.reserved_4A[52] = 0;
     
-    int fhand = std_pHS->fileOpen(fpath, "wb");
+    fhand = std_pHS->fileOpen(fpath, "wb");
     if ( !fhand )
         return 0;
 
     std_pHS->fileWrite(fhand, &pcxHeader, sizeof(stdPcx_Header));
-    mipSurface = *bitmap->mipSurfaces;
+    stdDisplay_VBufferLock(mipSurface);
     lockAlloc = (uint8_t*)mipSurface->surface_lock_alloc;
+    if (!lockAlloc)
+    {
+        stdDisplay_VBufferUnlock(mipSurface);
+        std_pHS->fileClose(fhand);
+        return 0;
+    }
     for (int i = 0; i < mipSurface->format.height; i++)
     {
         for (int j = 0; j < mipSurface->format.width; j++ )
         {
-            uint8_t* v14 = &lockAlloc[(mipSurface->format.width * i) + j];
+            uint8_t* v14 = &lockAlloc[(mipSurface->format.width_in_bytes * i) + j];
             uint8_t v13 = *v14;
             int v15 = 1;
-            while ( v13 == v14[v15] )
+            while ( j + v15 < mipSurface->format.width && v15 < 0x3F && v13 == v14[v15] )
             {
-                    if ( j + v15 >= mipSurface->format.width )
-                        break;
-                    if ( v15 >= 0x3Fu )
-                        break;
+                v15++;
             }
 
             if ( v15 > 1u || v13 > 0xBFu )
                 stdFPutc(v15 | 0xC0, fhand);
             stdFPutc(*v14, fhand);
-            j += v15;
+            j += v15 - 1;
         }
     }
+    stdDisplay_VBufferUnlock(mipSurface);
 
     stdFPutc(0xC, fhand);
     std_pHS->fileWrite(fhand, bitmap->palette, 0x300);

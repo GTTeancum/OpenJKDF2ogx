@@ -24,11 +24,70 @@
 #include "General/stdFnames.h"
 #include "General/stdFileUtil.h"
 #include "World/jkPlayer.h"
+#ifdef TARGET_XBOX
+#include "Platform/Xbox/xbox_debug.h"
+#endif
 
 static int jkGuiPlayer_bInitted = 0;
 
 static wchar_t jkGuiPlayer_awTmp_555D28[0x100] = {0};
 static const char* jkGuiPlayer_GuiDifficulties[3] = {"GUI_EASY", "GUI_MED", "GUI_HARD"};
+
+#ifdef TARGET_XBOX
+static int jkGuiPlayer_XboxDeleteProfileTree(const char *path)
+{
+    stdFileSearch *search;
+    stdFileSearchResult result;
+    char filePath[260];
+    int deletedFiles = 0;
+    int deleteFailures = 0;
+    int deltreeResult;
+
+    deltreeResult = stdFileUtil_Deltree(path);
+    XDBGF("PlayerProfileDbg: deltree path='%s' result=%d\n", path, deltreeResult);
+    if (deltreeResult)
+        return 1;
+
+    search = stdFileUtil_NewFind(path, 2, NULL);
+    if (search)
+    {
+        while (stdFileUtil_FindNext(search, &result))
+        {
+            if (result.fpath[0] == '.')
+                continue;
+            if (result.is_subdirectory)
+            {
+                XDBGF("PlayerProfileDbg: nested dir left alone path='%s' child='%s'\n", path, result.fpath);
+                continue;
+            }
+
+            stdString_snprintf(filePath, sizeof(filePath), "%s%c%s", path, LEC_PATH_SEPARATOR_CHR, result.fpath);
+            if (stdFileUtil_DelFile(filePath))
+            {
+                deletedFiles++;
+            }
+            else
+            {
+                deleteFailures++;
+                XDBGF("PlayerProfileDbg: failed file delete '%s'\n", filePath);
+            }
+        }
+        stdFileUtil_DisposeFind(search);
+    }
+    else
+    {
+        XDBGF("PlayerProfileDbg: NewFind failed path='%s'\n", path);
+    }
+
+    deltreeResult = stdFileUtil_Deltree(path);
+    XDBGF("PlayerProfileDbg: retry deltree path='%s' result=%d deletedFiles=%d failures=%d\n",
+          path,
+          deltreeResult,
+          deletedFiles,
+          deleteFailures);
+    return deltreeResult;
+}
+#endif
 
 static int32_t jkGuiPlayer_menuSelectIdk[2] = {0xFA, 0};
 static int32_t jkGuiPlayer_menuSelectIdk2[2] = {0xd, 0xe};
@@ -305,7 +364,11 @@ void jkGuiPlayer_ShowNewPlayer(int a1)
                     v20[127] = 0;
                     stdFnames_MakePath(PathName, 128, "player", v20);
                     stdString_snprintf(PathName, 128, "player%c%s", LEC_PATH_SEPARATOR_CHR, v20);
+#ifdef TARGET_XBOX
+                    jkGuiPlayer_XboxDeleteProfileTree(PathName);
+#else
                     stdFileUtil_Deltree(PathName);
+#endif
                 }
                 v14 = 1;
                 continue;

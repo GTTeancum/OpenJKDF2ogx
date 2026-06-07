@@ -45,6 +45,7 @@ static int g_xboxSplitScreenEnabled = 0;
 static int g_xboxSplitScreenRequested = 0;
 static int g_xboxSplitScreenLocalCount = 1;
 static int g_xboxSplitScreenRequestedLocalCount = XBOX_SPLITSCREEN_MAX_LOCAL_PLAYERS;
+static int g_xboxSplitScreenControllerForSlot[XBOX_SPLITSCREEN_MAX_LOCAL_PLAYERS] = {0, 1, 2, 3};
 static wchar_t g_xboxSplitScreenPendingMpcNames[XBOX_SPLITSCREEN_MAX_LOCAL_PLAYERS][32] = {{0}};
 static int g_xboxSplitScreenPendingMpcSet[XBOX_SPLITSCREEN_MAX_LOCAL_PLAYERS] = {0};
 static wchar_t g_xboxSplitScreenLocalNames[XBOX_SPLITSCREEN_MAX_LOCAL_PLAYERS][32] = {{0}};
@@ -158,6 +159,15 @@ void xboxSplitScreen_SetRequestedLocalPlayerCount(int count)
     g_xboxSplitScreenRequestedLocalCount = count;
 }
 
+void xboxSplitScreen_SetPendingController(int slot, int controllerPort)
+{
+    if (slot < 0 || slot >= XBOX_SPLITSCREEN_MAX_LOCAL_PLAYERS)
+        return;
+    if (controllerPort < 0 || controllerPort >= XBOX_SPLITSCREEN_MAX_LOCAL_PLAYERS)
+        controllerPort = slot;
+    g_xboxSplitScreenControllerForSlot[slot] = controllerPort;
+}
+
 void xboxSplitScreen_SetPendingMpc(int slot, const wchar_t *name)
 {
     if (slot < 0 || slot >= XBOX_SPLITSCREEN_MAX_LOCAL_PLAYERS)
@@ -196,6 +206,9 @@ void xboxSplitScreen_Disable(void)
     {
         g_xboxSplitScreenRespawnAt[i] = 0;
         g_xboxSplitScreenLocalNames[i][0] = 0;
+        g_xboxSplitScreenControllerForSlot[i] = i;
+        g_xboxSplitScreenPendingMpcSet[i] = 0;
+        g_xboxSplitScreenPendingMpcNames[i][0] = 0;
     }
 
     stdControl_XboxSetActiveController(0);
@@ -259,8 +272,9 @@ void xboxSplitScreen_OnMultiplayerServerStarted(void)
         }
 
         xboxSplitScreen_SeedPlayerWeapon(jkPlayer_playerInfos[i].playerThing);
-        XDBGF("SplitScreenInit: slot=%d thing=%p mpc=%d sector=%p curW=%d pov=%p flags=0x%X tf=0x%X\n",
+        XDBGF("SplitScreenInit: slot=%d controller=%d thing=%p mpc=%d sector=%p curW=%d pov=%p flags=0x%X tf=0x%X\n",
               i,
+              g_xboxSplitScreenControllerForSlot[i],
               (void*)jkPlayer_playerInfos[i].playerThing,
               haveMpc,
               jkPlayer_playerInfos[i].playerThing ? (void*)jkPlayer_playerInfos[i].playerThing->sector : 0,
@@ -346,20 +360,26 @@ void xboxSplitScreen_TickControls(float deltaSecs, int deltaMs)
             g_xboxSplitScreenRespawnAt[i] = 0;
         }
 
-        if ((connectedMask & (1 << i)) == 0)
         {
-            static int s_loggedSkippedPads = 0;
-            if (s_loggedSkippedPads < 8)
-            {
-                XDBGF("SplitScreenCtl: skip slot=%d no controller mask=0x%X\n", i, connectedMask);
-                s_loggedSkippedPads++;
-            }
-            continue;
-        }
+            int controllerPort = g_xboxSplitScreenControllerForSlot[i];
+            if (controllerPort < 0 || controllerPort >= XBOX_SPLITSCREEN_MAX_LOCAL_PLAYERS)
+                controllerPort = i;
 
-        stdControl_XboxSetActiveController(i);
-        xboxSplitScreen_SetContextForLocalSlot(i);
-        sithControl_Tick(deltaSecs, deltaMs);
+            if ((connectedMask & (1 << controllerPort)) == 0)
+            {
+                static int s_loggedSkippedPads = 0;
+                if (s_loggedSkippedPads < 8)
+                {
+                    XDBGF("SplitScreenCtl: skip slot=%d controller=%d no controller mask=0x%X\n", i, controllerPort, connectedMask);
+                    s_loggedSkippedPads++;
+                }
+                continue;
+            }
+
+            stdControl_XboxSetActiveController(controllerPort);
+            xboxSplitScreen_SetContextForLocalSlot(i);
+            sithControl_Tick(deltaSecs, deltaMs);
+        }
     }
 
     stdControl_XboxSetActiveController(0);

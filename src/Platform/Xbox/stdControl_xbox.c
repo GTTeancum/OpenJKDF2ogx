@@ -344,14 +344,15 @@ static void stdControl_ReadController(int port)
     if (!wheelOpen && (changed & XINPUT_GAMEPAD_START))
     {
         int down = (buttons & XINPUT_GAMEPAD_START) ? 1 : 0;
-        if (down && jkSmack_currentGuiState != JK_GAMEMODE_ESCAPE)
+        if (gameplay && down && jkSmack_currentGuiState != JK_GAMEMODE_ESCAPE)
         {
             XDBGF("StartPause: state=%d stop=%d -> escape\n", jkSmack_currentGuiState, jkSmack_stopTick);
             jkSmack_nextGuiState = JK_GAMEMODE_ESCAPE;
             jkSmack_stopTick = 1;
         }
-        stdControl_SetKeydown(DIK_ESCAPE, down, tick);
-        if (!gameplay)
+        if (gameplay)
+            stdControl_SetKeydown(DIK_ESCAPE, down, tick);
+        else
             stdControl_SetKeydown(KEY_JOY1_B7, down, tick);
     }
     if (!wheelOpen && (changed & XINPUT_GAMEPAD_BACK))

@@ -133,8 +133,17 @@ void sithMain_Shutdown()
 int sithMain_Load(char *path)
 {
     sithWorld_pStatic = sithWorld_New();
+    if ( !sithWorld_pStatic )
+        return 0;
+
     sithWorld_pStatic->level_type_maybe |= 1;
-    return sithWorld_Load(sithWorld_pStatic, path) != 0;
+    if ( !sithWorld_Load(sithWorld_pStatic, path) )
+    {
+        sithWorld_pStatic = 0;
+        return 0;
+    }
+
+    return 1;
 }
 
 void sithMain_Free()
@@ -156,12 +165,15 @@ int sithMain_Mode1Init(char *a1)
 #ifdef TARGET_XBOX
     XDBGF("Mode1Init: sithWorld_New=%p\n", sithWorld_pCurrentWorld);
 #endif
+    if ( !sithWorld_pCurrentWorld )
+        return 0;
 
     if ( !sithWorld_Load(sithWorld_pCurrentWorld, a1) )
     {
 #ifdef TARGET_XBOX
         XDBG("Mode1Init: sithWorld_Load FAILED\n");
 #endif
+        sithWorld_pCurrentWorld = 0;
         return 0;
     }
 
@@ -176,9 +188,14 @@ int sithMain_Mode1Init(char *a1)
 int sithMain_OpenNormal(char *path)
 {
     sithWorld_pCurrentWorld = sithWorld_New();
+    if ( !sithWorld_pCurrentWorld )
+        return 0;
 
     if ( !sithWorld_Load(sithWorld_pCurrentWorld, path) )
+    {
+        sithWorld_pCurrentWorld = 0;
         return 0;
+    }
 
     sithWorld_Initialize();
     sithMain_Open();
@@ -188,31 +205,108 @@ int sithMain_OpenNormal(char *path)
 
 int sithMain_Mode1Init_3(char *fpath)
 {
+#ifdef TARGET_XBOX
+    XDBGF("MPLoadTrace: sithMain_Mode1Init_3 enter fpath='%s'\n", fpath ? fpath : "(null)");
+#endif
     sithWorld_pCurrentWorld = sithWorld_New();
-    if ( !sithWorld_Load(sithWorld_pCurrentWorld, fpath) )
+#ifdef TARGET_XBOX
+    XDBGF("MPLoadTrace: sithMain_Mode1Init_3 sithWorld_New=%p\n", sithWorld_pCurrentWorld);
+    XDBG("MPLoadTrace: sithMain_Mode1Init_3 before sithWorld_Load\n");
+#endif
+    if ( !sithWorld_pCurrentWorld )
         return 0;
+
+    if ( !sithWorld_Load(sithWorld_pCurrentWorld, fpath) )
+    {
+#ifdef TARGET_XBOX
+        XDBG("MPLoadTrace: sithMain_Mode1Init_3 sithWorld_Load FAILED\n");
+#endif
+        sithWorld_pCurrentWorld = 0;
+        return 0;
+    }
+#ifdef TARGET_XBOX
+    XDBGF("MPLoadTrace: sithMain_Mode1Init_3 after sithWorld_Load world=%p things=%d sectors=%d cogs=%d keyframes=%d\n",
+          sithWorld_pCurrentWorld,
+          sithWorld_pCurrentWorld ? sithWorld_pCurrentWorld->numThingsLoaded : -1,
+          sithWorld_pCurrentWorld ? sithWorld_pCurrentWorld->numSectors : -1,
+          sithWorld_pCurrentWorld ? sithWorld_pCurrentWorld->numCogsLoaded : -1,
+          sithWorld_pCurrentWorld ? sithWorld_pCurrentWorld->numKeyframesLoaded : -1);
+    XDBG("MPLoadTrace: sithMain_Mode1Init_3 before sithWorld_Initialize\n");
+#endif
+    sithWorld_Initialize();
+#ifdef TARGET_XBOX
+    XDBG("MPLoadTrace: sithMain_Mode1Init_3 after sithWorld_Initialize; before sithMain_Open\n");
+#endif
     sithMain_Open();
+#ifdef TARGET_XBOX
+    XDBG("MPLoadTrace: sithMain_Mode1Init_3 after sithMain_Open\n");
+#endif
     sithTime_Startup();
+#ifdef TARGET_XBOX
+    XDBG("MPLoadTrace: sithMain_Mode1Init_3 after sithTime_Startup; before sithMulti_Startup\n");
+#endif
     sithMulti_Startup();
+#ifdef TARGET_XBOX
+    XDBGF("MPLoadTrace: sithMain_Mode1Init_3 after sithMulti_Startup multi=%d server=%d\n", sithNet_isMulti, sithNet_isServer);
+#endif
     g_sithMode = 1;
+#ifdef TARGET_XBOX
+    XDBG("MPLoadTrace: sithMain_Mode1Init_3 done\n");
+#endif
     return 1;
 }
 
 int sithMain_Open()
 {
+#ifdef TARGET_XBOX
+    XDBG("MPLoadTrace: sithMain_Open begin\n");
+#endif
     jkPlayer_currentTickIdx = 0;
     sithRender_lastRenderTick = 1;
+#ifdef TARGET_XBOX
+    XDBG("MPLoadTrace: sithMain_Open before sithWorld_sub_4D0A20\n");
+#endif
     sithWorld_sub_4D0A20(sithWorld_pCurrentWorld);
+#ifdef TARGET_XBOX
+    XDBG("MPLoadTrace: sithMain_Open before sithEvent_Open\n");
+#endif
     sithEvent_Open();
+#ifdef TARGET_XBOX
+    XDBG("MPLoadTrace: sithMain_Open before sithSurface_Open\n");
+#endif
     sithSurface_Open();
+#ifdef TARGET_XBOX
+    XDBG("MPLoadTrace: sithMain_Open before sithAI_Open\n");
+#endif
     sithAI_Open();
+#ifdef TARGET_XBOX
+    XDBG("MPLoadTrace: sithMain_Open before sithSoundMixer_Open\n");
+#endif
     sithSoundMixer_Open();
+#ifdef TARGET_XBOX
+    XDBG("MPLoadTrace: sithMain_Open before sithCog_Open\n");
+#endif
     sithCog_Open();
+#ifdef TARGET_XBOX
+    XDBG("MPLoadTrace: sithMain_Open before sithControl_Open\n");
+#endif
     sithControl_Open();
+#ifdef TARGET_XBOX
+    XDBG("MPLoadTrace: sithMain_Open before sithAIAwareness_Startup\n");
+#endif
     sithAIAwareness_Startup();
+#ifdef TARGET_XBOX
+    XDBG("MPLoadTrace: sithMain_Open before sithRender_Open\n");
+#endif
     sithRender_Open();
+#ifdef TARGET_XBOX
+    XDBG("MPLoadTrace: sithMain_Open before sithWeapon_StartupEntry\n");
+#endif
     sithWeapon_StartupEntry();
     sithMain_bOpened = 1;
+#ifdef TARGET_XBOX
+    XDBG("MPLoadTrace: sithMain_Open done\n");
+#endif
     return 1;
 }
 

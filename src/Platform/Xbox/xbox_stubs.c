@@ -462,12 +462,16 @@ void Window_GetDrawHandlers(WindowDrawHandler_t_local *a, WindowDrawHandler_t_lo
 }
 int Window_MessageLoop(void)
 {
-    LRESULT unused = 0;
     jkGuiRend_UpdateController();
     jkMain_GuiAdvance();
-    if (xbox_windowHandler)
-        xbox_windowHandler(0, 0x000F, 0, 0, &unused); /* WM_PAINT */
-    else
+
+    /*
+     * Win32 only sends WM_PAINT after invalidation.  The Xbox stub used to
+     * synthesize one every menu tick, which forced full menu repaints and
+     * made animated post-menu draws visibly fight the 8-bit menu buffer.
+     * Initial paints and focus/click redraws already present explicitly.
+     */
+    if (!xbox_windowHandler)
         stdDisplay_DDrawGdiSurfaceFlip();
     return 0;
 }

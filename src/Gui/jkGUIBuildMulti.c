@@ -23,6 +23,7 @@
 #include "Win95/stdDisplay.h"
 #include "Engine/rdroid.h"
 #include "Gui/jkGUIForce.h"
+#include "Platform/std3D.h"
 #include "Platform/stdControl.h"
 #include "Main/jkRes.h"
 #include "General/stdStrTable.h"
@@ -41,6 +42,7 @@
 
 // MOTS added
 int jkGuiBuildMulti_jediRank = 0;
+int32_t jkGuiBuildMulti_bRendering = 0;
 
 #ifdef TARGET_XBOX
 enum
@@ -52,6 +54,20 @@ enum
     JKGUIMULTI_XBTN_COUNT
 };
 
+#define JKGUIMULTI_PREVIEW_X 315
+#define JKGUIMULTI_PREVIEW_Y 115
+#define JKGUIMULTI_PREVIEW_W 260
+#define JKGUIMULTI_PREVIEW_H 260
+#define JKGUIMULTI_PORTRAIT_X (JKGUIMULTI_PREVIEW_X + 94)
+#define JKGUIMULTI_PORTRAIT_Y (JKGUIMULTI_PREVIEW_Y + 8)
+#define JKGUIMULTI_PORTRAIT_W 72
+#define JKGUIMULTI_PORTRAIT_H 72
+#define JKGUIMULTI_PORTRAIT_CACHE_W 74
+#define JKGUIMULTI_PORTRAIT_CACHE_H 74
+#define JKGUIMULTI_PORTRAIT_CACHE_PIXELS (JKGUIMULTI_PORTRAIT_CACHE_W * JKGUIMULTI_PORTRAIT_CACHE_H)
+#define JKGUIMULTI_PORTRAIT_CACHE_MAGIC 0x31504B4A
+#define JKGUIMULTI_PORTRAIT_CACHE_VERSION 1
+
 static const char *jkGuiBuildMulti_xboxButtonPaths[JKGUIMULTI_XBTN_COUNT] = {
     "ui\\bm\\xbtn_white.bm",
     "ui\\bm\\xbtn_black.bm",
@@ -59,6 +75,172 @@ static const char *jkGuiBuildMulti_xboxButtonPaths[JKGUIMULTI_XBTN_COUNT] = {
     "ui\\bm\\xbtn_rt.bm",
 };
 static stdBitmap *jkGuiBuildMulti_xboxButtonBitmaps[JKGUIMULTI_XBTN_COUNT];
+static int jkGuiBuildMulti_xboxButtonLogged[JKGUIMULTI_XBTN_COUNT];
+static unsigned int jkGuiBuildMulti_xboxGlyphDrawCalls;
+static uint8_t jkGuiBuildMulti_xboxLatestPortrait[JKGUIMULTI_PORTRAIT_CACHE_PIXELS];
+static uint8_t jkGuiBuildMulti_xboxPortraitCandidate[JKGUIMULTI_PORTRAIT_CACHE_PIXELS];
+static int jkGuiBuildMulti_xboxLatestPortraitValid;
+static stdVBuffer* jkGuiBuildMulti_pVBuf1 = NULL;
+static stdVBuffer* jkGuiBuildMulti_pVBuf2 = NULL;
+
+static void jkGuiBuildMulti_XboxWritePortraitCache(const wchar_t *characterName);
+static void jkGuiBuildMulti_XboxCaptureLatestPortrait(void);
+static int jkGuiBuildMulti_XboxCaptureLatestPortraitFromVBuffer(stdVBuffer *srcVbuf, const char *label);
+static void jkGuiBuildMulti_XboxCaptureVisiblePortraitBooth(void);
+static void jkGuiBuildMulti_XboxCapturePortraitBooth(void);
+static void jkGuiBuildMulti_XboxDeletePortraitCache(const wchar_t *characterName);
+static int jkGuiBuildMulti_XboxWriteLatestOrGeneratePortraitCache(const wchar_t *characterName);
+
+static void jkGuiBuildMulti_XboxPortraitPath(const wchar_t *characterName, char *outPath, int outSize)
+{
+    char mpcPath[128];
+    char portraitBase[128];
+
+    if (!outPath || outSize <= 0)
+        return;
+    outPath[0] = 0;
+    if (!characterName || !characterName[0])
+        return;
+
+    jkPlayer_MPCMakePath(mpcPath, sizeof(mpcPath), jkPlayer_playerShortName, (wchar_t*)characterName);
+    stdString_SafeStrCopy(portraitBase, mpcPath, sizeof(portraitBase));
+    stdFnames_StripExtAndDot(portraitBase);
+    stdString_snprintf(outPath, outSize, "%s.jkp", portraitBase);
+}
+
+int jkGuiBuildMulti_XboxPortraitBitmapHasContent(stdBitmap *bitmap)
+{
+    stdVBuffer *vbuf;
+    int x, y;
+    int brightPixels = 0;
+    int nonZeroPixels = 0;
+    int totalPixels = 0;
+
+    if (!bitmap || !bitmap->mipSurfaces || !bitmap->mipSurfaces[0] || !bitmap->palette)
+        return 0;
+
+    vbuf = bitmap->mipSurfaces[0];
+    if (vbuf->format.width <= 0 || vbuf->format.height <= 0)
+        return 0;
+
+    stdBitmap_EnsureData(bitmap);
+    stdDisplay_VBufferLock(vbuf);
+    for (y = 0; y < vbuf->format.height; y++)
+    {
+        uint8_t *row = (uint8_t*)vbuf->surface_lock_alloc + y * vbuf->format.width_in_bytes;
+        for (x = 0; x < vbuf->format.width; x++)
+        {
+            rdColor24 *c = &((rdColor24*)bitmap->palette)[row[x]];
+            int luma = (int)c->r + (int)c->g + (int)c->b;
+            if (luma > 72)
+                brightPixels++;
+            if (row[x])
+                nonZeroPixels++;
+            totalPixels++;
+        }
+    }
+    stdDisplay_VBufferUnlock(vbuf);
+
+    return totalPixels > 0 && nonZeroPixels > (totalPixels / 32) && brightPixels > (totalPixels / 32);
+}
+
+static uint8_t jkGuiBuildMulti_XboxNearestMenuColor(const rdColor24 *src)
+{
+    int best = 0;
+    int bestDist = 0x7FFFFFFF;
+    int i;
+
+    for (i = 0; i < 256; i++)
+    {
+        int dr = (int)src->r - (int)stdDisplay_masterPalette[i].r;
+        int dg = (int)src->g - (int)stdDisplay_masterPalette[i].g;
+        int db = (int)src->b - (int)stdDisplay_masterPalette[i].b;
+        int dist = dr * dr + dg * dg + db * db;
+        if (dist < bestDist)
+        {
+            bestDist = dist;
+            best = i;
+            if (!dist)
+                break;
+        }
+    }
+
+    return (uint8_t)best;
+}
+
+static int jkGuiBuildMulti_XboxGlyphPixelTransparent(stdBitmap *bitmap, uint8_t pix)
+{
+    rdColor24 *pal;
+
+    if ((bitmap->palFmt & 1) && pix == (uint8_t)bitmap->colorkey)
+        return 1;
+
+    if (!bitmap->palette)
+        return 0;
+
+    pal = &((rdColor24*)bitmap->palette)[pix];
+    return pal->r < 10 && pal->g < 10 && pal->b < 10;
+}
+
+static void jkGuiBuildMulti_XboxBlitGlyphRemapped(stdVBuffer *dst, stdBitmap *bitmap, rdRect *dstRect)
+{
+    stdVBuffer *src;
+    uint8_t remap[256];
+    uint8_t *srcBase;
+    uint8_t *dstBase;
+    int drawW;
+    int drawH;
+    int drawX;
+    int drawY;
+    int row;
+
+    if (!dst || !bitmap || !bitmap->mipSurfaces || !bitmap->mipSurfaces[0] || !bitmap->palette)
+        return;
+
+    src = bitmap->mipSurfaces[0];
+    if (src->format.width <= 0 || src->format.height <= 0 || dstRect->width <= 0 || dstRect->height <= 0)
+        return;
+
+    drawW = dstRect->width;
+    drawH = (src->format.height * drawW) / src->format.width;
+    if (drawH > dstRect->height)
+    {
+        drawH = dstRect->height;
+        drawW = (src->format.width * drawH) / src->format.height;
+    }
+    if (drawW <= 0 || drawH <= 0)
+        return;
+
+    drawX = dstRect->x + (dstRect->width - drawW) / 2;
+    drawY = dstRect->y + (dstRect->height - drawH) / 2;
+
+    for (int i = 0; i < 256; i++)
+        remap[i] = jkGuiBuildMulti_XboxNearestMenuColor(&((rdColor24*)bitmap->palette)[i]);
+
+    stdDisplay_VBufferLock(src);
+    stdDisplay_VBufferLock(dst);
+
+    srcBase = (uint8_t*)src->surface_lock_alloc;
+    dstBase = (uint8_t*)dst->surface_lock_alloc + drawY * dst->format.width_in_bytes + drawX;
+    for (row = 0; row < drawH; row++)
+    {
+        int sy = (row * src->format.height) / drawH;
+        uint8_t *srcRow = srcBase + sy * src->format.width_in_bytes;
+        uint8_t *dstRow = dstBase + row * dst->format.width_in_bytes;
+        int col;
+        for (col = 0; col < drawW; col++)
+        {
+            int sx = (col * src->format.width) / drawW;
+            uint8_t pix = srcRow[sx];
+            if (jkGuiBuildMulti_XboxGlyphPixelTransparent(bitmap, pix))
+                continue;
+            dstRow[col] = remap[pix];
+        }
+    }
+
+    stdDisplay_VBufferUnlock(dst);
+    stdDisplay_VBufferUnlock(src);
+}
 
 static void jkGuiBuildMulti_XboxLoadButtonGlyphs(void)
 {
@@ -86,7 +268,6 @@ static void jkGuiBuildMulti_XboxUnloadButtonGlyphs(void)
 static void jkGuiBuildMulti_XboxButtonGlyphDraw(jkGuiElement *element, jkGuiMenu *menu, stdVBuffer *vbuf, BOOL redraw)
 {
     stdBitmap *bitmap;
-    rdRect srcRect;
     int idx = element->selectedTextEntry;
 
     if (redraw)
@@ -104,17 +285,453 @@ static void jkGuiBuildMulti_XboxButtonGlyphDraw(jkGuiElement *element, jkGuiMenu
     if (!bitmap->mipSurfaces || !bitmap->mipSurfaces[0])
         return;
 
-    srcRect.x = 0;
-    srcRect.y = 0;
-    srcRect.width = element->rect.width;
-    if (srcRect.width > bitmap->mipSurfaces[0]->format.width)
-        srcRect.width = bitmap->mipSurfaces[0]->format.width;
-    srcRect.height = element->rect.height;
-    if (srcRect.height > bitmap->mipSurfaces[0]->format.height)
-        srcRect.height = bitmap->mipSurfaces[0]->format.height;
+    if (!jkGuiBuildMulti_xboxButtonLogged[idx])
+    {
+        jkGuiBuildMulti_xboxButtonLogged[idx] = 1;
+        XDBGF("MenuGlyphDbg: idx=%d path='%s' bm=%p surf=%p size=%dx%d bpp=%u palFmt=0x%x colorkey=%u srcPal=%p dstPal0=%u,%u,%u\n",
+              idx,
+              jkGuiBuildMulti_xboxButtonPaths[idx],
+              bitmap,
+              bitmap->mipSurfaces[0],
+              bitmap->mipSurfaces[0]->format.width,
+              bitmap->mipSurfaces[0]->format.height,
+              bitmap->mipSurfaces[0]->format.format.bpp,
+              bitmap->palFmt,
+              bitmap->colorkey,
+              bitmap->palette,
+              stdDisplay_masterPalette[0].r,
+              stdDisplay_masterPalette[0].g,
+              stdDisplay_masterPalette[0].b);
+    }
 
-    stdDisplay_VBufferCopy(vbuf, bitmap->mipSurfaces[0], element->rect.x, element->rect.y, &srcRect, 1);
+    jkGuiBuildMulti_xboxGlyphDrawCalls++;
+    if (jkGuiBuildMulti_xboxGlyphDrawCalls <= 24 || (jkGuiBuildMulti_xboxGlyphDrawCalls % 240) == 0)
+    {
+        XDBGF("MenuGlyphDbg: draw call=%u idx=%d redraw=%d rect=%d,%d %dx%d menu=%p hover=%ld focus=%ld\n",
+              jkGuiBuildMulti_xboxGlyphDrawCalls,
+              idx,
+              redraw,
+              element->rect.x,
+              element->rect.y,
+              element->rect.width,
+              element->rect.height,
+              menu,
+              menu->lastMouseOverClickable ? (long)(menu->lastMouseOverClickable - menu->paElements) : -1L,
+              menu->focusedElement ? (long)(menu->focusedElement - menu->paElements) : -1L);
+    }
+
+    jkGuiBuildMulti_XboxBlitGlyphRemapped(vbuf, bitmap, &element->rect);
 }
+
+stdBitmap *jkGuiBuildMulti_XboxLoadPortraitCache(const wchar_t *characterName)
+{
+    stdBitmap *bitmap;
+    stdVBufferTexFmt fmt;
+    stdVBuffer *vbuf;
+    char portraitPath[128];
+    int fhand;
+    uint32_t magic;
+    uint32_t version;
+    uint32_t width;
+    uint32_t height;
+    uint32_t paletteBytes;
+    uint8_t *dstBase;
+
+    if (!characterName || !characterName[0])
+        return 0;
+
+    XDBG("ProfilePortrait: raw load enter\n");
+    jkGuiBuildMulti_XboxPortraitPath(characterName, portraitPath, sizeof(portraitPath));
+    if (!portraitPath[0])
+        return 0;
+
+    fhand = std_pHS->fileOpen(portraitPath, "rb");
+    if (!fhand)
+    {
+        XDBG("ProfilePortrait: raw load missing\n");
+        return 0;
+    }
+
+    if (std_pHS->fileRead(fhand, &magic, sizeof(magic)) != sizeof(magic)
+        || std_pHS->fileRead(fhand, &version, sizeof(version)) != sizeof(version)
+        || std_pHS->fileRead(fhand, &width, sizeof(width)) != sizeof(width)
+        || std_pHS->fileRead(fhand, &height, sizeof(height)) != sizeof(height)
+        || std_pHS->fileRead(fhand, &paletteBytes, sizeof(paletteBytes)) != sizeof(paletteBytes))
+    {
+        std_pHS->fileClose(fhand);
+        XDBG("ProfilePortrait: raw load header failed\n");
+        return 0;
+    }
+
+    if (magic != JKGUIMULTI_PORTRAIT_CACHE_MAGIC
+        || version != JKGUIMULTI_PORTRAIT_CACHE_VERSION
+        || width != JKGUIMULTI_PORTRAIT_CACHE_W
+        || height != JKGUIMULTI_PORTRAIT_CACHE_H
+        || paletteBytes != sizeof(rdColor24) * 256)
+    {
+        XDBGF("ProfilePortraitDbg: invalid raw cache='%s' magic=0x%08x version=%u size=%ux%u pal=%u\n",
+              portraitPath, magic, version, width, height, paletteBytes);
+        std_pHS->fileClose(fhand);
+        XDBG("ProfilePortrait: raw load invalid header\n");
+        return 0;
+    }
+
+    bitmap = (stdBitmap*)std_pHS->alloc(sizeof(stdBitmap));
+    if (!bitmap)
+    {
+        std_pHS->fileClose(fhand);
+        XDBG("ProfilePortrait: raw load alloc bitmap failed\n");
+        return 0;
+    }
+    memset(bitmap, 0, sizeof(*bitmap));
+
+    bitmap->palette = std_pHS->alloc(sizeof(rdColor24) * 256);
+    bitmap->mipSurfaces = (stdVBuffer**)std_pHS->alloc(sizeof(stdVBuffer*));
+    if (!bitmap->palette || !bitmap->mipSurfaces)
+    {
+        std_pHS->fileClose(fhand);
+        stdBitmap_Free(bitmap);
+        XDBG("ProfilePortrait: raw load alloc parts failed\n");
+        return 0;
+    }
+    bitmap->mipSurfaces[0] = 0;
+
+    memset(&fmt, 0, sizeof(fmt));
+    fmt.width = JKGUIMULTI_PORTRAIT_CACHE_W;
+    fmt.height = JKGUIMULTI_PORTRAIT_CACHE_H;
+    fmt.width_in_pixels = JKGUIMULTI_PORTRAIT_CACHE_W;
+    fmt.width_in_bytes = JKGUIMULTI_PORTRAIT_CACHE_W;
+    fmt.texture_size_in_bytes = JKGUIMULTI_PORTRAIT_CACHE_PIXELS;
+    fmt.format.bpp = 8;
+    fmt.format.is16bit = 0;
+    vbuf = stdDisplay_VBufferNew(&fmt, 0, 0, 0);
+    if (!vbuf)
+    {
+        std_pHS->fileClose(fhand);
+        stdBitmap_Free(bitmap);
+        XDBG("ProfilePortrait: raw load vbuf failed\n");
+        return 0;
+    }
+
+    bitmap->palFmt = 2;
+    bitmap->numMips = 1;
+    bitmap->format.bpp = 8;
+    bitmap->format.is16bit = 0;
+    bitmap->mipSurfaces[0] = vbuf;
+
+    if (std_pHS->fileRead(fhand, bitmap->palette, sizeof(rdColor24) * 256) != sizeof(rdColor24) * 256)
+    {
+        std_pHS->fileClose(fhand);
+        stdBitmap_Free(bitmap);
+        XDBG("ProfilePortrait: raw load palette failed\n");
+        return 0;
+    }
+
+    stdDisplay_VBufferLock(vbuf);
+    dstBase = (uint8_t*)vbuf->surface_lock_alloc;
+    if (!dstBase || std_pHS->fileRead(fhand, dstBase, JKGUIMULTI_PORTRAIT_CACHE_PIXELS) != JKGUIMULTI_PORTRAIT_CACHE_PIXELS)
+    {
+        stdDisplay_VBufferUnlock(vbuf);
+        std_pHS->fileClose(fhand);
+        stdBitmap_Free(bitmap);
+        XDBG("ProfilePortrait: raw load pixels failed\n");
+        return 0;
+    }
+    stdDisplay_VBufferUnlock(vbuf);
+    std_pHS->fileClose(fhand);
+
+    if (!jkGuiBuildMulti_XboxPortraitBitmapHasContent(bitmap))
+    {
+        XDBGF("ProfilePortraitDbg: raw cache has no content='%s'\n", portraitPath);
+        stdBitmap_Free(bitmap);
+        XDBG("ProfilePortrait: raw load blank\n");
+        return 0;
+    }
+
+    XDBG("ProfilePortrait: raw load ok\n");
+    return bitmap;
+}
+
+static void jkGuiBuildMulti_XboxWritePortraitCache(const wchar_t *characterName)
+{
+    char portraitPath[128];
+    char nameA[32];
+    uint32_t magic = JKGUIMULTI_PORTRAIT_CACHE_MAGIC;
+    uint32_t version = JKGUIMULTI_PORTRAIT_CACHE_VERSION;
+    uint32_t width = JKGUIMULTI_PORTRAIT_CACHE_W;
+    uint32_t height = JKGUIMULTI_PORTRAIT_CACHE_H;
+    uint32_t paletteBytes = sizeof(rdColor24) * 256;
+    int fhand;
+
+    if (!characterName || !characterName[0])
+        return;
+
+    XDBG("ProfilePortrait: raw write enter\n");
+    jkGuiBuildMulti_XboxPortraitPath(characterName, portraitPath, sizeof(portraitPath));
+    if (!portraitPath[0])
+        return;
+
+    if (!jkGuiBuildMulti_xboxLatestPortraitValid)
+        jkGuiBuildMulti_XboxCapturePortraitBooth();
+    if (!jkGuiBuildMulti_xboxLatestPortraitValid)
+    {
+        XDBGF("ProfilePortraitDbg: no cached preview character pending\n");
+        XDBG("ProfilePortrait: raw write no valid capture\n");
+        return;
+    }
+
+    stdString_WcharToChar(nameA, (wchar_t*)characterName, 31);
+    nameA[31] = 0;
+
+    fhand = std_pHS->fileOpen(portraitPath, "wb");
+    if (!fhand)
+    {
+        XDBGF("ProfilePortraitDbg: failed cache='%s' character='%s'\n", portraitPath, nameA);
+        XDBG("ProfilePortrait: raw write open failed\n");
+        return;
+    }
+
+    if (std_pHS->fileWrite(fhand, &magic, sizeof(magic)) != sizeof(magic)
+        || std_pHS->fileWrite(fhand, &version, sizeof(version)) != sizeof(version)
+        || std_pHS->fileWrite(fhand, &width, sizeof(width)) != sizeof(width)
+        || std_pHS->fileWrite(fhand, &height, sizeof(height)) != sizeof(height)
+        || std_pHS->fileWrite(fhand, &paletteBytes, sizeof(paletteBytes)) != sizeof(paletteBytes)
+        || std_pHS->fileWrite(fhand, stdDisplay_masterPalette, sizeof(rdColor24) * 256) != sizeof(rdColor24) * 256
+        || std_pHS->fileWrite(fhand, jkGuiBuildMulti_xboxLatestPortrait, JKGUIMULTI_PORTRAIT_CACHE_PIXELS) != JKGUIMULTI_PORTRAIT_CACHE_PIXELS)
+    {
+        XDBGF("ProfilePortraitDbg: failed raw write cache='%s' character='%s'\n", portraitPath, nameA);
+        std_pHS->fileClose(fhand);
+        XDBG("ProfilePortrait: raw write failed\n");
+        return;
+    }
+
+    std_pHS->fileClose(fhand);
+    XDBGF("ProfilePortraitDbg: wrote raw cache='%s' character='%s'\n", portraitPath, nameA);
+    XDBG("ProfilePortrait: raw write ok\n");
+}
+
+static void jkGuiBuildMulti_XboxDeletePortraitCache(const wchar_t *characterName)
+{
+    char portraitPath[128];
+
+    jkGuiBuildMulti_XboxPortraitPath(characterName, portraitPath, sizeof(portraitPath));
+    if (!portraitPath[0])
+        return;
+
+    stdFileUtil_DelFile(portraitPath);
+    XDBG("ProfilePortrait: raw cache deleted for regenerate\n");
+}
+
+static int jkGuiBuildMulti_XboxWriteLatestOrGeneratePortraitCache(const wchar_t *characterName)
+{
+    stdBitmap *portraitBitmap;
+
+    if (!characterName || !characterName[0])
+        return 0;
+
+    XDBG("ProfilePortrait: write latest/generate request\n");
+    jkGuiBuildMulti_XboxDeletePortraitCache(characterName);
+    jkGuiBuildMulti_XboxWritePortraitCache(characterName);
+
+    portraitBitmap = jkGuiBuildMulti_XboxLoadPortraitCache(characterName);
+    if (portraitBitmap)
+    {
+        stdBitmap_Free(portraitBitmap);
+        XDBG("ProfilePortrait: write latest verified\n");
+        return 1;
+    }
+
+    XDBG("ProfilePortrait: write latest missing; ensure fallback\n");
+    return jkGuiBuildMulti_XboxEnsurePortraitCache(characterName);
+}
+
+static void jkGuiBuildMulti_XboxCaptureLatestPortrait(void)
+{
+    unsigned char *captureRgb;
+    int captureW = JKGUIMULTI_PORTRAIT_W;
+    int captureH = JKGUIMULTI_PORTRAIT_H;
+    int capturePitch = captureW * 3;
+    int x, y;
+    int brightPixels = 0;
+    int nonBlackPixels = 0;
+
+    captureRgb = (unsigned char*)pHS->alloc(capturePitch * captureH);
+    if (!captureRgb)
+        return;
+
+    if (!std3D_XboxCaptureBackBufferRGB(JKGUIMULTI_PORTRAIT_X,
+                                        JKGUIMULTI_PORTRAIT_Y,
+                                        captureW,
+                                        captureH,
+                                        captureRgb,
+                                        capturePitch))
+    {
+        pHS->free(captureRgb);
+        return;
+    }
+    for (y = 0; y < 74; y++)
+    {
+        int sy0 = (y * captureH) / 74;
+        int sy1 = ((y + 1) * captureH) / 74;
+        if (sy1 <= sy0)
+            sy1 = sy0 + 1;
+
+        for (x = 0; x < 74; x++)
+        {
+            int sx0 = (x * captureW) / 74;
+            int sx1 = ((x + 1) * captureW) / 74;
+            int r = 0, g = 0, b = 0, count = 0;
+            int sx, sy;
+            rdColor24 color;
+            if (sx1 <= sx0)
+                sx1 = sx0 + 1;
+
+            for (sy = sy0; sy < sy1; sy++)
+            {
+                const unsigned char *srcRow = captureRgb + sy * capturePitch;
+                for (sx = sx0; sx < sx1; sx++)
+                {
+                    const unsigned char *src = srcRow + sx * 3;
+                    r += src[0];
+                    g += src[1];
+                    b += src[2];
+                    count++;
+                }
+            }
+
+            if (count <= 0)
+                count = 1;
+            color.r = (uint8_t)(r / count);
+            color.g = (uint8_t)(g / count);
+            color.b = (uint8_t)(b / count);
+            jkGuiBuildMulti_xboxLatestPortrait[y * 74 + x] = jkGuiBuildMulti_XboxNearestMenuColor(&color);
+            if ((int)color.r + (int)color.g + (int)color.b > 72)
+                brightPixels++;
+            if (color.r || color.g || color.b)
+                nonBlackPixels++;
+        }
+    }
+    pHS->free(captureRgb);
+    jkGuiBuildMulti_xboxLatestPortraitValid = brightPixels > ((74 * 74) / 32);
+    xbox_debug_Printf("ProfilePortrait: visible capture bright=%d nonBlack=%d valid=%d\n",
+                      brightPixels,
+                      nonBlackPixels,
+                      jkGuiBuildMulti_xboxLatestPortraitValid);
+    if (jkGuiBuildMulti_xboxLatestPortraitValid)
+        XDBG("ProfilePortrait: visible capture ok\n");
+    else
+        XDBG("ProfilePortrait: visible capture blank\n");
+}
+
+static int jkGuiBuildMulti_XboxReadVBufferPixel(stdVBuffer *srcVbuf, int sx, int sy, rdColor24 *color)
+{
+    uint8_t *srcRow;
+
+    if (!srcVbuf || !srcVbuf->surface_lock_alloc || !color)
+        return 0;
+    if (sx < 0 || sy < 0 || sx >= srcVbuf->format.width || sy >= srcVbuf->format.height)
+        return 0;
+
+    srcRow = (uint8_t*)srcVbuf->surface_lock_alloc + sy * srcVbuf->format.width_in_bytes;
+    if (srcVbuf->format.format.is16bit || srcVbuf->format.format.bpp == 16)
+    {
+        uint16_t pix = *((uint16_t*)(srcRow + sx * 2));
+        color->r = (uint8_t)((((pix >> 11) & 0x1F) * 255) / 31);
+        color->g = (uint8_t)((((pix >> 5) & 0x3F) * 255) / 63);
+        color->b = (uint8_t)(((pix & 0x1F) * 255) / 31);
+        return 1;
+    }
+
+    {
+        uint8_t pix = srcRow[sx];
+        *color = stdDisplay_masterPalette[pix];
+    }
+    return 1;
+}
+
+static int jkGuiBuildMulti_XboxCaptureLatestPortraitFromVBuffer(stdVBuffer *srcVbuf, const char *label)
+{
+    int x, y;
+    int brightPixels = 0;
+    int nonBlackPixels = 0;
+    int totalSamples = 0;
+
+    if (!srcVbuf || !srcVbuf->surface_lock_alloc)
+        return 0;
+
+    for (y = 0; y < 74; y++)
+    {
+        int sy0 = JKGUIMULTI_PORTRAIT_Y - JKGUIMULTI_PREVIEW_Y + (y * JKGUIMULTI_PORTRAIT_H) / 74;
+        int sy1 = JKGUIMULTI_PORTRAIT_Y - JKGUIMULTI_PREVIEW_Y + ((y + 1) * JKGUIMULTI_PORTRAIT_H) / 74;
+        if (sy1 <= sy0)
+            sy1 = sy0 + 1;
+
+        for (x = 0; x < 74; x++)
+        {
+            int sx0 = JKGUIMULTI_PORTRAIT_X - JKGUIMULTI_PREVIEW_X + (x * JKGUIMULTI_PORTRAIT_W) / 74;
+            int sx1 = JKGUIMULTI_PORTRAIT_X - JKGUIMULTI_PREVIEW_X + ((x + 1) * JKGUIMULTI_PORTRAIT_W) / 74;
+            int r = 0, g = 0, b = 0, count = 0;
+            int sx, sy;
+            rdColor24 color;
+            uint8_t dstPix;
+
+            if (sx1 <= sx0)
+                sx1 = sx0 + 1;
+
+            for (sy = sy0; sy < sy1; sy++)
+            {
+                for (sx = sx0; sx < sx1; sx++)
+                {
+                    rdColor24 srcColor;
+                    if (!jkGuiBuildMulti_XboxReadVBufferPixel(srcVbuf, sx, sy, &srcColor))
+                        continue;
+                    r += srcColor.r;
+                    g += srcColor.g;
+                    b += srcColor.b;
+                    count++;
+                }
+            }
+
+            if (count <= 0)
+                count = 1;
+            color.r = (uint8_t)(r / count);
+            color.g = (uint8_t)(g / count);
+            color.b = (uint8_t)(b / count);
+            dstPix = jkGuiBuildMulti_XboxNearestMenuColor(&color);
+            jkGuiBuildMulti_xboxPortraitCandidate[y * 74 + x] = dstPix;
+            if ((int)color.r + (int)color.g + (int)color.b > 72)
+                brightPixels++;
+            if (color.r || color.g || color.b)
+                nonBlackPixels++;
+            totalSamples++;
+        }
+    }
+
+    xbox_debug_Printf("ProfilePortrait: capture src=%s bpp=%u is16=%u size=%dx%d pitch=%u bright=%d nonBlack=%d samples=%d\n",
+                      label ? label : "?",
+                      srcVbuf->format.format.bpp,
+                      srcVbuf->format.format.is16bit,
+                      srcVbuf->format.width,
+                      srcVbuf->format.height,
+                      srcVbuf->format.width_in_bytes,
+                      brightPixels,
+                      nonBlackPixels,
+                      totalSamples);
+
+    if (brightPixels > ((74 * 74) / 32) && nonBlackPixels > ((74 * 74) / 32))
+    {
+        memcpy(jkGuiBuildMulti_xboxLatestPortrait,
+               jkGuiBuildMulti_xboxPortraitCandidate,
+               sizeof(jkGuiBuildMulti_xboxLatestPortrait));
+        jkGuiBuildMulti_xboxLatestPortraitValid = 1;
+        XDBG("ProfilePortrait: offscreen capture ok\n");
+        return brightPixels;
+    }
+
+    XDBG("ProfilePortrait: offscreen capture blank\n");
+    return 0;
+}
+
 #endif
 
 static jkGuiElement jkGuiBuildMulti_buttons[17] =
@@ -326,8 +943,6 @@ static uint32_t jkGuiBuildMulti_startTimeSecs = 0; // Added: float -> u32
 static rdColormap jkGuiBuildMulti_colormap;
 static rdLight jkGuiBuildMulti_light;
 static rdMatrix34 jkGuiBuildMulti_matrix;
-static stdVBuffer* jkGuiBuildMulti_pVBuf1 = NULL;
-static stdVBuffer* jkGuiBuildMulti_pVBuf2 = NULL;
 static int32_t jkGuiBuildMulti_trackNum = 0;
 static wchar_t jkGuiBuildMulti_waTmp[128];
 static wchar_t jkGuiBuildMulti_waTmp2[32];
@@ -355,6 +970,205 @@ static int32_t jkGuiBuildMulti_renderOpen;
 #ifdef TARGET_XBOX
 static unsigned int jkGuiBuildMulti_xboxPostDrawCalls;
 static unsigned int jkGuiBuildMulti_xboxModelDrawerCalls;
+
+static void jkGuiBuildMulti_XboxCaptureVisiblePortraitBooth(void)
+{
+    rdPuppet savedPuppet;
+    rdMatrix34 savedMatrix;
+    rdVector3 portraitRot;
+    int savedAcceleration;
+
+    if (!jkGuiBuildMulti_thing || !jkGuiBuildMulti_thing->puppet || !jkGuiBuildMulti_pCamera)
+    {
+        XDBG("ProfilePortrait: visible booth missing resources\n");
+        return;
+    }
+
+    XDBG("ProfilePortrait: visible booth enter\n");
+    memcpy(&savedPuppet, jkGuiBuildMulti_thing->puppet, sizeof(savedPuppet));
+    rdMatrix_Copy34(&savedMatrix, &jkGuiBuildMulti_matrix);
+    savedAcceleration = rdroid_curAcceleration;
+
+    rdPuppet_ResetTrack(jkGuiBuildMulti_thing->puppet, jkGuiBuildMulti_trackNum);
+    rdPuppet_UpdateTracks(jkGuiBuildMulti_thing->puppet, 0.0f);
+    jkGuiBuildMulti_thing->puppet->paused = 1;
+    rdMatrix_Copy34(&jkGuiBuildMulti_matrix, &rdroid_identMatrix34);
+    portraitRot.x = 0.0f;
+    portraitRot.y = 28.0f;
+    portraitRot.z = 0.0f;
+    rdMatrix_PostRotate34(&jkGuiBuildMulti_matrix, &portraitRot);
+
+    rdroid_curAcceleration = 1;
+    std3D_XboxSetScreenSpaceRenderList(1);
+    rdAdvanceFrame();
+    std3D_XboxSetViewport(JKGUIMULTI_PREVIEW_X,
+                          480 - JKGUIMULTI_PREVIEW_Y - JKGUIMULTI_PREVIEW_H,
+                          JKGUIMULTI_PREVIEW_W,
+                          JKGUIMULTI_PREVIEW_H);
+    std3D_ClearZBuffer();
+    rdCamera_SetCurrent(jkGuiBuildMulti_pCamera);
+    rdThing_Draw(jkGuiBuildMulti_thing, &jkGuiBuildMulti_matrix);
+    if (jkGuiBuildMulti_pThingGun && jkGuiBuildMulti_thing->hierarchyNodeMatrices)
+        rdThing_Draw(jkGuiBuildMulti_pThingGun, jkGuiBuildMulti_thing->hierarchyNodeMatrices + 12);
+    rdFinishFrame();
+    jkGuiBuildMulti_XboxCaptureLatestPortrait();
+    std3D_XboxSetScreenSpaceRenderList(0);
+    std3D_XboxResetViewport();
+    rdroid_curAcceleration = savedAcceleration;
+
+    memcpy(jkGuiBuildMulti_thing->puppet, &savedPuppet, sizeof(savedPuppet));
+    rdMatrix_Copy34(&jkGuiBuildMulti_matrix, &savedMatrix);
+    XDBG("ProfilePortrait: visible booth exit\n");
+}
+
+static void jkGuiBuildMulti_XboxCapturePortraitBooth(void)
+{
+    rdPuppet savedPuppet;
+    rdMatrix34 savedMatrix;
+    rdVector3 portraitRot;
+    int savedAcceleration;
+
+    if (!jkGuiBuildMulti_thing || !jkGuiBuildMulti_thing->puppet || !jkGuiBuildMulti_pCamera || !jkGuiBuildMulti_pVBuf1)
+    {
+        XDBG("ProfilePortrait: booth missing resources\n");
+        return;
+    }
+
+    XDBG("ProfilePortrait: booth enter\n");
+    memcpy(&savedPuppet, jkGuiBuildMulti_thing->puppet, sizeof(savedPuppet));
+    rdMatrix_Copy34(&savedMatrix, &jkGuiBuildMulti_matrix);
+    savedAcceleration = rdroid_curAcceleration;
+
+    rdPuppet_ResetTrack(jkGuiBuildMulti_thing->puppet, jkGuiBuildMulti_trackNum);
+    rdPuppet_UpdateTracks(jkGuiBuildMulti_thing->puppet, 0.0f);
+    jkGuiBuildMulti_thing->puppet->paused = 1;
+    rdMatrix_Copy34(&jkGuiBuildMulti_matrix, &rdroid_identMatrix34);
+    portraitRot.x = 0.0f;
+    portraitRot.y = 28.0f;
+    portraitRot.z = 0.0f;
+    rdMatrix_PostRotate34(&jkGuiBuildMulti_matrix, &portraitRot);
+
+    rdroid_curAcceleration = 0;
+    stdDisplay_VBufferFill(jkGuiBuildMulti_pVBuf1, 0, 0);
+    if (jkGuiBuildMulti_pVBuf2)
+        stdDisplay_VBufferFill(jkGuiBuildMulti_pVBuf2, 0, 0);
+    stdDisplay_VBufferLock(jkGuiBuildMulti_pVBuf1);
+    if (jkGuiBuildMulti_pVBuf2)
+        stdDisplay_VBufferLock(jkGuiBuildMulti_pVBuf2);
+    rdAdvanceFrame();
+    rdCamera_SetCurrent(jkGuiBuildMulti_pCamera);
+    rdThing_Draw(jkGuiBuildMulti_thing, &jkGuiBuildMulti_matrix);
+    rdFinishFrame();
+    jkGuiBuildMulti_xboxLatestPortraitValid = 0;
+    if (jkGuiBuildMulti_pVBuf2)
+    {
+        XDBG("ProfilePortrait: capture try vbuf2\n");
+        jkGuiBuildMulti_XboxCaptureLatestPortraitFromVBuffer(jkGuiBuildMulti_pVBuf2, "vbuf2");
+    }
+    if (!jkGuiBuildMulti_xboxLatestPortraitValid)
+    {
+        XDBG("ProfilePortrait: capture try vbuf1\n");
+        jkGuiBuildMulti_XboxCaptureLatestPortraitFromVBuffer(jkGuiBuildMulti_pVBuf1, "vbuf1");
+    }
+    if (jkGuiBuildMulti_pVBuf2)
+        stdDisplay_VBufferUnlock(jkGuiBuildMulti_pVBuf2);
+    stdDisplay_VBufferUnlock(jkGuiBuildMulti_pVBuf1);
+    rdroid_curAcceleration = savedAcceleration;
+
+    memcpy(jkGuiBuildMulti_thing->puppet, &savedPuppet, sizeof(savedPuppet));
+    rdMatrix_Copy34(&jkGuiBuildMulti_matrix, &savedMatrix);
+    XDBG("ProfilePortrait: booth exit\n");
+}
+
+int jkGuiBuildMulti_XboxEnsurePortraitCache(const wchar_t *characterName)
+{
+    jkPlayerMpcInfo mpcInfo;
+    sithPlayerInfo playerInfo;
+    stdBitmap *portraitBitmap;
+    int savedRendering;
+    int wrotePortrait;
+
+    if (!characterName || !characterName[0])
+        return 0;
+
+    XDBG("ProfilePortrait: ensure enter\n");
+    portraitBitmap = jkGuiBuildMulti_XboxLoadPortraitCache(characterName);
+    if (portraitBitmap)
+    {
+        stdBitmap_Free(portraitBitmap);
+        XDBG("ProfilePortrait: ensure existing ok\n");
+        return 1;
+    }
+
+    memset(&mpcInfo, 0, sizeof(mpcInfo));
+    memset(&playerInfo, 0, sizeof(playerInfo));
+    if (!jkPlayer_MPCParse(&mpcInfo, &playerInfo, jkPlayer_playerShortName, (wchar_t*)characterName, 0))
+    {
+        XDBGF("ProfilePortraitDbg: unable to parse mpc character='%ls'\n", characterName);
+        XDBG("ProfilePortrait: ensure parse failed\n");
+        return 0;
+    }
+
+    if (jkGuiBuildMulti_renderOpen)
+    {
+        XDBGF("ProfilePortraitDbg: render already open, skipping cache character='%ls'\n", characterName);
+        XDBG("ProfilePortrait: ensure render already open\n");
+        return 0;
+    }
+
+    wrotePortrait = 0;
+    savedRendering = jkGuiBuildMulti_bRendering;
+    jkGuiBuildMulti_bRendering = 1;
+    jkGuiBuildMulti_xboxLatestPortraitValid = 0;
+
+    if (jkGuiBuildMulti_DisplayModel())
+    {
+        jkGuiBuildMulti_ThingInit(mpcInfo.model);
+        if (jkGuiBuildMulti_thing && jkGuiBuildMulti_thing->puppet && jkGuiBuildMulti_pCamera)
+        {
+            XDBG("ProfilePortrait: ensure drawing booth\n");
+            std3D_XboxSetScreenSpaceRenderList(1);
+            std3D_XboxSetViewport(JKGUIMULTI_PREVIEW_X,
+                                  480 - JKGUIMULTI_PREVIEW_Y - JKGUIMULTI_PREVIEW_H,
+                                  JKGUIMULTI_PREVIEW_W,
+                                  JKGUIMULTI_PREVIEW_H);
+            rdAdvanceFrame();
+            jkGuiBuildMulti_XboxCapturePortraitBooth();
+            std3D_XboxSetScreenSpaceRenderList(0);
+            std3D_XboxResetViewport();
+            jkGuiBuildMulti_XboxWritePortraitCache(characterName);
+            wrotePortrait = jkGuiBuildMulti_xboxLatestPortraitValid;
+        }
+        else
+        {
+            XDBG("ProfilePortrait: ensure thing missing\n");
+        }
+        jkGuiBuildMulti_ThingCleanup();
+    }
+    else
+    {
+        XDBG("ProfilePortrait: ensure display model failed\n");
+    }
+
+    jkGuiBuildMulti_CloseRender();
+    jkGuiBuildMulti_bRendering = savedRendering;
+
+    if (!wrotePortrait)
+    {
+        XDBG("ProfilePortrait: ensure no portrait written\n");
+        return 0;
+    }
+
+    portraitBitmap = jkGuiBuildMulti_XboxLoadPortraitCache(characterName);
+    if (!portraitBitmap)
+    {
+        XDBG("ProfilePortrait: ensure reload failed\n");
+        return 0;
+    }
+    stdBitmap_Free(portraitBitmap);
+    XDBG("ProfilePortrait: ensure ok\n");
+    return 1;
+}
 #endif
 
 static wchar_t jkGuiBuildMulti_waTmpRankLabel[128+1];
@@ -366,9 +1180,6 @@ static rdRect jkGuiBuildMulti_rect_5353C8 = {315, 115, 260, 260};
 #else
 #define BUILDMULTI_SWITCH_DELAY_MS (10)
 #endif
-
-// Added
-int32_t jkGuiBuildMulti_bRendering = 0;
 
 static void jkGuiBuildMulti_MakeGeneratedCharacterName(wchar_t *out, int outLen)
 {
@@ -499,6 +1310,9 @@ void jkGuiBuildMulti_ThingInit(char *pModelFpath)
     jkGuiBuildMulti_bRendering = 1; // Added
 
     jkGuiBuildMulti_model = rdModel3_New(pModelFpath);
+#ifdef TARGET_XBOX
+    jkGuiBuildMulti_xboxLatestPortraitValid = 0;
+#endif
     jkGuiBuildMulti_thing = rdThing_New(0);
     rdThing_SetModel3(jkGuiBuildMulti_thing, jkGuiBuildMulti_model);
     jkGuiBuildMulti_thing->puppet = rdPuppet_New(jkGuiBuildMulti_thing);
@@ -548,6 +1362,18 @@ static void jkGuiBuildMulti_XboxPostMenuDraw(void *ctx)
     (void)ctx;
 
     jkGuiBuildMulti_xboxPostDrawCalls++;
+    if (jkGuiBuildMulti_xboxPostDrawCalls <= 30 || (jkGuiBuildMulti_xboxPostDrawCalls % 300) == 0)
+    {
+        XDBGF("MenuFlickerDbg: postDraw call=%u suspended=%d renderOpen=%d rendering=%d lastSwitch=%u model=%p puppet=%p menuDrawCalls=%u\n",
+              jkGuiBuildMulti_xboxPostDrawCalls,
+              g_app_suspended,
+              jkGuiBuildMulti_renderOpen,
+              jkGuiBuildMulti_bRendering,
+              jkGuiBuildMulti_lastModelDrawMs,
+              jkGuiBuildMulti_thing,
+              jkGuiBuildMulti_thing ? jkGuiBuildMulti_thing->puppet : NULL,
+              jkGuiBuildMulti_xboxModelDrawerCalls);
+    }
 
     if (!g_app_suspended || !jkGuiBuildMulti_renderOpen || !jkGuiBuildMulti_bRendering)
         return;
@@ -600,13 +1426,21 @@ static void jkGuiBuildMulti_XboxPostMenuDraw(void *ctx)
     if (jkGuiBuildMulti_pThingGun && jkGuiBuildMulti_thing->hierarchyNodeMatrices)
         rdThing_Draw(jkGuiBuildMulti_pThingGun, jkGuiBuildMulti_thing->hierarchyNodeMatrices + 12);
     rdFinishFrame();
-    std3D_XboxSetScreenSpaceRenderList(0);
-    std3D_XboxResetViewport();
 
     rot.x = 0.0;
     rot.z = 0.0;
     rot.y = a2a * 20.0;
     rdMatrix_PostRotate34(&jkGuiBuildMulti_matrix, &rot);
+
+    std3D_ClearZBuffer();
+    rdCamera_SetCurrent(jkGuiBuildMulti_pCamera);
+    rdThing_Draw(jkGuiBuildMulti_thing, &jkGuiBuildMulti_matrix);
+    if (jkGuiBuildMulti_pThingGun && jkGuiBuildMulti_thing->hierarchyNodeMatrices)
+        rdThing_Draw(jkGuiBuildMulti_pThingGun, jkGuiBuildMulti_thing->hierarchyNodeMatrices + 12);
+    rdFinishFrame();
+    std3D_XboxSetScreenSpaceRenderList(0);
+    std3D_XboxResetViewport();
+
     stdControl_ShowCursor(0);
 }
 #endif
@@ -832,6 +1666,10 @@ LABEL_32:
                     jkGuiBuildMulti_aModels[jkGuiBuildMulti_modelIdx].sndFpath,
                     jkGame_aSabers[jkGuiBuildMulti_saberIdx].sideMat,
                     jkGame_aSabers[jkGuiBuildMulti_saberIdx].tipMat);
+#ifdef TARGET_XBOX
+                XDBG("ProfilePortrait: save capture visible preview\n");
+                jkGuiBuildMulti_XboxCaptureVisiblePortraitBooth();
+#endif
                 break;
             case 109:
                 jkPlayer_FixStars();
@@ -1502,6 +2340,10 @@ int jkGuiBuildMulti_Show()
                         1);
                     jkGuiBuildMulti_ShowEditCharacter(0);
                     jkPlayer_MPCWrite(&jkPlayer_playerInfos[playerThingIdx], jkPlayer_playerShortName, wPlayerName);
+#ifdef TARGET_XBOX
+                    XDBG("ProfilePortrait: post edit regenerate request\n");
+                    jkGuiBuildMulti_XboxWriteLatestOrGeneratePortraitCache(wPlayerName);
+#endif
                     v1 = jkGuiBuildMulti_menuEditCharacter_buttons[3].selectedTextEntry;
                 }
                 else
@@ -1782,6 +2624,10 @@ LABEL_16:
     jkPlayer_mpcInfoSet = 0;
     jkGuiBuildMulti_ShowEditCharacter(1);
     jkPlayer_MPCWrite(&jkPlayer_playerInfos[playerThingIdx], jkPlayer_playerShortName, jkGuiBuildMulti_aWchar_5594C8);
+#ifdef TARGET_XBOX
+    XDBG("ProfilePortrait: post new regenerate request\n");
+    jkGuiBuildMulti_XboxWriteLatestOrGeneratePortraitCache(jkGuiBuildMulti_aWchar_5594C8);
+#endif
     jkGuiRend_DarrayFree(&daPersonalities); // MOTS added
     return v8;
 }
@@ -1808,7 +2654,6 @@ int jkGuiBuildMulti_FUN_00420930(jkGuiElement *pElement,jkGuiMenu *pMenu,int32_t
 
     if (pMenu != (jkGuiMenu *)0x0) {
         jkGuiRend_Paint(pMenu);
-        jkGuiRend_Paint(pMenu);
     }
     return 0;
 }
@@ -1833,7 +2678,6 @@ int jkGuiBuildMulti_FUN_004209b0(jkGuiElement *pElement,jkGuiMenu *pMenu, int32_
     }
 
     if (pMenu != (jkGuiMenu *)0x0) {
-        jkGuiRend_Paint(pMenu);
         jkGuiRend_Paint(pMenu);
     }
     return 0;
@@ -2033,6 +2877,10 @@ LABEL_18:
                         1);
                     jkGuiBuildMulti_ShowEditCharacter(0);
                     jkPlayer_MPCWrite(&jkPlayer_playerInfos[playerThingIdx], jkPlayer_playerShortName, name);
+#ifdef TARGET_XBOX
+                    XDBG("ProfilePortrait: post load edit regenerate request\n");
+                    jkGuiBuildMulti_XboxWriteLatestOrGeneratePortraitCache(name);
+#endif
                     v11 = jkGuiBuildMulti_menuLoadCharacter_buttons[3].selectedTextEntry;
                 }
                 else

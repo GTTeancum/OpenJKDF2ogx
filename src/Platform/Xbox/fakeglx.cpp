@@ -3875,3 +3875,256 @@ extern "C" void FGL_SaveScreenShot(char *szfile)
 
 #endif
 
+static int FakeGL_XboxCaptureFormatIsExplicitSwizzled(D3DFORMAT format)
+{
+    if (format == D3DFMT_X8R8G8B8
+        || format == D3DFMT_A8R8G8B8
+        || format == D3DFMT_R5G6B5
+        || format == D3DFMT_X1R5G5B5
+        || format == D3DFMT_A1R5G5B5)
+        return 1;
+
+    if (format == D3DFMT_LIN_X8R8G8B8)
+        return 1;
+    if (format == D3DFMT_LIN_A8R8G8B8)
+        return 1;
+    if (format == D3DFMT_LIN_R5G6B5)
+        return 0;
+    if (format == D3DFMT_LIN_X1R5G5B5)
+        return 0;
+    if (format == D3DFMT_LIN_A1R5G5B5)
+        return 0;
+
+    return XGIsSwizzledFormat(format) ? 1 : 0;
+}
+
+static int FakeGL_XboxCaptureFormatIs565(D3DFORMAT format)
+{
+    if (format == D3DFMT_R5G6B5)
+        return 1;
+    if (format == D3DFMT_LIN_R5G6B5)
+        return 1;
+    return 0;
+}
+
+static int FakeGL_XboxCaptureFormatIs1555(D3DFORMAT format)
+{
+    if (format == D3DFMT_X1R5G5B5 || format == D3DFMT_A1R5G5B5)
+        return 1;
+    if (format == D3DFMT_LIN_X1R5G5B5)
+        return 1;
+    if (format == D3DFMT_LIN_A1R5G5B5)
+        return 1;
+    return 0;
+}
+
+extern "C" int std3D_XboxCaptureBackBufferRGB(int x, int y, int w, int h, unsigned char *outRgb, int outPitch)
+{
+#ifdef _XBOX
+    IDirect3DSurface8 *surface = NULL;
+    IDirect3DSurface8 *linearSurface = NULL;
+    D3DLOCKED_RECT locked;
+    D3DSURFACE_DESC desc;
+    D3DSURFACE_DESC srcDesc;
+    HRESULT hr;
+    DWORD bytesPerPixel;
+    DWORD linearPitch;
+    unsigned char *linearPixels = NULL;
+    const unsigned char *basePixels;
+    int sourcePitch;
+    int brightPixels = 0;
+    int nonBlackPixels = 0;
+    int helperSwizzled = 0;
+    int explicitSwizzled = 0;
+    int copiedToLinear = 0;
+    static int s_captureLogBudget = 24;
+
+    if (!outRgb || w <= 0 || h <= 0 || outPitch < w * 3)
+        return 0;
+
+    if (x < 0 || y < 0 || x + w > (int)gWidth || y + h > (int)gHeight)
+        return 0;
+
+    D3DDevice_GetBackBuffer(0, D3DBACKBUFFER_TYPE_MONO, &surface);
+    if (!surface)
+        D3DDevice_GetBackBuffer(-1, D3DBACKBUFFER_TYPE_MONO, &surface);
+    if (!surface)
+        return 0;
+
+    memset(&desc, 0, sizeof(desc));
+    surface->GetDesc(&desc);
+    srcDesc = desc;
+    bytesPerPixel = XGBytesPerPixelFromFormat(desc.Format);
+    if (!bytesPerPixel)
+    {
+        surface->Release();
+        return 0;
+    }
+
+    D3DDevice_BlockUntilIdle();
+
+    hr = D3DDevice_CreateImageSurface((UINT)w, (UINT)h, D3DFMT_LIN_X8R8G8B8, &linearSurface);
+    if (SUCCEEDED(hr) && linearSurface)
+    {
+        RECT srcRect;
+        POINT dstPoint;
+        srcRect.left = x;
+        srcRect.top = y;
+        srcRect.right = x + w;
+        srcRect.bottom = y + h;
+        dstPoint.x = 0;
+        dstPoint.y = 0;
+        D3DDevice_CopyRects(surface, &srcRect, 1, linearSurface, &dstPoint);
+        D3DDevice_BlockUntilIdle();
+        memset(&desc, 0, sizeof(desc));
+        linearSurface->GetDesc(&desc);
+        bytesPerPixel = XGBytesPerPixelFromFormat(desc.Format);
+        memset(&locked, 0, sizeof(locked));
+        hr = linearSurface->LockRect(&locked, NULL, D3DLOCK_READONLY);
+        if (SUCCEEDED(hr) && locked.pBits && bytesPerPixel >= 4)
+        {
+            basePixels = (const unsigned char*)locked.pBits;
+            sourcePitch = locked.Pitch;
+            copiedToLinear = 1;
+            for (int row = 0; row < h; row++)
+            {
+                const unsigned char *src = basePixels + row * sourcePitch;
+                unsigned char *dst = outRgb + row * outPitch;
+                for (int col = 0; col < w; col++)
+                {
+                    dst[col * 3 + 0] = src[col * 4 + 2];
+                    dst[col * 3 + 1] = src[col * 4 + 1];
+                    dst[col * 3 + 2] = src[col * 4 + 0];
+                    if ((int)dst[col * 3 + 0] + (int)dst[col * 3 + 1] + (int)dst[col * 3 + 2] > 72)
+                        brightPixels++;
+                    if (dst[col * 3 + 0] || dst[col * 3 + 1] || dst[col * 3 + 2])
+                        nonBlackPixels++;
+                }
+            }
+            linearSurface->UnlockRect();
+
+            if (s_captureLogBudget > 0)
+            {
+                    Con_Printf("ProfilePortraitDbg: readback copyrect srcFmt=0x%X dstFmt=0x%X bpp=%lu dstSurf=%lux%lu pitch=%d crop=%d,%d %dx%d bright=%d nonBlack=%d\n",
+                               (unsigned int)srcDesc.Format,
+                               (unsigned int)desc.Format,
+                               (unsigned long)bytesPerPixel,
+                               (unsigned long)desc.Width,
+                           (unsigned long)desc.Height,
+                           sourcePitch,
+                           x,
+                           y,
+                           w,
+                           h,
+                           brightPixels,
+                           nonBlackPixels);
+                s_captureLogBudget--;
+            }
+
+            linearSurface->Release();
+            surface->Release();
+            return 1;
+        }
+        if (SUCCEEDED(hr) && locked.pBits)
+            linearSurface->UnlockRect();
+        linearSurface->Release();
+        linearSurface = NULL;
+    }
+
+    brightPixels = 0;
+    nonBlackPixels = 0;
+    hr = surface->LockRect(&locked, NULL, D3DLOCK_READONLY);
+    if (FAILED(hr) || !locked.pBits)
+    {
+        surface->Release();
+        return 0;
+    }
+
+    basePixels = (const unsigned char*)locked.pBits;
+    sourcePitch = locked.Pitch;
+    helperSwizzled = XGIsSwizzledFormat(desc.Format) ? 1 : 0;
+    explicitSwizzled = FakeGL_XboxCaptureFormatIsExplicitSwizzled(desc.Format);
+    if (explicitSwizzled)
+    {
+        linearPitch = desc.Width * bytesPerPixel;
+        linearPixels = new unsigned char[linearPitch * desc.Height];
+        if (!linearPixels)
+        {
+            surface->UnlockRect();
+            surface->Release();
+            return 0;
+        }
+        XGUnswizzleRect(locked.pBits,
+                        desc.Width,
+                        desc.Height,
+                        NULL,
+                        linearPixels,
+                        linearPitch,
+                        NULL,
+                        bytesPerPixel);
+        basePixels = linearPixels;
+        sourcePitch = linearPitch;
+    }
+
+    for (int row = 0; row < h; row++)
+    {
+        const unsigned char *src = basePixels + (y + row) * sourcePitch + x * bytesPerPixel;
+        unsigned char *dst = outRgb + row * outPitch;
+        for (int col = 0; col < w; col++)
+        {
+            if (FakeGL_XboxCaptureFormatIs565(desc.Format))
+            {
+                unsigned short p = ((const unsigned short*)src)[col];
+                dst[col * 3 + 0] = (unsigned char)((((p >> 11) & 0x1F) * 255) / 31);
+                dst[col * 3 + 1] = (unsigned char)((((p >> 5) & 0x3F) * 255) / 63);
+                dst[col * 3 + 2] = (unsigned char)(((p & 0x1F) * 255) / 31);
+            }
+            else if (FakeGL_XboxCaptureFormatIs1555(desc.Format))
+            {
+                unsigned short p = ((const unsigned short*)src)[col];
+                dst[col * 3 + 0] = (unsigned char)((((p >> 10) & 0x1F) * 255) / 31);
+                dst[col * 3 + 1] = (unsigned char)((((p >> 5) & 0x1F) * 255) / 31);
+                dst[col * 3 + 2] = (unsigned char)(((p & 0x1F) * 255) / 31);
+            }
+            else
+            {
+                dst[col * 3 + 0] = src[col * 4 + 2];
+                dst[col * 3 + 1] = src[col * 4 + 1];
+                dst[col * 3 + 2] = src[col * 4 + 0];
+            }
+            if ((int)dst[col * 3 + 0] + (int)dst[col * 3 + 1] + (int)dst[col * 3 + 2] > 72)
+                brightPixels++;
+            if (dst[col * 3 + 0] || dst[col * 3 + 1] || dst[col * 3 + 2])
+                nonBlackPixels++;
+        }
+    }
+
+    if (s_captureLogBudget > 0)
+    {
+        Con_Printf("ProfilePortraitDbg: readback fmt=0x%X helperSwiz=%d explicitSwiz=%d bpp=%lu surf=%lux%lu pitch=%d crop=%d,%d %dx%d bright=%d nonBlack=%d\n",
+                   (unsigned int)desc.Format,
+                   helperSwizzled,
+                   explicitSwizzled,
+                   (unsigned long)bytesPerPixel,
+                   (unsigned long)desc.Width,
+                   (unsigned long)desc.Height,
+                   sourcePitch,
+                   x,
+                   y,
+                   w,
+                   h,
+                   brightPixels,
+                   nonBlackPixels);
+        s_captureLogBudget--;
+    }
+
+    delete[] linearPixels;
+    surface->UnlockRect();
+    surface->Release();
+    return 1;
+#else
+    (void)x; (void)y; (void)w; (void)h; (void)outRgb; (void)outPitch;
+    return 0;
+#endif
+}
+

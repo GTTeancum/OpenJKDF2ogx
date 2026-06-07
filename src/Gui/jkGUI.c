@@ -455,6 +455,7 @@ int jkGui_SetModeMenu(const void *palette)
     if ( !stdDisplay_bOpen && !stdDisplay_Open(v2) )
     {
         stdPrintf(pHS->errorPrint, ".\\Gui\\jkGUI.c", 400, "Error opening display device.\n", 0, 0, 0, 0);
+        --jkGui_modesets;
         return 0;
     }
 
@@ -481,6 +482,7 @@ int jkGui_SetModeMenu(const void *palette)
             mode.render_8bpp.height,
             mode.render_rgb.bpp,
             0);
+        --jkGui_modesets;
         return 0;
     }
     return result;

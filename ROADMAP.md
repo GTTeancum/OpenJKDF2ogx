@@ -135,8 +135,12 @@ Bringing the OpenJKDF2 PC enhancements over to Xbox:
   higher quality / smaller VRAM footprint than the engine's MAT format
 - Alpha blending support — proper translucent surfaces (windows, glass,
   force effects) instead of the original's stipple/dither workarounds
-- Multiplayer — system link, split screen, and the combination
-  (split-screen with remote players over system link)
+- Multiplayer — system link and split screen
+  - System Link flow: Host/Join -> connect to other machines ->
+    split-screen-style ready-up lobby. Starting the match requires at least
+    one active local player.
+  - No separate "Combo" multiplayer menu item; System Link owns the
+    network-plus-local-player flow.
 - Multiplayer bots — biggest item in this phase. Substantial work:
     - Prior art: the RBots mod (https://rbots.massassi.net/) implements bots
       at the .cog level on top of vanilla. Useful as behavior reference and

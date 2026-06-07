@@ -447,9 +447,6 @@ void jkCutscene_CleanReset()
 #endif
 
     jkCutscene_pSmush = NULL;
-#ifdef TARGET_XBOX
-    stdSound_XboxStreamClose();
-#endif
     memset(&jkCutscene_smk, 0, sizeof(jkCutscene_smk));
     jkCutscene_bSmkValid = 0;
     jkCutscene_smk_usf = 0;
@@ -852,10 +849,9 @@ int jkCutscene_sub_421410()
 {
     stdPlatform_Printf("OpenJKDF2: %s\n", __func__);
     
-#if !defined(SDL2_RENDER) && !defined(TARGET_TWL) && !defined(TARGET_XBOX)
     if ( !jkCutscene_isRendering )
         return 0;
-#endif
+
     Window_RemoveMsgHandler(jkCutscene_Handler);
 #ifdef TARGET_XBOX
     jkCutscene_XboxCloseInput();
@@ -962,17 +958,8 @@ int jkCutscene_smack_related_loops()
         {
             if ( jkCutscene_isRendering )
             {
-                Window_RemoveMsgHandler(jkCutscene_Handler);
-#if !defined(SDL2_RENDER) && !defined(TARGET_TWL) && !defined(TARGET_XBOX)
-                if (!openjkdf2_bIsKVM)
-                    smack_sub_426940();
-#endif
-                jkCutscene_isRendering = 0;
-                jk_ShowCursor(1);
 #ifdef TARGET_XBOX
-                jkCutscene_XboxCloseInput();
-                stdSound_XboxStreamClose();
-                std3D_XboxReleaseMenuTextures();
+                stdPlatform_Printf("CutsceneTrace: playback finished; deferring cleanup to VideoLeave\n");
 #endif
             }
         }

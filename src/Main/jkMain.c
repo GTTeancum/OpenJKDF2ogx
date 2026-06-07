@@ -73,6 +73,49 @@
 extern "C"
 #endif
 void std3D_XboxReleaseMenuTextures(void);
+
+static void jkMain_XboxLogTransitionResources(const char *phase)
+{
+    MEMORYSTATUS memStatus;
+    sithWorld *world = sithWorld_pCurrentWorld;
+
+    memStatus.dwLength = sizeof(memStatus);
+    GlobalMemoryStatus(&memStatus);
+
+    XDBGF("ResourceTrace: phase=%s state=%d next=%d gameMode=%d stop=%d init=%d ddraw=%d video=%d guiModes=%d six=%d eight=%d multi=%d server=%d split=%d localPlayers=%d phys=%lu page=%lu world=%p things=%d/%d sectors=%d surfaces=%d cogs=%d mats=%d/%d models=%lu/%lu sprites=%d/%d sounds=%d/%d level='%s'\n",
+          phase ? phase : "(null)",
+          jkSmack_currentGuiState,
+          jkSmack_nextGuiState,
+          jkSmack_gameMode,
+          jkSmack_stopTick,
+          jkMain_bInit,
+          jkGame_isDDraw,
+          Video_bOpened,
+          jkGui_modesets,
+          thing_six,
+          thing_eight,
+          sithNet_isMulti,
+          sithNet_isServer,
+          xboxSplitScreen_IsEnabled(),
+          xboxSplitScreen_GetRequestedLocalPlayerCount(),
+          memStatus.dwAvailPhys,
+          memStatus.dwAvailPageFile,
+          world,
+          world ? world->numThingsLoaded : -1,
+          world ? world->numThings : -1,
+          world ? world->numSectors : -1,
+          world ? world->numSurfaces : -1,
+          world ? world->numCogsLoaded : -1,
+          world ? world->numMaterialsLoaded : -1,
+          world ? world->numMaterials : -1,
+          world ? (unsigned long)world->numModelsLoaded : 0,
+          world ? (unsigned long)world->numModels : 0,
+          world ? world->numSpritesLoaded : -1,
+          world ? world->numSprites : -1,
+          world ? world->numSoundsLoaded : -1,
+          world ? world->numSounds : -1,
+          jkMain_aLevelJklFname);
+}
 #endif
 
 #if defined(TARGET_TWL)
@@ -124,20 +167,34 @@ static int jkMain_CreateLocalMultiplayerHost(const char *pGobPath, const char *p
     int multiModeFlags;
     HRESULT result;
 
+    XDBGF("MPLoadTrace: CreateLocalMultiplayerHost enter gob='%s' jkl='%s' type=0x%x alreadyMulti=%d server=%d requestedPlayers=%d\n",
+          pGobPath ? pGobPath : "(null)",
+          pEpisodeName ? pEpisodeName : "(null)",
+          type,
+          sithNet_isMulti,
+          sithNet_isServer,
+          xboxSplitScreen_GetRequestedLocalPlayerCount());
     if ( sithNet_isMulti && sithNet_isServer )
+    {
+        XDBG("MPLoadTrace: CreateLocalMultiplayerHost already hosting\n");
         return 1;
+    }
 
     multiModeFlags = jkMain_MultiplayerFlagsForEpisodeType(type);
     sithNet_scorelimit = 0;
     sithNet_multiplayer_timelimit = 0;
+    XDBGF("MPLoadTrace: calling sithMulti_CreatePlayer flags=0x%x\n", multiModeFlags);
     result = sithMulti_CreatePlayer(L"OpenJKDF2 Xbox", L"", pGobPath, pEpisodeName, xboxSplitScreen_GetRequestedLocalPlayerCount(), 8, multiModeFlags, 180, 0);
     if ( result )
     {
-        XDBG("Xbox MP debug: sithMulti_CreatePlayer failed\n");
+        XDBGF("MPLoadTrace: sithMulti_CreatePlayer failed hr=0x%x\n", result);
         return 0;
     }
 
-    XDBG("Xbox MP debug: upstream local host path enabled\n");
+    XDBGF("MPLoadTrace: sithMulti_CreatePlayer ok multi=%d server=%d maxPlayers=%d\n",
+          sithNet_isMulti,
+          sithNet_isServer,
+          jkPlayer_maxPlayers);
     return 1;
 }
 #endif
@@ -379,6 +436,9 @@ void jkMain_GuiAdvance()
         v4 = jkSmack_currentGuiState;
         v5 = jkMain_aGuiStateFuncs[jkSmack_currentGuiState].leaveFunc;
 #ifdef TARGET_XBOX
+        jkMain_XboxLogTransitionResources("gui-transition-before-leave");
+#endif
+#ifdef TARGET_XBOX
         if (jkSmack_currentGuiState == JK_GAMEMODE_VIDEO ||
             jkSmack_currentGuiState == JK_GAMEMODE_VIDEO2 ||
             jkSmack_currentGuiState == JK_GAMEMODE_VIDEO3 ||
@@ -392,6 +452,9 @@ void jkMain_GuiAdvance()
 #endif
         if ( v5 )
             v5(jkSmack_currentGuiState, jkSmack_nextGuiState);
+#ifdef TARGET_XBOX
+        jkMain_XboxLogTransitionResources("gui-transition-after-leave");
+#endif
         //jk_printf("leave %u\n", jkSmack_currentGuiState);
 
         jkSmack_stopTick = 0;
@@ -413,6 +476,9 @@ void jkMain_GuiAdvance()
             goto LABEL_35;
         //jk_printf("show %u\n", jkSmack_currentGuiState);
         v7(jkSmack_nextGuiState, v4);
+#ifdef TARGET_XBOX
+        jkMain_XboxLogTransitionResources("gui-transition-after-show");
+#endif
         //jk_printf("showed %u\n", jkSmack_currentGuiState);
     }
 LABEL_35:
@@ -527,6 +593,10 @@ void jkMain_EscapeMenuLeave(int a2, int a3)
 {
     int v3; // eax
 
+#ifdef TARGET_XBOX
+    jkMain_XboxLogTransitionResources("escape-leave-enter");
+#endif
+
     if ( !sithNet_isMulti )
     {
         sithTime_Resume();
@@ -559,6 +629,8 @@ void jkMain_EscapeMenuLeave(int a2, int a3)
         if ( sithNet_isMulti && a3 != JK_GAMEMODE_ESCAPE )
         {
             thing_eight = 0;
+            if ( sithNet_isServer )
+                DirectPlay_SetSessionFlagidk(0);
             if ( a3 == 3 ) {
                 // MOTS added
                 if (Main_bMotsCompat) {
@@ -569,8 +641,6 @@ void jkMain_EscapeMenuLeave(int a2, int a3)
             else {
                 sithMulti_LobbyMessage();
             }
-            if ( sithNet_isServer )
-                DirectPlay_SetSessionFlagidk(0);
             thing_six = 1;
             v3 = jkGuiMultiTally_Show(sithNet_isMulti);
             thing_six = 0;
@@ -585,6 +655,10 @@ void jkMain_EscapeMenuLeave(int a2, int a3)
         }
     }
     jkGui_SetModeGame();
+
+#ifdef TARGET_XBOX
+    jkMain_XboxLogTransitionResources("escape-leave-exit");
+#endif
 }
 
 // MOTS altered
@@ -645,6 +719,18 @@ void jkMain_GameplayShow(int a1, int a2)
     wchar_t *v6; // [esp-4h] [ebp-Ch]
 
     JKTRACEF("GameplayShow: enter a1=%d a2=%d gameMode=%d\n", a1, a2, jkSmack_gameMode);
+#ifdef TARGET_XBOX
+    jkMain_XboxLogTransitionResources("gameplay-show-enter");
+    XDBGF("MPLoadTrace: GameplayShow enter a1=%d a2=%d gameMode=%d level='%s' multi=%d server=%d split=%d players=%d\n",
+          a1,
+          a2,
+          jkSmack_gameMode,
+          jkMain_aLevelJklFname,
+          sithNet_isMulti,
+          sithNet_isServer,
+          xboxSplitScreen_IsEnabled(),
+          xboxSplitScreen_GetRequestedLocalPlayerCount());
+#endif
     level_loaded = 0;
 
     // MOTS added something here TODO
@@ -708,7 +794,15 @@ void jkMain_GameplayShow(int a1, int a2)
 #ifdef JKM_DSS
             jkPlayer_SetAmmoMaximums(jkPlayer_personality);
 #endif
+#ifdef TARGET_XBOX
+            XDBG("MPLoadTrace: GameplayShow before sithMain_Mode1Init_3\n");
+            jkMain_XboxLogTransitionResources("mp-load-before-world");
+#endif
             v3 = sithMain_Mode1Init_3(jkMain_aLevelJklFname);
+#ifdef TARGET_XBOX
+            XDBGF("MPLoadTrace: GameplayShow sithMain_Mode1Init_3 returned %d\n", v3);
+            jkMain_XboxLogTransitionResources("mp-load-after-world");
+#endif
         }
         else
         {
@@ -716,11 +810,36 @@ void jkMain_GameplayShow(int a1, int a2)
         }
 
         level_loaded = v3;
+#ifdef TARGET_XBOX
+        XDBGF("MPLoadTrace: GameplayShow level_loaded=%d before LoadingFinalize\n", level_loaded);
+        jkMain_XboxLogTransitionResources("gameplay-load-before-finalize");
+#endif
         JKTRACEF("GameplayShow: level_loaded=%d\n", level_loaded);
         jkGuiTitle_LoadingFinalize();
+#ifdef TARGET_XBOX
+        XDBG("MPLoadTrace: GameplayShow after LoadingFinalize\n");
+        jkMain_XboxLogTransitionResources("gameplay-load-after-finalize");
+#endif
         if ( !level_loaded )
         {
             JKTRACE("GameplayShow: LEVEL LOAD FAILED\n");
+#ifdef TARGET_XBOX
+            jkMain_XboxLogTransitionResources("gameplay-load-fail-before-cleanup");
+            XDBGF("MPLoadTrace: GameplayShow load failed cleanup multi=%d server=%d opened=%d currentWorld=%p\n",
+                  sithNet_isMulti,
+                  sithNet_isServer,
+                  sithMain_bOpened,
+                  sithWorld_pCurrentWorld);
+#endif
+            if ( sithNet_isMulti )
+            {
+                sithMulti_Shutdown();
+                thing_six = 0;
+                thing_eight = 0;
+            }
+#ifdef TARGET_XBOX
+            jkMain_XboxLogTransitionResources("gameplay-load-fail-after-multi-cleanup");
+#endif
             if ( jkGame_isDDraw )
             {
                 Windows_ShutdownGdi();
@@ -762,30 +881,65 @@ void jkMain_GameplayShow(int a1, int a2)
         else if ( sithNet_isServer )
         {
 LABEL_28:
+#ifdef TARGET_XBOX
+            XDBG("MPLoadTrace: GameplayShow server post-load before ClearInventory\n");
+#endif
             sithInventory_ClearInventory(sithPlayer_pLocalPlayerThing);
+#ifdef TARGET_XBOX
+            XDBG("MPLoadTrace: GameplayShow server post-load before MpcInitBins\n");
+#endif
             jkPlayer_MpcInitBins(sithPlayer_pLocalPlayer);
             
+#ifdef TARGET_XBOX
+            XDBG("MPLoadTrace: GameplayShow server post-load before jkPlayer_Startup\n");
+#endif
             jkPlayer_Startup();
+#ifdef TARGET_XBOX
+            XDBG("MPLoadTrace: GameplayShow server post-load before jkPlayer_InitForceBins\n");
+#endif
             jkPlayer_InitForceBins();
             jkMain_bInit = 1;
             if ( jkSmack_gameMode == 2 || !jkSmack_gameMode )
             {
+#ifdef TARGET_XBOX
+                XDBG("MPLoadTrace: GameplayShow server post-load before sithCamera_SetsFocus\n");
+#endif
                 sithCamera_SetsFocus();
+#ifdef TARGET_XBOX
+                XDBG("MPLoadTrace: GameplayShow server post-load before jkPlayer_InitSaber\n");
+#endif
                 jkPlayer_InitSaber();
+#ifdef TARGET_XBOX
+                XDBG("MPLoadTrace: GameplayShow server post-load before sithMain_AutoSave\n");
+#endif
                 sithMain_AutoSave();
             }
             if ( sithNet_isMulti )
             {
                 if ( sithNet_isServer )
                 {
+#ifdef TARGET_XBOX
+                    XDBG("MPLoadTrace: GameplayShow server post-load before DirectPlay_SetSessionFlagidk\n");
+#endif
                     DirectPlay_SetSessionFlagidk(1);
                     v5 = idx_13b4_related;
                     if ( idx_13b4_related >= (unsigned int)jkPlayer_maxPlayers )
                         v5 = jkPlayer_maxPlayers;
+#ifdef TARGET_XBOX
+                    XDBGF("MPLoadTrace: GameplayShow server post-load before DirectPlay_SetSessionDesc max=%u\n", (unsigned)v5);
+#endif
                     DirectPlay_SetSessionDesc(jkMain_aLevelJklFname, v5);
                 }
                 if ( sithNet_isMulti )
+#ifdef TARGET_XBOX
+                {
+                    XDBG("MPLoadTrace: GameplayShow server post-load before jkDSS_wrap_SendSaberInfo_alt\n");
+#endif
                     jkDSS_wrap_SendSaberInfo_alt();
+#ifdef TARGET_XBOX
+                    XDBG("MPLoadTrace: GameplayShow server post-load after jkDSS_wrap_SendSaberInfo_alt\n");
+                }
+#endif
             }
         }
         else {
@@ -826,14 +980,28 @@ LABEL_28:
     }
 
     JKTRACE("GameplayShow: calling SetVideoMode\n");
+#ifdef TARGET_XBOX
+        XDBG("MPLoadTrace: GameplayShow before jkMain_SetVideoMode\n");
+        jkMain_XboxLogTransitionResources("gameplay-before-video-mode");
+#endif
     if ( jkMain_SetVideoMode() )
     {
+#ifdef TARGET_XBOX
+        XDBG("MPLoadTrace: GameplayShow after jkMain_SetVideoMode ok\n");
+        jkMain_XboxLogTransitionResources("gameplay-after-video-mode");
+#endif
         JKTRACE("GameplayShow: SetVideoMode ok, ToggleCursor\n");
         stdControl_ToggleCursor(1);
         JKTRACE("GameplayShow: Flush\n");
         stdControl_Flush();
         JKTRACE("GameplayShow: jkGame_Update\n");
+#ifdef TARGET_XBOX
+        XDBG("MPLoadTrace: GameplayShow before warmup jkGame_Update\n");
+#endif
         jkGame_Update();
+#ifdef TARGET_XBOX
+        XDBG("MPLoadTrace: GameplayShow after warmup jkGame_Update\n");
+#endif
 #ifdef TARGET_XBOX
         JKTRACE("GameplayShow: reset game clock after load/display warmup\n");
 #endif
@@ -845,9 +1013,17 @@ LABEL_28:
         JKTRACE("GameplayShow: thing_eight=1\n");
         thing_eight = 1;
         JKTRACE("GameplayShow: done\n");
+#ifdef TARGET_XBOX
+        XDBG("MPLoadTrace: GameplayShow done\n");
+        jkMain_XboxLogTransitionResources("gameplay-show-ready");
+#endif
     }
     else
     {
+#ifdef TARGET_XBOX
+        XDBG("MPLoadTrace: GameplayShow jkMain_SetVideoMode FAILED\n");
+        jkMain_XboxLogTransitionResources("gameplay-video-mode-failed");
+#endif
         JKTRACE("GameplayShow: SetVideoMode FAILED\n");
         if ( jkGuiRend_thing_five )
             jkGuiRend_thing_four = 1;
@@ -988,8 +1164,18 @@ void jkMain_GameplayLeave(int a2, int a3)
 {
     int v3; // eax
 
+#ifdef TARGET_XBOX
+    jkMain_XboxLogTransitionResources("gameplay-leave-enter");
+#endif
+
     // MOTS added
-    if (a3 == JK_GAMEMODE_MOTS_CUTSCENE) return;
+    if (a3 == JK_GAMEMODE_MOTS_CUTSCENE)
+    {
+#ifdef TARGET_XBOX
+        jkMain_XboxLogTransitionResources("gameplay-leave-to-mots-cutscene");
+#endif
+        return;
+    }
 
     if ( a3 == JK_GAMEMODE_ESCAPE )
     {
@@ -1013,6 +1199,8 @@ void jkMain_GameplayLeave(int a2, int a3)
     if ( sithNet_isMulti && a3 != 6 )
     {
         thing_eight = 0;
+        if ( sithNet_isServer )
+            DirectPlay_SetSessionFlagidk(0);
         if ( a3 == 3 ) {
             // MOTS added
             if (Main_bMotsCompat) {
@@ -1023,8 +1211,6 @@ void jkMain_GameplayLeave(int a2, int a3)
         else {
             sithMulti_LobbyMessage();
         }
-        if ( sithNet_isServer )
-            DirectPlay_SetSessionFlagidk(0);
         thing_six = 1;
         v3 = jkGuiMultiTally_Show(sithNet_isMulti);
         thing_six = 0;
@@ -1037,6 +1223,10 @@ void jkMain_GameplayLeave(int a2, int a3)
             jkSmack_nextGuiState = JK_GAMEMODE_MAIN;
         }
     }
+
+#ifdef TARGET_XBOX
+    jkMain_XboxLogTransitionResources("gameplay-leave-exit");
+#endif
 }
 
 void jkMain_TitleShow(int a1, int a2)
@@ -1197,12 +1387,26 @@ int jkMain_loadFile2(char *pGobPath, char *pEpisodeName)
     BOOL v2; // esi
     int result; // eax
 
+#ifdef TARGET_XBOX
+    XDBGF("MPLoadTrace: jkMain_loadFile2 enter gob='%s' jkl='%s'\n",
+          pGobPath ? pGobPath : "(null)",
+          pEpisodeName ? pEpisodeName : "(null)");
+#endif
     _strncpy(jkMain_aLevelJklFname, pEpisodeName, 0x7Fu);
     jkMain_aLevelJklFname[127] = 0;
     jkSmack_gameMode = 2;
+#ifdef TARGET_XBOX
+    XDBG("MPLoadTrace: jkMain_loadFile2 before jkRes_LoadGob\n");
+#endif
     jkRes_LoadGob(pGobPath);
+#ifdef TARGET_XBOX
+    XDBG("MPLoadTrace: jkMain_loadFile2 after jkRes_LoadGob\n");
+#endif
     if ( jkEpisode_mLoad.paEntries )
     {
+#ifdef TARGET_XBOX
+        XDBG("MPLoadTrace: jkMain_loadFile2 freeing previous episode entries\n");
+#endif
         pHS->free(jkEpisode_mLoad.paEntries);
         jkEpisode_mLoad.paEntries = 0;
 
@@ -1210,15 +1414,33 @@ int jkMain_loadFile2(char *pGobPath, char *pEpisodeName)
         jkMain_pEpisodeEnt = NULL;
         jkMain_pEpisodeEnt2 = NULL;
     }
+#ifdef TARGET_XBOX
+    XDBG("MPLoadTrace: jkMain_loadFile2 before jkEpisode_Load\n");
+#endif
     v2 = jkEpisode_Load(&jkEpisode_mLoad);
+#ifdef TARGET_XBOX
+    XDBGF("MPLoadTrace: jkEpisode_Load returned %d type=0x%x numSeq=%d\n",
+          v2,
+          jkEpisode_mLoad.type,
+          jkEpisode_mLoad.numSeq);
+    XDBG("MPLoadTrace: jkMain_loadFile2 before jkEpisode_idk4\n");
+#endif
     jkEpisode_idk4(&jkEpisode_mLoad, pEpisodeName);
+#ifdef TARGET_XBOX
+    XDBG("MPLoadTrace: jkMain_loadFile2 after jkEpisode_idk4\n");
+#endif
     if ( v2 )
     {
 #ifdef TARGET_XBOX
         if ( jkMain_IsMultiplayerEpisodeType(jkEpisode_mLoad.type) )
         {
+            XDBG("MPLoadTrace: jkMain_loadFile2 detected multiplayer episode; creating host\n");
             if ( !jkMain_CreateLocalMultiplayerHost(pGobPath, pEpisodeName, jkEpisode_mLoad.type) )
+            {
+                XDBG("MPLoadTrace: jkMain_loadFile2 host creation failed\n");
                 return 0;
+            }
+            XDBG("MPLoadTrace: jkMain_loadFile2 host creation ok\n");
         }
 #endif
         result = 1;
@@ -1227,9 +1449,18 @@ int jkMain_loadFile2(char *pGobPath, char *pEpisodeName)
             jkGuiRend_thing_four = 1;
         jkSmack_stopTick = 1;
         jkSmack_nextGuiState = 5;
+#ifdef TARGET_XBOX
+        XDBGF("MPLoadTrace: jkMain_loadFile2 scheduled gameplay nextState=%d gameMode=%d level='%s'\n",
+              jkSmack_nextGuiState,
+              jkSmack_gameMode,
+              jkMain_aLevelJklFname);
+#endif
     }
     else
     {
+#ifdef TARGET_XBOX
+        XDBG("MPLoadTrace: jkMain_loadFile2 episode load failed\n");
+#endif
         Windows_ErrorMsgboxWide("ERR_CANNOT_LOAD_FILE %s", pGobPath);
         result = 0;
     }
@@ -1290,6 +1521,10 @@ int jkMain_StartNextLevelInEpisode(int a1, int bIsAPath)
     int v4; // eax
     signed int result; // eax
 
+#ifdef TARGET_XBOX
+    jkMain_XboxLogTransitionResources("start-next-level-enter");
+#endif
+
     if ( !jkEpisode_mLoad.numSeq )
     {
         if ( jkGuiRend_thing_five )
@@ -1298,6 +1533,9 @@ int jkMain_StartNextLevelInEpisode(int a1, int bIsAPath)
         }
         jkSmack_stopTick = 1;
         jkSmack_nextGuiState = JK_GAMEMODE_MAIN;
+#ifdef TARGET_XBOX
+        jkMain_XboxLogTransitionResources("start-next-level-no-sequence");
+#endif
         return 0;
     }
     if ( a1 )
@@ -1330,6 +1568,9 @@ int jkMain_StartNextLevelInEpisode(int a1, int bIsAPath)
                 jkGuiRend_thing_four = 1;
             jkSmack_stopTick = 1;
             jkSmack_nextGuiState = JK_GAMEMODE_CREDITS;
+#ifdef TARGET_XBOX
+            jkMain_XboxLogTransitionResources("start-next-level-credits");
+#endif
             return 1;
         }
         if ( v4 )
@@ -1337,6 +1578,9 @@ int jkMain_StartNextLevelInEpisode(int a1, int bIsAPath)
 
         jkSmack_stopTick = 1;
         jkSmack_nextGuiState = JK_GAMEMODE_MAIN;
+#ifdef TARGET_XBOX
+        jkMain_XboxLogTransitionResources("start-next-level-no-next");
+#endif
         return 0;
     }
     if ( sithNet_isMulti && (sithNet_MultiModeFlags & MULTIMODEFLAG_SINGLE_LEVEL) != 0 )
@@ -1347,6 +1591,9 @@ int jkMain_StartNextLevelInEpisode(int a1, int bIsAPath)
             jkGuiRend_thing_four = 1;
         jkSmack_stopTick = 1;
         jkSmack_nextGuiState = JK_GAMEMODE_MAIN;
+#ifdef TARGET_XBOX
+        jkMain_XboxLogTransitionResources("start-next-level-mp-single-level");
+#endif
         return 0;
     }
     if ( v3->level == v2->level || jkSmack_currentGuiState == JK_GAMEMODE_ENDLEVEL )
@@ -1374,6 +1621,9 @@ int jkMain_StartNextLevelInEpisode(int a1, int bIsAPath)
         jkSmack_nextGuiState = JK_GAMEMODE_ENDLEVEL;
         result = 1;
     }
+#ifdef TARGET_XBOX
+    jkMain_XboxLogTransitionResources("start-next-level-exit");
+#endif
     return result;
 }
 
@@ -1936,7 +2186,7 @@ int jkMain_SetVideoMode()
 
     Video_modeStruct.viewSizeIdx = 0;
     Video_modeStruct.aViewSizes[Video_modeStruct.viewSizeIdx].xMin = 0;
-    Video_modeStruct.aViewSizes[Video_modeStruct.viewSizeIdx].yMax = 0;
+    Video_modeStruct.aViewSizes[Video_modeStruct.viewSizeIdx].yMin = 0;
     Video_modeStruct.aViewSizes[Video_modeStruct.viewSizeIdx].xMax = newW / 2;
     Video_modeStruct.aViewSizes[Video_modeStruct.viewSizeIdx].yMax = newH / 2;
 
@@ -2017,8 +2267,47 @@ int jkMain_SetVideoMode()
     JKTRACEF("SetVideoMode: rdCanvas_New pMenuBuffer=%p pVbufIdk=%p\n", (void*)Video_pMenuBuffer, (void*)Video_pVbufIdk);
     Video_pCanvas = rdCanvas_New(2, Video_pMenuBuffer, Video_pVbufIdk, 0, 0, newW, newH, 6);
     JKTRACEF("SetVideoMode: rdCanvas_New returned %p\n", (void*)Video_pCanvas);
+    if ( !Video_pCanvas )
+    {
+#ifdef TARGET_XBOX
+        JKTRACE("SetVideoMode: rdCanvas_New FAILED\n");
+        jkMain_XboxLogTransitionResources("gameplay-video-mode-canvas-failed");
+#endif
+        jkDev_Close();
+        if (Main_bMotsCompat) {
+            jkHudScope_Close();
+            jkHudCameraView_Close();
+        }
+        jkHud_Close();
+        jkHudInv_Close();
+        Window_RemoveMsgHandler((WindowHandler_t)Windows_GdiHandler);
+        if ( sithControl_IsOpen() )
+            sithControl_Close();
+        return 0;
+    }
 #if defined(SDL2_RENDER)
     Video_pCanvasOverlayMap = rdCanvas_New(2, Video_pOverlayMapBuffer, Video_pOverlayMapBuffer, 0, 0, newW, newH, 6);
+    if ( !Video_pCanvasOverlayMap )
+    {
+#ifdef TARGET_XBOX
+        JKTRACE("SetVideoMode: overlay rdCanvas_New FAILED\n");
+        jkMain_XboxLogTransitionResources("gameplay-video-mode-overlay-canvas-failed");
+#endif
+        sithCamera_Close();
+        rdCanvas_Free(Video_pCanvas);
+        Video_pCanvas = 0;
+        jkDev_Close();
+        if (Main_bMotsCompat) {
+            jkHudScope_Close();
+            jkHudCameraView_Close();
+        }
+        jkHud_Close();
+        jkHudInv_Close();
+        Window_RemoveMsgHandler((WindowHandler_t)Windows_GdiHandler);
+        if ( sithControl_IsOpen() )
+            sithControl_Close();
+        return 0;
+    }
 #endif
 #ifdef JKM_LIGHTING
     if (Main_bMotsCompat) {
@@ -2037,7 +2326,31 @@ int jkMain_SetVideoMode()
     sithCamera_Open(Video_pCanvas, stdDisplay_pCurVideoMode->widthMaybe);
     JKTRACE("SetVideoMode: sithCamera_Open done\n");
 
-    stdDisplay_SetMode(0, 0, 0);
+    if ( !stdDisplay_SetMode(0, 0, 0) )
+    {
+#ifdef TARGET_XBOX
+        JKTRACE("SetVideoMode: stdDisplay_SetMode FAILED\n");
+        jkMain_XboxLogTransitionResources("gameplay-video-mode-display-failed");
+#endif
+        sithCamera_Close();
+#if defined(SDL2_RENDER)
+        rdCanvas_Free(Video_pCanvasOverlayMap);
+        Video_pCanvasOverlayMap = 0;
+#endif
+        rdCanvas_Free(Video_pCanvas);
+        Video_pCanvas = 0;
+        jkDev_Close();
+        if (Main_bMotsCompat) {
+            jkHudScope_Close();
+            jkHudCameraView_Close();
+        }
+        jkHud_Close();
+        jkHudInv_Close();
+        Window_RemoveMsgHandler((WindowHandler_t)Windows_GdiHandler);
+        if ( sithControl_IsOpen() )
+            sithControl_Close();
+        return 0;
+    }
     JKTRACE("SetVideoMode: done\n");
 
     Video_bOpened = 1;

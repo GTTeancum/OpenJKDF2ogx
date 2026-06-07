@@ -83,6 +83,9 @@
 
 extern int32_t jkGuiRend_thing_five;
 extern int32_t jkGuiRend_thing_four;
+#ifdef TARGET_XBOX
+extern int32_t jkGuiRend_xboxSuppressControllerConfirm;
+#endif
 
 void jkGuiRend_CopyVBuffer(jkGuiMenu *menu, rdRect *rect);
 void jkGuiRend_SetPalette(uint8_t* pal);

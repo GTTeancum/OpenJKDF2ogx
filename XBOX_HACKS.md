@@ -13,6 +13,42 @@ history is useful.
 
 # Known Bugs
 
+## Character menu footer/text flicker -- [FIXED]
+
+**Status:** FIXED -- Removing the Xbox stub's synthetic per-tick `WM_PAINT`
+from `Window_MessageLoop` stopped the continuous full menu repaint loop that
+made the character menu footer/button text flicker on hardware.
+
+**Fixed in:** `src/Platform/Xbox/xbox_stubs.c`. Related Xbox menu redraw
+batching lives in `src/Gui/jkGUIRend.c`.
+
+## Split-screen lockup during hardware play
+
+**Status:** Open.
+**Severity:** Stability. Keep separate from the now-fixed character menu
+text flicker unless it becomes reproducible enough to isolate.
+
+**Observed behavior:** Split-screen locked up during hardware testing. Current
+controller routing appears designed to poll all four ports, then tick local
+slot `i` from controller port `i`; unplugged slots are skipped. The lockup
+needs to be treated as a split-screen lifecycle/resource issue until proven
+otherwise, not as a basic "second controller not read" bug.
+
+**Later investigation checklist:**
+- Capture whether the lock occurs during gameplay, match end, pause/menu
+  transition, player death/respawn, or level transition.
+- Log `xboxSplitScreen_IsEnabled`, requested/local player count, connected
+  controller mask, active controller, current local slot, and whether each
+  slot has a valid `playerThing`.
+- Verify split-screen phase exit flushes per-slot HUD/camera/pov state, wheel
+  state, controller state, respawn timers, and viewport state.
+- Include split-screen in the resource snapshot pass: repeated
+  match -> menu -> new match should return file/GOB/material/texture/audio
+  counts to baseline.
+
+**Relevant code:** `src/Platform/Xbox/xbox_splitscreen.c`,
+`src/Platform/Xbox/stdControl_xbox.c`, and `src/Main/sithMain.c`.
+
 ## Keep level-load memory stats in the stable Xbox log
 
 **Status:** Open.

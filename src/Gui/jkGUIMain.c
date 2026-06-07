@@ -20,6 +20,7 @@
 #include "Gui/jkGUISetup.h"
 #include "Gui/jkGUIMods.h"
 #include "Win95/stdComm.h"
+#include "Win95/stdDisplay.h"
 #include "Win95/stdGdi.h"
 #include "Win95/Windows.h"
 #include "Main/Main.h"
@@ -122,12 +123,11 @@ static jkGuiElement jkGuiMain_elements[11] = {
 static jkGuiMenu jkGuiMain_menu = {jkGuiMain_elements, -1, 0xFFFF, 0xFFFF, 0xF, 0, 0, jkGui_stdBitmaps, jkGui_stdFonts, 0, 0, "thermloop01.wav", "thrmlpu2.wav", 0, 0, 0, 0, 0, 0};
 
 #ifdef TARGET_XBOX
-static jkGuiElement jkGuiMain_xboxMultiplayerElements[7] = {
+static jkGuiElement jkGuiMain_xboxMultiplayerElements[6] = {
     {ELEMENT_TEXT, 0, 5, L"Multiplayer", 3, {0, 50, 640, 60}, 1, 0, 0, 0, 0, 0, {0}, 0},
     {ELEMENT_TEXTBUTTON, 20, 5, L"Split Screen", 3, {0, 150, 640, 50}, 1, 0, 0, 0, 0, 0, {0}, 0},
     {ELEMENT_TEXTBUTTON, 21, 5, L"Character", 3, {0, 210, 640, 50}, 1, 0, 0, 0, 0, 0, {0}, 0},
     {ELEMENT_TEXTBUTTON, 22, 5, L"System Link", 3, {0, 270, 640, 50}, 1, 0, 0, 0, 0, 0, {0}, 0},
-    {ELEMENT_TEXTBUTTON, 23, 5, L"Combo", 3, {0, 330, 640, 50}, 1, 0, 0, 0, 0, 0, {0}, 0},
     {ELEMENT_TEXTBUTTON, -1, 2, "GUI_CANCEL", 3, {230, 410, 180, 40}, 1, 0, 0, 0, 0, 0, {0}, 0},
     {ELEMENT_END, 0, 0, 0, 0, {0}, 0, 0, 0, 0, 0, 0, {0}, 0}
 };
@@ -156,27 +156,37 @@ enum
 static int32_t jkGuiMain_xboxReadyListboxIdk[2] = {0xd, 0xe};
 static Darray jkGuiMain_xboxReadyCharacters;
 static int jkGuiMain_xboxReadyNumChars;
-static int jkGuiMain_xboxReadyLocked[XBOX_SPLITSCREEN_MAX_LOCAL_PLAYERS];
+static int jkGuiMain_xboxReadyJoined[XBOX_SPLITSCREEN_MAX_LOCAL_PLAYERS];
 static wchar_t jkGuiMain_xboxReadyNames[XBOX_SPLITSCREEN_MAX_LOCAL_PLAYERS][32];
 static wchar_t jkGuiMain_xboxReadyStatus[64];
+static stdBitmap *jkGuiMain_xboxReadyPortraits[XBOX_SPLITSCREEN_MAX_LOCAL_PLAYERS];
+static int jkGuiMain_xboxReadyPortraitSelection[XBOX_SPLITSCREEN_MAX_LOCAL_PLAYERS] = {-1, -1, -1, -1};
+static int jkGuiMain_xboxReadyStartRequested;
+static int jkGuiMain_xboxReadyPrevA[XBOX_SPLITSCREEN_MAX_LOCAL_PLAYERS];
+static int jkGuiMain_xboxReadyPrevB[XBOX_SPLITSCREEN_MAX_LOCAL_PLAYERS];
+static int jkGuiMain_xboxReadyPrevStart[XBOX_SPLITSCREEN_MAX_LOCAL_PLAYERS];
+static int jkGuiMain_xboxReadyPrevUp[XBOX_SPLITSCREEN_MAX_LOCAL_PLAYERS];
+static int jkGuiMain_xboxReadyPrevDown[XBOX_SPLITSCREEN_MAX_LOCAL_PLAYERS];
+static int jkGuiMain_xboxReadyPrevLeft[XBOX_SPLITSCREEN_MAX_LOCAL_PLAYERS];
+static int jkGuiMain_xboxReadyPrevRight[XBOX_SPLITSCREEN_MAX_LOCAL_PLAYERS];
 
 static jkGuiElement jkGuiMain_xboxReadyElements[17] = {
-    {ELEMENT_TEXT, 0, 5, L"Split Screen Ready", 3, {0, 18, 640, 42}, 1, 0, 0, 0, 0, 0, {0}, 0},
-    {ELEMENT_TEXT, 0, 2, L"Player 1", 3, {35, 66, 250, 25}, 1, 0, 0, 0, 0, 0, {0}, 0},
-    {ELEMENT_LISTBOX, 1, 0, 0, 0, {35, 100, 250, 128}, 1, 0, 0, 0, 0, jkGuiMain_xboxReadyListboxIdk, {0}, 0},
+    {ELEMENT_TEXT, 0, 5, L"Split Screen", 3, {0, 20, 640, 42}, 1, 0, 0, 0, 0, 0, {0}, 0},
+    {ELEMENT_CUSTOM, 0, 2, 0, 0, {52, 90, 240, 110}, 1, 0, 0, 0, 0, 0, {0}, 0},
+    {ELEMENT_LISTBOX, 1, 0, 0, 0, {35, 100, 250, 128}, 0, 0, 0, 0, 0, jkGuiMain_xboxReadyListboxIdk, {0}, 0},
     {ELEMENT_TEXT, 0, 2, jkGuiMain_xboxReadyNames[0], 3, {35, 135, 250, 42}, 0, 0, 0, 0, 0, 0, {0}, 0},
-    {ELEMENT_TEXT, 0, 2, L"Player 2", 3, {355, 66, 250, 25}, 1, 0, 0, 0, 0, 0, {0}, 0},
-    {ELEMENT_LISTBOX, 1, 0, 0, 0, {355, 100, 250, 128}, 1, 0, 0, 0, 0, jkGuiMain_xboxReadyListboxIdk, {0}, 0},
+    {ELEMENT_CUSTOM, 1, 2, 0, 0, {348, 90, 240, 110}, 1, 0, 0, 0, 0, 0, {0}, 0},
+    {ELEMENT_LISTBOX, 1, 0, 0, 0, {355, 100, 250, 128}, 0, 0, 0, 0, 0, jkGuiMain_xboxReadyListboxIdk, {0}, 0},
     {ELEMENT_TEXT, 0, 2, jkGuiMain_xboxReadyNames[1], 3, {355, 135, 250, 42}, 0, 0, 0, 0, 0, 0, {0}, 0},
-    {ELEMENT_TEXT, 0, 2, L"Player 3", 3, {35, 246, 250, 25}, 1, 0, 0, 0, 0, 0, {0}, 0},
-    {ELEMENT_LISTBOX, 1, 0, 0, 0, {35, 280, 250, 128}, 1, 0, 0, 0, 0, jkGuiMain_xboxReadyListboxIdk, {0}, 0},
+    {ELEMENT_CUSTOM, 2, 2, 0, 0, {52, 240, 240, 110}, 1, 0, 0, 0, 0, 0, {0}, 0},
+    {ELEMENT_LISTBOX, 1, 0, 0, 0, {35, 280, 250, 128}, 0, 0, 0, 0, 0, jkGuiMain_xboxReadyListboxIdk, {0}, 0},
     {ELEMENT_TEXT, 0, 2, jkGuiMain_xboxReadyNames[2], 3, {35, 315, 250, 42}, 0, 0, 0, 0, 0, 0, {0}, 0},
-    {ELEMENT_TEXT, 0, 2, L"Player 4", 3, {355, 246, 250, 25}, 1, 0, 0, 0, 0, 0, {0}, 0},
-    {ELEMENT_LISTBOX, 1, 0, 0, 0, {355, 280, 250, 128}, 1, 0, 0, 0, 0, jkGuiMain_xboxReadyListboxIdk, {0}, 0},
+    {ELEMENT_CUSTOM, 3, 2, 0, 0, {348, 240, 240, 110}, 1, 0, 0, 0, 0, 0, {0}, 0},
+    {ELEMENT_LISTBOX, 1, 0, 0, 0, {355, 280, 250, 128}, 0, 0, 0, 0, 0, jkGuiMain_xboxReadyListboxIdk, {0}, 0},
     {ELEMENT_TEXT, 0, 2, jkGuiMain_xboxReadyNames[3], 3, {355, 315, 250, 42}, 0, 0, 0, 0, 0, 0, {0}, 0},
-    {ELEMENT_TEXT, 0, 0, jkGuiMain_xboxReadyStatus, 3, {150, 414, 340, 18}, 1, 0, 0, 0, 0, 0, {0}, 0},
-    {ELEMENT_TEXTBUTTON, 20, 2, L"Start", 3, {360, 430, 180, 38}, 1, 0, 0, 0, 0, 0, {0}, 0},
-    {ELEMENT_TEXTBUTTON, -1, 2, "GUI_CANCEL", 3, {100, 430, 180, 38}, 1, 0, 0, 0, 0, 0, {0}, 0},
+    {ELEMENT_TEXT, 0, 0, jkGuiMain_xboxReadyStatus, 3, {0, 64, 640, 18}, 1, 0, 0, 0, 0, 0, {0}, 0},
+    {ELEMENT_TEXT, 0, 2, L"", 3, {360, 430, 180, 38}, 0, 0, 0, 0, 0, 0, {0}, 0},
+    {ELEMENT_TEXT, -1, 2, L"", 3, {100, 430, 180, 38}, 0, 0, 0, 0, 0, 0, {0}, 0},
     {ELEMENT_END, 0, 0, 0, 0, {0}, 0, 0, 0, 0, 0, 0, {0}, 0}
 };
 
@@ -196,6 +206,156 @@ static const int jkGuiMain_xboxReadyNameElems[XBOX_SPLITSCREEN_MAX_LOCAL_PLAYERS
     JKGUI_XBOX_READY_P4_NAME
 };
 
+static const int jkGuiMain_xboxReadyPanelElems[XBOX_SPLITSCREEN_MAX_LOCAL_PLAYERS] = {
+    JKGUI_XBOX_READY_P1_LABEL,
+    JKGUI_XBOX_READY_P2_LABEL,
+    JKGUI_XBOX_READY_P3_LABEL,
+    JKGUI_XBOX_READY_P4_LABEL
+};
+
+static int jkGuiMain_XboxReadySlotFromPanel(jkGuiElement *element)
+{
+    int i;
+    for (i = 0; i < XBOX_SPLITSCREEN_MAX_LOCAL_PLAYERS; i++)
+    {
+        if (element == &jkGuiMain_xboxReadyElements[jkGuiMain_xboxReadyPanelElems[i]])
+            return i;
+    }
+    return 0;
+}
+
+static void jkGuiMain_XboxReadyFreePortrait(int slot)
+{
+    if (slot < 0 || slot >= XBOX_SPLITSCREEN_MAX_LOCAL_PLAYERS)
+        return;
+    if (jkGuiMain_xboxReadyPortraits[slot])
+    {
+        stdBitmap_Free(jkGuiMain_xboxReadyPortraits[slot]);
+        jkGuiMain_xboxReadyPortraits[slot] = 0;
+    }
+    jkGuiMain_xboxReadyPortraitSelection[slot] = -1;
+}
+
+static uint8_t jkGuiMain_XboxNearestMenuColor(const rdColor24 *src)
+{
+    int best = 0;
+    int bestDist = 0x7FFFFFFF;
+    int i;
+
+    if (!src)
+        return 0;
+
+    for (i = 0; i < 256; i++)
+    {
+        int dr = (int)src->r - (int)stdDisplay_masterPalette[i].r;
+        int dg = (int)src->g - (int)stdDisplay_masterPalette[i].g;
+        int db = (int)src->b - (int)stdDisplay_masterPalette[i].b;
+        int dist = dr * dr + dg * dg + db * db;
+        if (dist < bestDist)
+        {
+            bestDist = dist;
+            best = i;
+            if (!dist)
+                break;
+        }
+    }
+
+    return (uint8_t)best;
+}
+
+static void jkGuiMain_XboxReadyBlitPortrait(stdVBuffer *dst, stdBitmap *bitmap, rdRect *dstRect)
+{
+    stdVBuffer *src;
+    uint8_t remap[256];
+    uint8_t *srcBase;
+    uint8_t *dstBase;
+    int x, y;
+
+    if (!dst || !bitmap || !bitmap->mipSurfaces || !bitmap->mipSurfaces[0] || !bitmap->palette || !dstRect)
+        return;
+
+    src = bitmap->mipSurfaces[0];
+    if (src->format.width <= 0 || src->format.height <= 0 || dstRect->width <= 0 || dstRect->height <= 0)
+        return;
+
+    for (x = 0; x < 256; x++)
+        remap[x] = jkGuiMain_XboxNearestMenuColor(&((rdColor24*)bitmap->palette)[x]);
+
+    stdDisplay_VBufferLock(src);
+    stdDisplay_VBufferLock(dst);
+    srcBase = (uint8_t*)src->surface_lock_alloc;
+    dstBase = (uint8_t*)dst->surface_lock_alloc;
+    if (!srcBase || !dstBase)
+    {
+        stdDisplay_VBufferUnlock(dst);
+        stdDisplay_VBufferUnlock(src);
+        return;
+    }
+
+    for (y = 0; y < dstRect->height; y++)
+    {
+        int sy = (y * src->format.height) / dstRect->height;
+        int dy = dstRect->y + y;
+        uint8_t *srcRow;
+        uint8_t *dstRow;
+        if (dy < 0 || dy >= dst->format.height || sy < 0 || sy >= src->format.height)
+            continue;
+        srcRow = srcBase + sy * src->format.width_in_bytes;
+        dstRow = dstBase + dy * dst->format.width_in_bytes;
+        for (x = 0; x < dstRect->width; x++)
+        {
+            int sx = (x * src->format.width) / dstRect->width;
+            int dx = dstRect->x + x;
+            if (dx < 0 || dx >= dst->format.width || sx < 0 || sx >= src->format.width)
+                continue;
+            dstRow[dx] = remap[srcRow[sx]];
+        }
+    }
+
+    stdDisplay_VBufferUnlock(dst);
+    stdDisplay_VBufferUnlock(src);
+    XDBG("ProfilePortrait: ready blit remapped\n");
+}
+
+static stdBitmap *jkGuiMain_XboxReadyGetPortrait(int slot)
+{
+    jkGuiElement *list;
+    wchar_t *name;
+
+    if (slot < 0 || slot >= XBOX_SPLITSCREEN_MAX_LOCAL_PLAYERS)
+        return 0;
+    if (!jkGuiMain_xboxReadyJoined[slot])
+        return 0;
+
+    list = &jkGuiMain_xboxReadyElements[jkGuiMain_xboxReadyLists[slot]];
+    if (jkGuiMain_xboxReadyPortraitSelection[slot] == list->selectedTextEntry)
+    {
+        if (jkGuiMain_xboxReadyPortraits[slot]
+            && jkGuiBuildMulti_XboxPortraitBitmapHasContent(jkGuiMain_xboxReadyPortraits[slot]))
+            return jkGuiMain_xboxReadyPortraits[slot];
+        if (jkGuiMain_xboxReadyPortraits[slot])
+            jkGuiMain_XboxReadyFreePortrait(slot);
+    }
+
+    jkGuiMain_XboxReadyFreePortrait(slot);
+    if (list->selectedTextEntry < 0 || list->selectedTextEntry >= jkGuiMain_xboxReadyNumChars)
+        return 0;
+
+    name = jkGuiRend_GetString(&jkGuiMain_xboxReadyCharacters, list->selectedTextEntry);
+    if (!name)
+        return 0;
+
+    XDBG("ProfilePortrait: ready request\n");
+    jkGuiMain_xboxReadyPortraits[slot] = jkGuiBuildMulti_XboxLoadPortraitCache(name);
+    if (!jkGuiMain_xboxReadyPortraits[slot] && jkGuiBuildMulti_XboxEnsurePortraitCache(name))
+        jkGuiMain_xboxReadyPortraits[slot] = jkGuiBuildMulti_XboxLoadPortraitCache(name);
+    if (jkGuiMain_xboxReadyPortraits[slot])
+        jkGuiMain_xboxReadyPortraitSelection[slot] = list->selectedTextEntry;
+    else
+        jkGuiMain_xboxReadyPortraitSelection[slot] = -1;
+    return jkGuiMain_xboxReadyPortraits[slot];
+}
+
 static void jkGuiMain_XboxReadyBindList(int elemIdx, int selection, int numChars)
 {
     jkGuiRend_SetClickableString(&jkGuiMain_xboxReadyElements[elemIdx], &jkGuiMain_xboxReadyCharacters);
@@ -205,27 +365,109 @@ static void jkGuiMain_XboxReadyBindList(int elemIdx, int selection, int numChars
         jkGuiMain_xboxReadyElements[elemIdx].selectedTextEntry = selection % numChars;
 }
 
+static void jkGuiMain_XboxReadyDrawPanel(jkGuiElement *element, jkGuiMenu *menu, stdVBuffer *vbuf, BOOL redraw)
+{
+    int slot = jkGuiMain_XboxReadySlotFromPanel(element);
+    int listIdx = jkGuiMain_xboxReadyLists[slot];
+    jkGuiElement *list = &jkGuiMain_xboxReadyElements[listIdx];
+    rdRect rect = element->rect;
+    rdRect portrait;
+    rdRect textRect;
+    wchar_t line[64];
+    wchar_t *name = 0;
+    stdBitmap *portraitBm;
+
+    (void)redraw;
+    jkGuiRend_CopyVBuffer(menu, &rect);
+
+    jk_snwprintf(line, 64, L"PLAYER %d", slot + 1);
+    textRect.x = rect.x + 16;
+    textRect.y = rect.y + 10;
+    textRect.width = rect.width - 32;
+    textRect.height = 22;
+    stdFont_Draw3(vbuf, menu->fonts[2], textRect.y, &textRect, 0, line, 1);
+
+    if (!jkGuiMain_xboxReadyJoined[slot])
+    {
+        textRect.y = rect.y + 50;
+        stdFont_Draw3(vbuf, menu->fonts[2], textRect.y, &textRect, 0, L"PRESS A TO JOIN", 1);
+        return;
+    }
+
+    if (list->selectedTextEntry >= 0 && list->selectedTextEntry < jkGuiMain_xboxReadyNumChars)
+        name = jkGuiRend_GetString(&jkGuiMain_xboxReadyCharacters, list->selectedTextEntry);
+    if (!name)
+        name = L"Unknown";
+
+    portrait.x = rect.x + 14;
+    portrait.y = rect.y + 31;
+    portrait.width = 74;
+    portrait.height = 74;
+    portraitBm = jkGuiMain_XboxReadyGetPortrait(slot);
+    if (portraitBm && portraitBm->mipSurfaces && portraitBm->mipSurfaces[0]
+        && portraitBm->mipSurfaces[0]->format.width == 74
+        && portraitBm->mipSurfaces[0]->format.height == 74)
+    {
+        stdBitmap_EnsureData(portraitBm);
+        if (jkGuiBuildMulti_XboxPortraitBitmapHasContent(portraitBm))
+            jkGuiMain_XboxReadyBlitPortrait(vbuf, portraitBm, &portrait);
+        else
+            jkGuiMain_XboxReadyFreePortrait(slot);
+    }
+
+    textRect.x = rect.x + 98;
+    textRect.y = rect.y + 40;
+    textRect.width = rect.width - 108;
+    textRect.height = 24;
+    stdFont_Draw3(vbuf, menu->fonts[2], textRect.y, &textRect, 0, name, 1);
+}
+
 static int jkGuiMain_XboxReadyCount(void)
 {
     int i;
     int count = 0;
     for (i = 0; i < XBOX_SPLITSCREEN_MAX_LOCAL_PLAYERS; i++)
-        count += jkGuiMain_xboxReadyLocked[i] ? 1 : 0;
+        count += jkGuiMain_xboxReadyJoined[i] ? 1 : 0;
     return count;
+}
+
+static int jkGuiMain_XboxReadyReadEdge(int slot, int key, int *prev)
+{
+    int down = stdControl_XboxGetControllerKeyDown(slot, key) ? 1 : 0;
+    int edge = down && !*prev;
+    *prev = down;
+    return edge;
+}
+
+static void jkGuiMain_XboxReadyPrimeEdges(void)
+{
+    int slot;
+
+    stdControl_ReadControls();
+    for (slot = 0; slot < XBOX_SPLITSCREEN_MAX_LOCAL_PLAYERS; slot++)
+    {
+        jkGuiMain_xboxReadyPrevA[slot] = stdControl_XboxGetControllerKeyDown(slot, KEY_JOY1_B1) ? 1 : 0;
+        jkGuiMain_xboxReadyPrevB[slot] = stdControl_XboxGetControllerKeyDown(slot, KEY_JOY1_B2) ? 1 : 0;
+        jkGuiMain_xboxReadyPrevStart[slot] = stdControl_XboxGetControllerKeyDown(slot, KEY_JOY1_B7) ? 1 : 0;
+        jkGuiMain_xboxReadyPrevUp[slot] = stdControl_XboxGetControllerKeyDown(slot, KEY_JOY1_HUP) ? 1 : 0;
+        jkGuiMain_xboxReadyPrevDown[slot] = stdControl_XboxGetControllerKeyDown(slot, KEY_JOY1_HDOWN) ? 1 : 0;
+        jkGuiMain_xboxReadyPrevLeft[slot] = stdControl_XboxGetControllerKeyDown(slot, KEY_JOY1_HLEFT) ? 1 : 0;
+        jkGuiMain_xboxReadyPrevRight[slot] = stdControl_XboxGetControllerKeyDown(slot, KEY_JOY1_HRIGHT) ? 1 : 0;
+    }
 }
 
 static void jkGuiMain_XboxReadySetStatus(jkGuiMenu *menu)
 {
     int count = jkGuiMain_XboxReadyCount();
-    if (count < 2)
-        jk_snwprintf(jkGuiMain_xboxReadyStatus, 64, L"%d ready - need 2", count);
+    if (count < 1)
+        jkGuiMain_xboxReadyStatus[0] = 0;
     else
-        jk_snwprintf(jkGuiMain_xboxReadyStatus, 64, L"%d ready", count);
+        jk_snwprintf(jkGuiMain_xboxReadyStatus, 64, L"%d joined", count);
     if (menu)
         jkGuiRend_UpdateAndDrawClickable(&jkGuiMain_xboxReadyElements[JKGUI_XBOX_READY_STATUS], menu, 1);
 }
 
-static void jkGuiMain_XboxReadySetLocked(jkGuiMenu *menu, int slot, int locked)
+static void jkGuiMain_XboxReadySetJoined(jkGuiMenu *menu, int slot, int joined)
 {
     int listIdx;
     int nameIdx;
@@ -241,27 +483,26 @@ static void jkGuiMain_XboxReadySetLocked(jkGuiMenu *menu, int slot, int locked)
         ? jkGuiRend_GetString(&jkGuiMain_xboxReadyCharacters, selected)
         : 0;
 
-    if (locked && name)
+    if (joined && name)
     {
         _wcsncpy(jkGuiMain_xboxReadyNames[slot], name, 31);
         jkGuiMain_xboxReadyNames[slot][31] = 0;
-        jkGuiMain_xboxReadyLocked[slot] = 1;
+        jkGuiMain_xboxReadyJoined[slot] = 1;
         jkGuiMain_xboxReadyElements[listIdx].bIsVisible = 0;
-        jkGuiMain_xboxReadyElements[nameIdx].bIsVisible = 1;
+        jkGuiMain_xboxReadyElements[nameIdx].bIsVisible = 0;
         if (menu && menu->focusedElement == &jkGuiMain_xboxReadyElements[listIdx])
             menu->focusedElement = 0;
     }
     else
     {
-        jkGuiMain_xboxReadyLocked[slot] = 0;
-        jkGuiMain_xboxReadyElements[listIdx].bIsVisible = 1;
+        jkGuiMain_xboxReadyJoined[slot] = 0;
+        jkGuiMain_xboxReadyElements[listIdx].bIsVisible = 0;
         jkGuiMain_xboxReadyElements[nameIdx].bIsVisible = 0;
     }
 
     if (menu)
     {
-        jkGuiRend_UpdateAndDrawClickable(&jkGuiMain_xboxReadyElements[listIdx], menu, 1);
-        jkGuiRend_UpdateAndDrawClickable(&jkGuiMain_xboxReadyElements[nameIdx], menu, 1);
+        jkGuiRend_UpdateAndDrawClickable(&jkGuiMain_xboxReadyElements[jkGuiMain_xboxReadyPanelElems[slot]], menu, 1);
         jkGuiMain_XboxReadySetStatus(menu);
     }
 }
@@ -286,7 +527,16 @@ static void jkGuiMain_XboxReadyMoveSelection(jkGuiMenu *menu, int slot, int delt
         if (list->selectedTextEntry >= list->texInfo.textScrollY + list->texInfo.maxTextEntries)
             list->texInfo.textScrollY = list->selectedTextEntry - list->texInfo.maxTextEntries + 1;
     }
-    jkGuiRend_UpdateAndDrawClickable(list, menu, 1);
+    if (jkGuiMain_xboxReadyJoined[slot])
+    {
+        wchar_t *name = jkGuiRend_GetString(&jkGuiMain_xboxReadyCharacters, selected);
+        if (name)
+        {
+            _wcsncpy(jkGuiMain_xboxReadyNames[slot], name, 31);
+            jkGuiMain_xboxReadyNames[slot][31] = 0;
+        }
+    }
+    jkGuiRend_UpdateAndDrawClickable(&jkGuiMain_xboxReadyElements[jkGuiMain_xboxReadyPanelElems[slot]], menu, 1);
 }
 
 static void jkGuiMain_XboxReadyTick(jkGuiMenu *menu)
@@ -294,25 +544,44 @@ static void jkGuiMain_XboxReadyTick(jkGuiMenu *menu)
     int slot;
     int mask;
 
-    stdControl_ReadControls();
     mask = stdControl_XboxGetConnectedMask();
     for (slot = 0; slot < XBOX_SPLITSCREEN_MAX_LOCAL_PLAYERS; slot++)
     {
         if (!(mask & (1 << slot)))
             continue;
-        if (jkGuiMain_xboxReadyLocked[slot])
+
+        if (jkGuiMain_XboxReadyReadEdge(slot, KEY_JOY1_B7, &jkGuiMain_xboxReadyPrevStart[slot]) && jkGuiMain_XboxReadyCount() > 0)
         {
-            if (stdControl_XboxGetControllerKeyPress(slot, KEY_JOY1_B2))
-                jkGuiMain_XboxReadySetLocked(menu, slot, 0);
+            jkGuiMain_xboxReadyStartRequested = 1;
+            menu->lastClicked = 20;
             continue;
         }
 
-        if (stdControl_XboxGetControllerKeyPress(slot, KEY_JOY1_HUP))
+        if (!jkGuiMain_xboxReadyJoined[slot])
+        {
+            if (jkGuiMain_XboxReadyReadEdge(slot, KEY_JOY1_B1, &jkGuiMain_xboxReadyPrevA[slot]))
+                jkGuiMain_XboxReadySetJoined(menu, slot, 1);
+            if (slot == 0 && jkGuiMain_XboxReadyReadEdge(slot, KEY_JOY1_B2, &jkGuiMain_xboxReadyPrevB[slot]))
+                menu->lastClicked = -1;
+            continue;
+        }
+
+        if (jkGuiMain_XboxReadyReadEdge(slot, KEY_JOY1_B2, &jkGuiMain_xboxReadyPrevB[slot]))
+        {
+            if (slot == 0)
+                menu->lastClicked = -1;
+            else
+                jkGuiMain_XboxReadySetJoined(menu, slot, 0);
+            continue;
+        }
+        if (jkGuiMain_XboxReadyReadEdge(slot, KEY_JOY1_HUP, &jkGuiMain_xboxReadyPrevUp[slot]))
             jkGuiMain_XboxReadyMoveSelection(menu, slot, -1);
-        if (stdControl_XboxGetControllerKeyPress(slot, KEY_JOY1_HDOWN))
+        if (jkGuiMain_XboxReadyReadEdge(slot, KEY_JOY1_HDOWN, &jkGuiMain_xboxReadyPrevDown[slot]))
             jkGuiMain_XboxReadyMoveSelection(menu, slot, 1);
-        if (stdControl_XboxGetControllerKeyPress(slot, KEY_JOY1_B1))
-            jkGuiMain_XboxReadySetLocked(menu, slot, 1);
+        if (jkGuiMain_XboxReadyReadEdge(slot, KEY_JOY1_HLEFT, &jkGuiMain_xboxReadyPrevLeft[slot]))
+            jkGuiMain_XboxReadyMoveSelection(menu, slot, -1);
+        if (jkGuiMain_XboxReadyReadEdge(slot, KEY_JOY1_HRIGHT, &jkGuiMain_xboxReadyPrevRight[slot]))
+            jkGuiMain_XboxReadyMoveSelection(menu, slot, 1);
     }
 }
 
@@ -323,8 +592,8 @@ static int jkGuiMain_XboxShowSplitReady(void)
     int numChars;
     int menuModePushed = 0;
 
-    stdBitmap_EnsureData(jkGui_stdBitmaps[JKGUI_BM_BK_MULTI]);
-    jkGui_SetModeMenu(jkGui_stdBitmaps[JKGUI_BM_BK_MULTI]->palette);
+    stdBitmap_EnsureData(jkGui_stdBitmaps[JKGUI_BM_BK_ESC]);
+    jkGui_SetModeMenu(jkGui_stdBitmaps[JKGUI_BM_BK_ESC]->palette);
     menuModePushed = 1;
     _memset(&jkGuiMain_xboxReadyCharacters, 0, sizeof(jkGuiMain_xboxReadyCharacters));
     if (!jkGuiRend_DarrayNewStr(&jkGuiMain_xboxReadyCharacters, 32, 1))
@@ -348,25 +617,36 @@ static int jkGuiMain_XboxShowSplitReady(void)
     for (i = 0; i < XBOX_SPLITSCREEN_MAX_LOCAL_PLAYERS; i++)
     {
         jkGuiMain_XboxReadyBindList(jkGuiMain_xboxReadyLists[i], i, numChars);
-        jkGuiMain_xboxReadyLocked[i] = 0;
+        jkGuiMain_xboxReadyJoined[i] = 0;
         jkGuiMain_xboxReadyNames[i][0] = 0;
-        jkGuiMain_xboxReadyElements[jkGuiMain_xboxReadyLists[i]].bIsVisible = 1;
+        jkGuiMain_XboxReadyFreePortrait(i);
+        jkGuiMain_xboxReadyElements[jkGuiMain_xboxReadyPanelElems[i]].drawFuncOverride = jkGuiMain_XboxReadyDrawPanel;
+        jkGuiMain_xboxReadyElements[jkGuiMain_xboxReadyLists[i]].bIsVisible = 0;
         jkGuiMain_xboxReadyElements[jkGuiMain_xboxReadyNameElems[i]].bIsVisible = 0;
     }
     jkGuiMain_XboxReadySetStatus(0);
+    jkGuiMain_xboxReadyStartRequested = 0;
+    jkGuiMain_XboxReadyPrimeEdges();
 
-    jkGuiRend_MenuSetReturnKeyShortcutElement(&jkGuiMain_xboxReadyMenu, &jkGuiMain_xboxReadyElements[JKGUI_XBOX_READY_START]);
+    jkGuiRend_MenuSetReturnKeyShortcutElement(&jkGuiMain_xboxReadyMenu, 0);
     jkGuiRend_MenuSetEscapeKeyShortcutElement(&jkGuiMain_xboxReadyMenu, &jkGuiMain_xboxReadyElements[JKGUI_XBOX_READY_CANCEL]);
     jkGuiMain_xboxReadyMenu.idkFunc = jkGuiMain_XboxReadyTick;
+    jkGuiRend_xboxSuppressControllerConfirm = 1;
     do
     {
         result = jkGuiRend_DisplayAndReturnClicked(&jkGuiMain_xboxReadyMenu);
-        if (result == 20 && jkGuiMain_XboxReadyCount() < 2)
+        if (result == 20 && !jkGuiMain_xboxReadyStartRequested)
         {
-            jkGuiDialog_ErrorDialog(L"Split Screen", L"At least two players must ready up.");
+            XDBG("SplitReady: ignoring stray GUI Start result without Start button edge\n");
+            result = 0;
+        }
+        else if (result == 20 && jkGuiMain_XboxReadyCount() < 1)
+        {
+            XDBG("SplitReady: ignoring Start edge with no joined players\n");
             result = 0;
         }
     } while (result == 0);
+    jkGuiRend_xboxSuppressControllerConfirm = 0;
 
     if (result == 20)
     {
@@ -379,10 +659,11 @@ static int jkGuiMain_XboxShowSplitReady(void)
             wchar_t *name = 0;
             char nameA[32];
 
-            if (!jkGuiMain_xboxReadyLocked[i])
+            if (!jkGuiMain_xboxReadyJoined[i])
                 continue;
             if (selected >= 0 && selected < numChars)
                 name = jkGuiRend_GetString(&jkGuiMain_xboxReadyCharacters, selected);
+            xboxSplitScreen_SetPendingController(outSlot, i);
             xboxSplitScreen_SetPendingMpc(outSlot, name);
             if (name)
             {
@@ -404,6 +685,8 @@ static int jkGuiMain_XboxShowSplitReady(void)
     }
 
     jkGuiRend_DarrayFree(&jkGuiMain_xboxReadyCharacters);
+    for (i = 0; i < XBOX_SPLITSCREEN_MAX_LOCAL_PLAYERS; i++)
+        jkGuiMain_XboxReadyFreePortrait(i);
     if (menuModePushed)
         jkGui_SetModeGame();
     return result == 20 ? 1 : -1;
@@ -413,13 +696,23 @@ static int jkGuiMain_XboxStartLocalMultiplayerTest(void)
 {
     int result;
 
+    XDBG("MPLoadTrace: ready screen enter\n");
     if (jkGuiMain_XboxShowSplitReady() != 1)
+    {
+        XDBG("MPLoadTrace: ready screen canceled\n");
         return -1;
+    }
 
+    XDBGF("MPLoadTrace: ready accepted players=%d\n", xboxSplitScreen_GetRequestedLocalPlayerCount());
     xboxSplitScreen_Enable();
+    XDBG("MPLoadTrace: split screen enabled; calling jkMain_loadFile2 JK1MP/m10.jkl\n");
     result = jkMain_loadFile2("JK1MP", "m10.jkl") ? 1 : -1;
+    XDBGF("MPLoadTrace: jkMain_loadFile2 returned %d\n", result);
     if (result != 1)
+    {
+        XDBG("MPLoadTrace: disabling split screen after load setup failure\n");
         xboxSplitScreen_Disable();
+    }
     return result;
 }
 
@@ -433,7 +726,7 @@ static int jkGuiMain_XboxShowMultiplayer(void)
     do
     {
         jkGuiRend_MenuSetReturnKeyShortcutElement(&jkGuiMain_xboxMultiplayerMenu, &jkGuiMain_xboxMultiplayerElements[1]);
-        jkGuiRend_MenuSetEscapeKeyShortcutElement(&jkGuiMain_xboxMultiplayerMenu, &jkGuiMain_xboxMultiplayerElements[5]);
+        jkGuiRend_MenuSetEscapeKeyShortcutElement(&jkGuiMain_xboxMultiplayerMenu, &jkGuiMain_xboxMultiplayerElements[4]);
         result = jkGuiRend_DisplayAndReturnClicked(&jkGuiMain_xboxMultiplayerMenu);
 
         if (result == 20)
@@ -446,7 +739,7 @@ static int jkGuiMain_XboxShowMultiplayer(void)
             jkGui_SetModeMenu(jkGui_stdBitmaps[JKGUI_BM_BK_MULTI]->palette);
             result = -2;
         }
-        else if (result == 22 || result == 23)
+        else if (result == 22)
         {
             jkGuiDialog_ErrorDialog(L"Multiplayer", L"Coming soon");
             stdBitmap_EnsureData(jkGui_stdBitmaps[JKGUI_BM_BK_MULTI]);
@@ -706,7 +999,7 @@ void jkGuiMain_Startup()
     jkGui_InitMenu(&jkGuiMain_menu, jkGui_stdBitmaps[JKGUI_BM_BK_MAIN]);
 #ifdef TARGET_XBOX
     jkGui_InitMenu(&jkGuiMain_xboxMultiplayerMenu, jkGui_stdBitmaps[JKGUI_BM_BK_MULTI]);
-    jkGui_InitMenu(&jkGuiMain_xboxReadyMenu, jkGui_stdBitmaps[JKGUI_BM_BK_MULTI]);
+    jkGui_InitMenu(&jkGuiMain_xboxReadyMenu, jkGui_stdBitmaps[JKGUI_BM_BK_ESC]);
 #endif
 
     // Added: clean reset

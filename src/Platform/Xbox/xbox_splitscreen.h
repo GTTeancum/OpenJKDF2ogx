@@ -14,6 +14,7 @@ int  xboxSplitScreen_GetLocalPlayerCount(void);
 int  xboxSplitScreen_GetRequestedLocalPlayerCount(void);
 void xboxSplitScreen_Enable(void);
 void xboxSplitScreen_SetRequestedLocalPlayerCount(int count);
+void xboxSplitScreen_SetPendingController(int slot, int controllerPort);
 void xboxSplitScreen_SetPendingMpc(int slot, const wchar_t *name);
 void xboxSplitScreen_OnMultiplayerServerStarted(void);
 void xboxSplitScreen_Disable(void);
