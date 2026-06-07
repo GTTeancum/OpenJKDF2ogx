@@ -35,6 +35,7 @@
 #ifdef TARGET_XBOX
 #include "Platform/Xbox/xbox_debug.h"
 #include "Platform/Xbox/xbox_splitscreen.h"
+#include "Platform/Xbox/xbox_systemlink_probe.h"
 #endif
 
 // Added
@@ -133,6 +134,46 @@ static jkGuiElement jkGuiMain_xboxMultiplayerElements[6] = {
 };
 
 static jkGuiMenu jkGuiMain_xboxMultiplayerMenu = {jkGuiMain_xboxMultiplayerElements, -1, 0xFFFF, 0xFFFF, 0xF, 0, 0, jkGui_stdBitmaps, jkGui_stdFonts, 0, 0, "thermloop01.wav", "thrmlpu2.wav", 0, 0, 0, 0, 0, 0};
+
+enum
+{
+    JKGUI_XBOX_XSL_STATUS = 2,
+    JKGUI_XBOX_XSL_PEER_COUNT = 3,
+    JKGUI_XBOX_XSL_FIRST_PEER = 4,
+    JKGUI_XBOX_XSL_HINT = 12,
+    JKGUI_XBOX_XSL_BACK = 13
+};
+
+static wchar_t jkGuiMain_xboxSystemLinkStatus[96];
+static wchar_t jkGuiMain_xboxSystemLinkPeerCount[64];
+static wchar_t jkGuiMain_xboxSystemLinkPeers[XBOX_SYSTEMLINK_PROBE_MAX_PEERS][96];
+static wchar_t jkGuiMain_xboxSystemLinkHint[96];
+static int jkGuiMain_xboxSystemLinkLastStarted = -1;
+static int jkGuiMain_xboxSystemLinkLastPort = -1;
+static int jkGuiMain_xboxSystemLinkLastError = -1;
+static unsigned long jkGuiMain_xboxSystemLinkLastId = 0;
+static unsigned long jkGuiMain_xboxSystemLinkLastSent = 0;
+static unsigned long jkGuiMain_xboxSystemLinkLastPeerPackets[XBOX_SYSTEMLINK_PROBE_MAX_PEERS];
+
+static jkGuiElement jkGuiMain_xboxSystemLinkElements[15] = {
+    {ELEMENT_TEXT, 0, 5, L"System Link Test", 3, {0, 36, 640, 52}, 1, 0, 0, 0, 0, 0, {0}, 0},
+    {ELEMENT_TEXT, 0, 2, L"Discovery Probe", 3, {0, 92, 640, 28}, 1, 0, 0, 0, 0, 0, {0}, 0},
+    {ELEMENT_TEXT, 0, 2, jkGuiMain_xboxSystemLinkStatus, 3, {58, 132, 540, 24}, 1, 0, 0, 0, 0, 0, {0}, 0},
+    {ELEMENT_TEXT, 0, 2, jkGuiMain_xboxSystemLinkPeerCount, 3, {58, 172, 540, 24}, 1, 0, 0, 0, 0, 0, {0}, 0},
+    {ELEMENT_TEXT, 0, 1, jkGuiMain_xboxSystemLinkPeers[0], 3, {62, 208, 540, 22}, 1, 0, 0, 0, 0, 0, {0}, 0},
+    {ELEMENT_TEXT, 0, 1, jkGuiMain_xboxSystemLinkPeers[1], 3, {62, 234, 540, 22}, 1, 0, 0, 0, 0, 0, {0}, 0},
+    {ELEMENT_TEXT, 0, 1, jkGuiMain_xboxSystemLinkPeers[2], 3, {62, 260, 540, 22}, 1, 0, 0, 0, 0, 0, {0}, 0},
+    {ELEMENT_TEXT, 0, 1, jkGuiMain_xboxSystemLinkPeers[3], 3, {62, 286, 540, 22}, 1, 0, 0, 0, 0, 0, {0}, 0},
+    {ELEMENT_TEXT, 0, 1, jkGuiMain_xboxSystemLinkPeers[4], 3, {62, 312, 540, 22}, 1, 0, 0, 0, 0, 0, {0}, 0},
+    {ELEMENT_TEXT, 0, 1, jkGuiMain_xboxSystemLinkPeers[5], 3, {62, 338, 540, 22}, 1, 0, 0, 0, 0, 0, {0}, 0},
+    {ELEMENT_TEXT, 0, 1, jkGuiMain_xboxSystemLinkPeers[6], 3, {62, 364, 540, 22}, 1, 0, 0, 0, 0, 0, {0}, 0},
+    {ELEMENT_TEXT, 0, 1, jkGuiMain_xboxSystemLinkPeers[7], 3, {62, 390, 540, 22}, 1, 0, 0, 0, 0, 0, {0}, 0},
+    {ELEMENT_TEXT, 0, 2, jkGuiMain_xboxSystemLinkHint, 3, {58, 410, 540, 26}, 1, 0, 0, 0, 0, 0, {0}, 0},
+    {ELEMENT_TEXTBUTTON, -1, 2, "GUI_CANCEL", 3, {230, 438, 180, 34}, 1, 0, 0, 0, 0, 0, {0}, 0},
+    {ELEMENT_END, 0, 0, 0, 0, {0}, 0, 0, 0, 0, 0, 0, {0}, 0}
+};
+
+static jkGuiMenu jkGuiMain_xboxSystemLinkMenu = {jkGuiMain_xboxSystemLinkElements, -1, 0xFFFF, 0xFFFF, 0xF, 0, 0, jkGui_stdBitmaps, jkGui_stdFonts, 0, 0, "thermloop01.wav", "thrmlpu2.wav", 0, 0, 0, 0, 0, 0};
 
 enum
 {
@@ -716,6 +757,129 @@ static int jkGuiMain_XboxStartLocalMultiplayerTest(void)
     return result;
 }
 
+static void jkGuiMain_XboxSystemLinkResetUi(void)
+{
+    int i;
+
+    jkGuiMain_xboxSystemLinkStatus[0] = 0;
+    jkGuiMain_xboxSystemLinkPeerCount[0] = 0;
+    jkGuiMain_xboxSystemLinkHint[0] = 0;
+    for (i = 0; i < XBOX_SYSTEMLINK_PROBE_MAX_PEERS; i++)
+    {
+        jkGuiMain_xboxSystemLinkPeers[i][0] = 0;
+        jkGuiMain_xboxSystemLinkLastPeerPackets[i] = 0xFFFFFFFF;
+        jkGuiMain_xboxSystemLinkElements[JKGUI_XBOX_XSL_FIRST_PEER + i].bIsVisible = 0;
+    }
+
+    jkGuiMain_xboxSystemLinkLastStarted = -1;
+    jkGuiMain_xboxSystemLinkLastPort = -1;
+    jkGuiMain_xboxSystemLinkLastError = -1;
+    jkGuiMain_xboxSystemLinkLastId = 0;
+    jkGuiMain_xboxSystemLinkLastSent = 0xFFFFFFFF;
+}
+
+static int jkGuiMain_XboxSystemLinkFormatUi(void)
+{
+    XboxSystemLinkProbeStatus status;
+    int dirty;
+    int i;
+
+    xboxSystemLinkProbe_GetStatus(&status);
+    dirty = 0;
+
+    if (status.started)
+        jk_snwprintf(jkGuiMain_xboxSystemLinkStatus, 96, L"LOCAL ID  %08X    PORT %d", status.localId, status.localPort);
+    else
+        jk_snwprintf(jkGuiMain_xboxSystemLinkStatus, 96, L"NOT STARTED    ERROR %d", status.lastError);
+
+    jk_snwprintf(jkGuiMain_xboxSystemLinkPeerCount, 64, L"PEERS FOUND  %d", status.peerCount);
+
+    if (status.peerCount == 0)
+        jk_snwprintf(jkGuiMain_xboxSystemLinkHint, 96, L"OPEN THIS SCREEN ON BOTH INSTANCES");
+    else
+        jkGuiMain_xboxSystemLinkHint[0] = 0;
+
+    if (status.started != jkGuiMain_xboxSystemLinkLastStarted
+        || status.localPort != jkGuiMain_xboxSystemLinkLastPort
+        || status.localId != jkGuiMain_xboxSystemLinkLastId
+        || status.lastError != jkGuiMain_xboxSystemLinkLastError
+        || status.sent != jkGuiMain_xboxSystemLinkLastSent)
+    {
+        dirty = 1;
+    }
+
+    jkGuiMain_xboxSystemLinkLastStarted = status.started;
+    jkGuiMain_xboxSystemLinkLastPort = status.localPort;
+    jkGuiMain_xboxSystemLinkLastId = status.localId;
+    jkGuiMain_xboxSystemLinkLastError = status.lastError;
+    jkGuiMain_xboxSystemLinkLastSent = status.sent;
+
+    for (i = 0; i < XBOX_SYSTEMLINK_PROBE_MAX_PEERS; i++)
+    {
+        int elemIdx = JKGUI_XBOX_XSL_FIRST_PEER + i;
+
+        if (i < status.peerCount)
+        {
+            char addr[32];
+            xboxSystemLinkProbe_FormatAddress(status.peers[i].address, addr, sizeof(addr));
+            jk_snwprintf(jkGuiMain_xboxSystemLinkPeers[i], 96, L"%08X    %S:%d    PACKETS %lu",
+                         status.peers[i].id,
+                         addr,
+                         status.peers[i].port,
+                         status.peers[i].packets);
+            if (!jkGuiMain_xboxSystemLinkElements[elemIdx].bIsVisible
+                || jkGuiMain_xboxSystemLinkLastPeerPackets[i] != status.peers[i].packets)
+            {
+                dirty = 1;
+            }
+            jkGuiMain_xboxSystemLinkElements[elemIdx].bIsVisible = 1;
+            jkGuiMain_xboxSystemLinkLastPeerPackets[i] = status.peers[i].packets;
+        }
+        else
+        {
+            if (jkGuiMain_xboxSystemLinkElements[elemIdx].bIsVisible)
+                dirty = 1;
+            jkGuiMain_xboxSystemLinkElements[elemIdx].bIsVisible = 0;
+            jkGuiMain_xboxSystemLinkPeers[i][0] = 0;
+            jkGuiMain_xboxSystemLinkLastPeerPackets[i] = 0xFFFFFFFF;
+        }
+    }
+
+    return dirty;
+}
+
+static void jkGuiMain_XboxSystemLinkTick(jkGuiMenu *menu)
+{
+    int i;
+
+    xboxSystemLinkProbe_Tick();
+    if (!jkGuiMain_XboxSystemLinkFormatUi())
+        return;
+
+    jkGuiRend_UpdateAndDrawClickable(&jkGuiMain_xboxSystemLinkElements[JKGUI_XBOX_XSL_STATUS], menu, 1);
+    jkGuiRend_UpdateAndDrawClickable(&jkGuiMain_xboxSystemLinkElements[JKGUI_XBOX_XSL_PEER_COUNT], menu, 1);
+    for (i = 0; i < XBOX_SYSTEMLINK_PROBE_MAX_PEERS; i++)
+        jkGuiRend_UpdateAndDrawClickable(&jkGuiMain_xboxSystemLinkElements[JKGUI_XBOX_XSL_FIRST_PEER + i], menu, 1);
+    jkGuiRend_UpdateAndDrawClickable(&jkGuiMain_xboxSystemLinkElements[JKGUI_XBOX_XSL_HINT], menu, 1);
+}
+
+static void jkGuiMain_XboxShowSystemLinkProbe(void)
+{
+    XDBG("XSL probe screen enter\n");
+    stdBitmap_EnsureData(jkGui_stdBitmaps[JKGUI_BM_BK_MULTI]);
+    jkGui_SetModeMenu(jkGui_stdBitmaps[JKGUI_BM_BK_MULTI]->palette);
+    jkGuiMain_XboxSystemLinkResetUi();
+    jkGuiMain_XboxSystemLinkFormatUi();
+    jkGuiMain_xboxSystemLinkMenu.idkFunc = jkGuiMain_XboxSystemLinkTick;
+    jkGuiRend_MenuSetReturnKeyShortcutElement(&jkGuiMain_xboxSystemLinkMenu, &jkGuiMain_xboxSystemLinkElements[JKGUI_XBOX_XSL_BACK]);
+    jkGuiRend_MenuSetEscapeKeyShortcutElement(&jkGuiMain_xboxSystemLinkMenu, &jkGuiMain_xboxSystemLinkElements[JKGUI_XBOX_XSL_BACK]);
+    xboxSystemLinkProbe_Start();
+    jkGuiRend_DisplayAndReturnClicked(&jkGuiMain_xboxSystemLinkMenu);
+    xboxSystemLinkProbe_Stop();
+    jkGuiMain_xboxSystemLinkMenu.idkFunc = 0;
+    XDBG("XSL probe screen leave\n");
+}
+
 static int jkGuiMain_XboxShowMultiplayer(void)
 {
     int result;
@@ -741,7 +905,7 @@ static int jkGuiMain_XboxShowMultiplayer(void)
         }
         else if (result == 22)
         {
-            jkGuiDialog_ErrorDialog(L"Multiplayer", L"Coming soon");
+            jkGuiMain_XboxShowSystemLinkProbe();
             stdBitmap_EnsureData(jkGui_stdBitmaps[JKGUI_BM_BK_MULTI]);
             jkGui_SetModeMenu(jkGui_stdBitmaps[JKGUI_BM_BK_MULTI]->palette);
             result = -2;
@@ -1000,6 +1164,7 @@ void jkGuiMain_Startup()
 #ifdef TARGET_XBOX
     jkGui_InitMenu(&jkGuiMain_xboxMultiplayerMenu, jkGui_stdBitmaps[JKGUI_BM_BK_MULTI]);
     jkGui_InitMenu(&jkGuiMain_xboxReadyMenu, jkGui_stdBitmaps[JKGUI_BM_BK_ESC]);
+    jkGui_InitMenu(&jkGuiMain_xboxSystemLinkMenu, jkGui_stdBitmaps[JKGUI_BM_BK_MULTI]);
 #endif
 
     // Added: clean reset
