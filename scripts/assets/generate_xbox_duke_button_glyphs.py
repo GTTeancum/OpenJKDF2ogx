@@ -13,8 +13,14 @@ from PIL import Image
 DEFAULT_RES2 = Path(r"C:\Games\Emulators\CXBX\openJKDF2x\Resource\Res2.gob")
 
 BUTTONS = {
+    "xbtn_a": (56, 40, 184, 200),
+    "xbtn_b": (246, 40, 374, 200),
+    "xbtn_x": (436, 40, 564, 200),
+    "xbtn_y": (626, 40, 754, 200),
     "xbtn_white": (816, 56, 944, 184),
     "xbtn_black": (986, 56, 1098, 156),
+    "xbtn_start": (1176, 92, 1264, 148),
+    "xbtn_back": (1196, 332, 1284, 388),
     "xbtn_lt": (1026, 608, 1154, 712),
     "xbtn_rt": (1176, 608, 1304, 712),
 }
@@ -129,6 +135,37 @@ def write_bm(path: Path, img: Image.Image, target_palette: list[tuple[int, int, 
         f.write(palette)
 
 
+def write_bm32(path: Path, img: Image.Image) -> None:
+    width, height = img.size
+    rd_tex_format = [0, 32, 8, 8, 8, 0, 8, 16, 0, 0, 0, 0, 0, 0]
+    header = [
+        0x20204D42,
+        70,
+        0,
+        0,
+        1,
+        0,
+        0,
+        0,
+        *rd_tex_format,
+        0,
+        0,
+        0,
+        0,
+        0,
+        0,
+        0,
+        0,
+        0,
+        0,
+    ]
+    path.parent.mkdir(parents=True, exist_ok=True)
+    with path.open("wb") as f:
+        f.write(struct.pack("<32I", *header))
+        f.write(struct.pack("<II", width, height))
+        f.write(img.convert("RGBA").tobytes())
+
+
 def prepare_button(source: Image.Image, box: tuple[int, int, int, int]) -> Image.Image:
     icon = source.crop(box).convert("RGBA")
     pix = bytearray(icon.tobytes())
@@ -171,6 +208,7 @@ def generate(repo: Path, game_resource: Path | None, res2: Path | None) -> Path:
         sheet.alpha_composite(icon, (idx * 96 + 8, 20))
         for root in output_roots(repo, game_resource):
             write_bm(root / "ui" / "bm" / f"{stem}.bm", icon, target_palette)
+            write_bm32(root / "ui" / "bm" / f"{stem.replace('xbtn_', 'xbtn_tc_')}.bm", icon)
 
     sheet.save(preview_dir / "xbox_duke_buttons_sheet.png")
     return preview_dir / "xbox_duke_buttons_sheet.png"

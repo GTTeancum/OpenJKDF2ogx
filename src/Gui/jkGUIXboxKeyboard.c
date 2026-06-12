@@ -203,12 +203,7 @@ static int jkGuiXboxKeyboard_ButtonClicked(jkGuiElement *element, jkGuiMenu *men
 
 static void jkGuiXboxKeyboard_Tick(jkGuiMenu *menu)
 {
-    if (jkGuiXboxKeyboard_ReadEdge(KEY_JOY1_B3, &jkGuiXboxKeyboard_prevX))
-        jkGuiXboxKeyboard_Backspace(menu);
-    if (jkGuiXboxKeyboard_ReadEdge(KEY_JOY1_B4, &jkGuiXboxKeyboard_prevY))
-        jkGuiXboxKeyboard_AppendChar(L' ', menu);
-    if (jkGuiXboxKeyboard_ReadEdge(KEY_JOY1_B7, &jkGuiXboxKeyboard_prevStart))
-        menu->lastClicked = 1;
+    (void)menu;
 }
 
 static void jkGuiXboxKeyboard_InitElements(void)
@@ -341,6 +336,15 @@ int jkGuiXboxKeyboard_Show(wchar_t *text, int maxChars, const wchar_t *title)
     jkGuiXboxKeyboard_menu.lastMouseOverClickable = &jkGuiXboxKeyboard_elements[3];
     jkGuiRend_MenuSetReturnKeyShortcutElement(&jkGuiXboxKeyboard_menu, NULL);
     jkGuiRend_MenuSetEscapeKeyShortcutElement(&jkGuiXboxKeyboard_menu, &jkGuiXboxKeyboard_elements[3 + XKB_NUM_KEYS + 3]);
+    jkGuiXboxKeyboard_elements[3 + XKB_NUM_KEYS + 3].bIsVisible = 0;
+    jkGuiXboxKeyboard_elements[3 + XKB_NUM_KEYS + 4].bIsVisible = 0;
+    jkGuiRend_XboxFooterBegin(&jkGuiXboxKeyboard_menu);
+    jkGuiRend_XboxFooterAddAction(&jkGuiXboxKeyboard_menu, JKGUI_XBOX_BTN_A, 0, L"Select");
+    jkGuiRend_XboxFooterAddAction(&jkGuiXboxKeyboard_menu, JKGUI_XBOX_BTN_B, -1, L"Cancel");
+    jkGuiRend_XboxFooterAddElementAction(&jkGuiXboxKeyboard_menu, JKGUI_XBOX_BTN_X, &jkGuiXboxKeyboard_elements[3 + XKB_NUM_KEYS + 2], L"Back");
+    jkGuiRend_XboxFooterAddElementAction(&jkGuiXboxKeyboard_menu, JKGUI_XBOX_BTN_Y, &jkGuiXboxKeyboard_elements[3 + XKB_NUM_KEYS + 1], L"Space");
+    jkGuiRend_XboxFooterAddAction(&jkGuiXboxKeyboard_menu, JKGUI_XBOX_BTN_START, 1, L"Done");
+    jkGuiRend_XboxSetInitialFocus(&jkGuiXboxKeyboard_menu, &jkGuiXboxKeyboard_elements[3]);
     jkGuiXboxKeyboard_ResetEdges();
 
     ret = jkGuiRend_DisplayAndReturnClicked(&jkGuiXboxKeyboard_menu);

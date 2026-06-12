@@ -46,6 +46,10 @@ static int jkGuiMain_bIdk = 1;
 static int jkGuiCutscenes_initted;
 
 #ifdef TARGET_XBOX
+#define JKGUI_MAIN_CREDITS_CUTSCENE_ID "__xbox_credits__"
+#endif
+
+#ifdef TARGET_XBOX
 static int jkGuiMain_XboxReadSmokeAutostartLevel(char *out, size_t outSize)
 {
     FILE *f;
@@ -675,6 +679,7 @@ static int jkGuiMain_XboxShowSplitReady(void)
     jkGuiRend_xboxSuppressControllerConfirm = 1;
     do
     {
+        jkGuiRend_XboxFooterBegin(&jkGuiMain_xboxReadyMenu);
         result = jkGuiRend_DisplayAndReturnClicked(&jkGuiMain_xboxReadyMenu);
         if (result == 20 && !jkGuiMain_xboxReadyStartRequested)
         {
@@ -873,6 +878,9 @@ static void jkGuiMain_XboxShowSystemLinkProbe(void)
     jkGuiMain_xboxSystemLinkMenu.idkFunc = jkGuiMain_XboxSystemLinkTick;
     jkGuiRend_MenuSetReturnKeyShortcutElement(&jkGuiMain_xboxSystemLinkMenu, &jkGuiMain_xboxSystemLinkElements[JKGUI_XBOX_XSL_BACK]);
     jkGuiRend_MenuSetEscapeKeyShortcutElement(&jkGuiMain_xboxSystemLinkMenu, &jkGuiMain_xboxSystemLinkElements[JKGUI_XBOX_XSL_BACK]);
+    jkGuiMain_xboxSystemLinkElements[JKGUI_XBOX_XSL_BACK].bIsVisible = 0;
+    jkGuiRend_XboxFooterBegin(&jkGuiMain_xboxSystemLinkMenu);
+    jkGuiRend_XboxFooterAddAction(&jkGuiMain_xboxSystemLinkMenu, JKGUI_XBOX_BTN_B, -1, L"Back");
     xboxSystemLinkProbe_Start();
     jkGuiRend_DisplayAndReturnClicked(&jkGuiMain_xboxSystemLinkMenu);
     xboxSystemLinkProbe_Stop();
@@ -891,6 +899,11 @@ static int jkGuiMain_XboxShowMultiplayer(void)
     {
         jkGuiRend_MenuSetReturnKeyShortcutElement(&jkGuiMain_xboxMultiplayerMenu, &jkGuiMain_xboxMultiplayerElements[1]);
         jkGuiRend_MenuSetEscapeKeyShortcutElement(&jkGuiMain_xboxMultiplayerMenu, &jkGuiMain_xboxMultiplayerElements[4]);
+        jkGuiMain_xboxMultiplayerElements[4].bIsVisible = 0;
+        jkGuiRend_XboxFooterBegin(&jkGuiMain_xboxMultiplayerMenu);
+        jkGuiRend_XboxFooterAddAction(&jkGuiMain_xboxMultiplayerMenu, JKGUI_XBOX_BTN_A, 0, L"Select");
+        jkGuiRend_XboxFooterAddAction(&jkGuiMain_xboxMultiplayerMenu, JKGUI_XBOX_BTN_B, -1, L"Back");
+        jkGuiRend_XboxSetInitialFocus(&jkGuiMain_xboxMultiplayerMenu, &jkGuiMain_xboxMultiplayerElements[1]);
         result = jkGuiRend_DisplayAndReturnClicked(&jkGuiMain_xboxMultiplayerMenu);
 
         if (result == 20)
@@ -975,8 +988,25 @@ void jkGuiMain_Show()
 #endif
 
     // Added: OpenJKDF2 version
+#ifdef TARGET_XBOX
+    jkGuiMain_elements[3].rect.x = 20;
+    jkGuiMain_elements[3].rect.width = 150;
+    jkGuiMain_elements[4].rect.x = 470;
+    jkGuiMain_elements[4].rect.width = 150;
+    jkGuiMain_elements[5].bIsVisible = 0;
+#ifdef QOL_IMPROVEMENTS
+    jkGuiMain_elements[7].rect.x = 170;
+    jkGuiMain_elements[7].rect.y = jkGuiMain_elements[3].rect.y;
+    jkGuiMain_elements[7].rect.width = 300;
+#endif
+    jkGuiMain_elements[8].bIsVisible = 0;
+    jkGuiMain_elements[9].bIsVisible = 0;
+    jkGuiMain_elements[8].wstr = 0;
+    jkGuiMain_elements[9].wstr = 0;
+#else
     jkGuiMain_elements[8].wstr = openjkdf2_waReleaseVersion;
     jkGuiMain_elements[9].wstr = openjkdf2_waReleaseCommitShort;
+#endif
 
     // Added
     stdBitmap_EnsureData(jkGui_stdBitmaps[JKGUI_BM_BK_MAIN]);
@@ -1122,12 +1152,28 @@ void jkGuiMain_ShowCutscenes()
         {
             jkGuiRend_MenuSetReturnKeyShortcutElement(&jkGuiMain_cutscenesMenu, &jkGuiMain_cutscenesElements[2]);
             jkGuiRend_MenuSetEscapeKeyShortcutElement(&jkGuiMain_cutscenesMenu, &jkGuiMain_cutscenesElements[3]);
+#ifdef TARGET_XBOX
+            jkGuiMain_cutscenesElements[2].bIsVisible = 0;
+            jkGuiMain_cutscenesElements[3].bIsVisible = 0;
+            jkGuiRend_XboxFooterBegin(&jkGuiMain_cutscenesMenu);
+            jkGuiRend_XboxFooterAddAction(&jkGuiMain_cutscenesMenu, JKGUI_XBOX_BTN_A, 1, L"Play");
+            jkGuiRend_XboxFooterAddAction(&jkGuiMain_cutscenesMenu, JKGUI_XBOX_BTN_B, -1, L"Back");
+            jkGuiRend_XboxSetInitialFocus(&jkGuiMain_cutscenesMenu, &jkGuiMain_cutscenesElements[1]);
+#endif
             v4 = jkGuiRend_DisplayAndReturnClicked(&jkGuiMain_cutscenesMenu);
             if ( v4 != 1 )
                 break;
 
             // Added: Moved these up
             v5 = (const char *)jkGuiRend_GetId(&darray, jkGuiMain_cutscenesElements[1].selectedTextEntry);
+#ifdef TARGET_XBOX
+            if (v5 && !strcmp(v5, JKGUI_MAIN_CREDITS_CUTSCENE_ID))
+            {
+                jkCredits_cdOverride = 1;
+                jkMain_SwitchTo13();
+                goto LABEL_17;
+            }
+#endif
             snprintf(v12, 256, "video%c%s", '\\', v5); // Added: sprintf -> snprintf
             if ( util_FileExists(v12) || jkRes_LoadCD(jkPlayer_aCutsceneVal[jkGuiMain_cutscenesElements[1].selectedTextEntry]) ) // Added: Don't need a CD switch if it exists.
             {
@@ -1197,6 +1243,12 @@ void jkGuiMain_PopulateCutscenes(Darray *list, jkGuiElement *element)
         jkGuiRend_DarrayReallocStr(list, v5, (intptr_t)v3);
         v2 += 32;
     }
+#ifdef TARGET_XBOX
+    {
+        char *creditsId = _strcpy((char *)pHS->alloc(sizeof(JKGUI_MAIN_CREDITS_CUTSCENE_ID)), JKGUI_MAIN_CREDITS_CUTSCENE_ID);
+        jkGuiRend_DarrayReallocStr(list, jkStrings_GetUniStringWithFallback("GUI_CREDITS"), (intptr_t)creditsId);
+    }
+#endif
     jkGuiRend_AddStringEntry(list, 0, 0);
     jkGuiRend_SetClickableString(element, list);
     element->selectedTextEntry = 0;

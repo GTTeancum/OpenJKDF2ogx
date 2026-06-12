@@ -9,6 +9,7 @@
 #include "Primitives/rdVector.h"
 #include "Win95/stdDisplay.h"
 #include "Platform/stdControl.h"
+#include "Platform/std3D.h"
 #include "Win95/Window.h"
 #include "Win95/stdGdi.h"
 #include "Win95/stdSound.h"
@@ -54,11 +55,63 @@ static int32_t jkGuiRend_CursorVisible = 1;
 static int jkGuiRend_IsControllerFocusable(jkGuiElement *element);
 static jkGuiElement* jkGuiRend_GetControllerClickTarget(jkGuiMenu *menu);
 #ifdef TARGET_XBOX
+#define JKGUI_XBOX_FOOTER_MAX_ACTIONS 6
+#define JKGUI_XBOX_FOOTER_H 40
+#define JKGUI_XBOX_FOOTER_ICON_W 40
+#define JKGUI_XBOX_FOOTER_ICON_H 30
+#define JKGUI_XBOX_FOOTER_LEFT 20
+
+typedef struct jkGuiRendXboxFooterAction
+{
+    int32_t button;
+    int32_t clickId;
+    jkGuiElement *element;
+    const wchar_t *label;
+} jkGuiRendXboxFooterAction;
+
+typedef struct jkGuiRendXboxFooterGlyphDraw
+{
+    stdBitmap *bitmap;
+    rdRect rect;
+} jkGuiRendXboxFooterGlyphDraw;
+
 static int32_t jkGuiRend_xboxBatchFlipDepth = 0;
 static int32_t jkGuiRend_xboxBatchFlipPending = 0;
+static jkGuiMenu *jkGuiRend_xboxFooterMenu = NULL;
+static jkGuiRendXboxFooterAction jkGuiRend_xboxFooterActions[JKGUI_XBOX_FOOTER_MAX_ACTIONS];
+static int32_t jkGuiRend_xboxFooterActionCount = 0;
+static int32_t jkGuiRend_xboxFooterExplicit = 0;
+static jkGuiRendXboxFooterGlyphDraw jkGuiRend_xboxFooterGlyphDraws[JKGUI_XBOX_FOOTER_MAX_ACTIONS];
+static int32_t jkGuiRend_xboxFooterGlyphDrawCount = 0;
+static jkGuiMenu *jkGuiRend_xboxInitialFocusMenu = NULL;
+static jkGuiElement *jkGuiRend_xboxInitialFocusElement = NULL;
+static const char *jkGuiRend_xboxButtonPaths[JKGUI_XBOX_BTN_COUNT] =
+{
+    "ui\\bm\\xbtn_tc_a.bm",
+    "ui\\bm\\xbtn_tc_b.bm",
+    "ui\\bm\\xbtn_tc_x.bm",
+    "ui\\bm\\xbtn_tc_y.bm",
+    "ui\\bm\\xbtn_tc_white.bm",
+    "ui\\bm\\xbtn_tc_black.bm",
+    "ui\\bm\\xbtn_tc_lt.bm",
+    "ui\\bm\\xbtn_tc_rt.bm",
+    "ui\\bm\\xbtn_tc_start.bm",
+    "ui\\bm\\xbtn_tc_back.bm",
+};
+static stdBitmap *jkGuiRend_xboxButtonBitmaps[JKGUI_XBOX_BTN_COUNT];
+static uint8_t jkGuiRend_xboxFooterDarkRemap[256];
+static int32_t jkGuiRend_xboxFooterDarkRemapChecksum = -1;
 static void jkGuiRend_XboxBeginBatchFlip(void);
 static void jkGuiRend_XboxEndBatchFlip(jkGuiMenu *menu);
 static void jkGuiRend_XboxFlipOrBatch(jkGuiMenu *menu, rdRect *drawRect);
+static void jkGuiRend_XboxFooterDraw(jkGuiMenu *menu);
+static void jkGuiRend_XboxFooterPostMenuDraw(void *ctx);
+static void jkGuiRend_XboxFooterEnsureDefault(jkGuiMenu *menu);
+static int32_t jkGuiRend_XboxIsFooterControl(jkGuiElement *element);
+static int32_t jkGuiRend_XboxFooterInvokeElement(jkGuiMenu *menu, jkGuiElement *element);
+static int32_t jkGuiRend_XboxFooterInvokeButton(jkGuiMenu *menu, int32_t button);
+static int32_t jkGuiRend_XboxApplyInitialFocus(jkGuiMenu *menu);
+static void jkGuiRend_XboxUnloadButtonGlyphs(void);
 #endif
 static jkGuiElementHandlers jkGuiRend_elementHandlers[8] = 
 {
@@ -258,6 +311,549 @@ LABEL_22:
     stdDisplay_VBufferUnlock(vbuf);
 }
 
+#ifdef TARGET_XBOX
+void jkGuiRend_XboxFooterClear(void)
+{
+    jkGuiRend_xboxFooterMenu = NULL;
+    jkGuiRend_xboxFooterActionCount = 0;
+    jkGuiRend_xboxFooterExplicit = 0;
+    jkGuiRend_xboxFooterGlyphDrawCount = 0;
+    _memset(jkGuiRend_xboxFooterActions, 0, sizeof(jkGuiRend_xboxFooterActions));
+    _memset(jkGuiRend_xboxFooterGlyphDraws, 0, sizeof(jkGuiRend_xboxFooterGlyphDraws));
+    stdDisplay_XboxSetPostMenuOverlayCallback(NULL, NULL);
+}
+
+void jkGuiRend_XboxFooterBegin(jkGuiMenu *menu)
+{
+    jkGuiRend_XboxFooterClear();
+    jkGuiRend_xboxFooterMenu = menu;
+    jkGuiRend_xboxFooterExplicit = 1;
+}
+
+void jkGuiRend_XboxFooterAddAction(jkGuiMenu *menu, int32_t button, int32_t clickId, const wchar_t *label)
+{
+    jkGuiRendXboxFooterAction *action;
+
+    if (!menu || button < 0 || button >= JKGUI_XBOX_BTN_COUNT)
+        return;
+
+    if (jkGuiRend_xboxFooterMenu != menu)
+        jkGuiRend_XboxFooterBegin(menu);
+
+    if (jkGuiRend_xboxFooterActionCount >= JKGUI_XBOX_FOOTER_MAX_ACTIONS)
+        return;
+
+    action = &jkGuiRend_xboxFooterActions[jkGuiRend_xboxFooterActionCount++];
+    action->button = button;
+    action->clickId = clickId;
+    action->element = NULL;
+    action->label = label;
+}
+
+static void jkGuiRend_XboxFooterEnsureDefault(jkGuiMenu *menu)
+{
+    jkGuiElement *returnElement;
+    jkGuiElement *escapeElement;
+    int32_t returnIsFooter;
+    int32_t escapeIsFooter;
+
+    if (!menu)
+        return;
+
+    if (jkGuiRend_xboxFooterMenu == menu && (jkGuiRend_xboxFooterActionCount > 0 || jkGuiRend_xboxFooterExplicit))
+        return;
+
+    returnElement = menu->pReturnKeyShortcutElement;
+    escapeElement = menu->pEscapeKeyShortcutElement;
+    returnIsFooter = jkGuiRend_XboxIsFooterControl(returnElement);
+    escapeIsFooter = jkGuiRend_XboxIsFooterControl(escapeElement);
+
+    jkGuiRend_XboxFooterClear();
+    jkGuiRend_xboxFooterMenu = menu;
+    jkGuiRend_xboxFooterExplicit = 0;
+    jkGuiRend_XboxFooterAddAction(menu, JKGUI_XBOX_BTN_A, 0, L"Select");
+    if (escapeElement && escapeElement != returnElement)
+    {
+        if (escapeIsFooter)
+            jkGuiRend_XboxFooterAddElementAction(menu, JKGUI_XBOX_BTN_B, escapeElement, L"Back");
+        else
+            jkGuiRend_XboxFooterAddAction(menu, JKGUI_XBOX_BTN_B, -1, L"Back");
+    }
+    if (returnElement && returnIsFooter)
+        jkGuiRend_XboxFooterAddElementAction(menu, JKGUI_XBOX_BTN_START, returnElement, L"Done");
+
+    if (returnIsFooter)
+        returnElement->bIsVisible = 0;
+    if (escapeIsFooter)
+        escapeElement->bIsVisible = 0;
+}
+
+static int32_t jkGuiRend_XboxIsFooterControl(jkGuiElement *element)
+{
+    if (!element || element->enableHover)
+        return 0;
+
+    if (element->type != ELEMENT_TEXTBUTTON && element->type != ELEMENT_PICBUTTON)
+        return 0;
+
+    return element->rect.y >= 400;
+}
+
+void jkGuiRend_XboxFooterAddElementAction(jkGuiMenu *menu, int32_t button, jkGuiElement *element, const wchar_t *label)
+{
+    jkGuiRendXboxFooterAction *action;
+
+    if (!menu || button < 0 || button >= JKGUI_XBOX_BTN_COUNT)
+        return;
+
+    if (jkGuiRend_xboxFooterMenu != menu)
+        jkGuiRend_XboxFooterBegin(menu);
+
+    if (jkGuiRend_xboxFooterActionCount >= JKGUI_XBOX_FOOTER_MAX_ACTIONS)
+        return;
+
+    action = &jkGuiRend_xboxFooterActions[jkGuiRend_xboxFooterActionCount++];
+    action->button = button;
+    action->clickId = 0;
+    action->element = element;
+    action->label = label;
+}
+
+void jkGuiRend_XboxSetInitialFocus(jkGuiMenu *menu, jkGuiElement *element)
+{
+    jkGuiRend_xboxInitialFocusMenu = menu;
+    jkGuiRend_xboxInitialFocusElement = element;
+}
+
+static int32_t jkGuiRend_XboxApplyInitialFocus(jkGuiMenu *menu)
+{
+    jkGuiElement *element;
+
+    if (!menu || jkGuiRend_xboxInitialFocusMenu != menu)
+        return 0;
+
+    element = jkGuiRend_xboxInitialFocusElement;
+    jkGuiRend_xboxInitialFocusMenu = NULL;
+    jkGuiRend_xboxInitialFocusElement = NULL;
+
+    if (!jkGuiRend_IsControllerFocusable(element))
+        return 0;
+
+    if ((element->type == ELEMENT_LISTBOX || element->type == ELEMENT_TEXTBOX) && jkGuiRend_sub_5103E0(element))
+        menu->focusedElement = element;
+    else
+        menu->focusedElement = NULL;
+    menu->lastMouseOverClickable = element;
+    return 1;
+}
+
+static uint8_t jkGuiRend_XboxNearestMenuColor(const rdColor24 *src)
+{
+    int32_t best = 0;
+    int32_t bestDist = 0x7fffffff;
+    int32_t i;
+
+    for (i = 0; i < 256; i++)
+    {
+        int32_t dr = (int32_t)src->r - (int32_t)stdDisplay_masterPalette[i].r;
+        int32_t dg = (int32_t)src->g - (int32_t)stdDisplay_masterPalette[i].g;
+        int32_t db = (int32_t)src->b - (int32_t)stdDisplay_masterPalette[i].b;
+        int32_t dist = dr * dr + dg * dg + db * db;
+        if (dist < bestDist)
+        {
+            bestDist = dist;
+            best = i;
+            if (!dist)
+                break;
+        }
+    }
+
+    return (uint8_t)best;
+}
+
+static void jkGuiRend_XboxRefreshFooterDarkRemap(void)
+{
+    int32_t i;
+
+    if (jkGuiRend_xboxFooterDarkRemapChecksum == jkGuiRend_paletteChecksum)
+        return;
+
+    for (i = 0; i < 256; i++)
+    {
+        rdColor24 blended;
+        blended.r = (uint8_t)(((int32_t)stdDisplay_masterPalette[i].r * 20) / 100);
+        blended.g = (uint8_t)(((int32_t)stdDisplay_masterPalette[i].g * 20) / 100);
+        blended.b = (uint8_t)(((int32_t)stdDisplay_masterPalette[i].b * 20) / 100);
+        jkGuiRend_xboxFooterDarkRemap[i] = jkGuiRend_XboxNearestMenuColor(&blended);
+    }
+
+    jkGuiRend_xboxFooterDarkRemapChecksum = jkGuiRend_paletteChecksum;
+}
+
+static void jkGuiRend_XboxDrawFooterBackdrop(stdVBuffer *vbuf)
+{
+    int32_t y;
+    int32_t x;
+    int32_t footerH;
+    int32_t footerY;
+    uint8_t *base;
+
+    if (!vbuf || vbuf->format.width <= 0 || vbuf->format.height <= 0)
+        return;
+
+    footerH = JKGUI_XBOX_FOOTER_H;
+    footerY = vbuf->format.height - footerH;
+    if (footerY < 0)
+        footerY = 0;
+
+    jkGuiRend_XboxRefreshFooterDarkRemap();
+    stdDisplay_VBufferLock(vbuf);
+    base = (uint8_t*)vbuf->surface_lock_alloc;
+    for (y = footerY; y < vbuf->format.height; y++)
+    {
+        uint8_t *row = base + y * vbuf->format.width_in_bytes;
+        for (x = 0; x < vbuf->format.width; x++)
+            row[x] = jkGuiRend_xboxFooterDarkRemap[row[x]];
+    }
+    stdDisplay_VBufferUnlock(vbuf);
+}
+
+static int32_t jkGuiRend_XboxGlyphPixelTransparent(stdBitmap *bitmap, uint8_t pix)
+{
+    rdColor24 *pal;
+
+    if ((bitmap->palFmt & 1) && pix == (uint8_t)bitmap->colorkey)
+        return 1;
+
+    if (!bitmap->palette)
+        return 0;
+
+    pal = &((rdColor24*)bitmap->palette)[pix];
+    return pal->r < 10 && pal->g < 10 && pal->b < 10;
+}
+
+static void jkGuiRend_XboxBlitGlyphRemapped(stdVBuffer *dst, stdBitmap *bitmap, rdRect *dstRect)
+{
+    stdVBuffer *src;
+    uint8_t remap[256];
+    uint8_t *srcBase;
+    uint8_t *dstBase;
+    int32_t drawW;
+    int32_t drawH;
+    int32_t drawX;
+    int32_t drawY;
+    int32_t row;
+    int32_t i;
+
+    if (!dst || !bitmap || !bitmap->mipSurfaces || !bitmap->mipSurfaces[0] || !bitmap->palette)
+        return;
+
+    src = bitmap->mipSurfaces[0];
+    if (src->format.width <= 0 || src->format.height <= 0 || dstRect->width <= 0 || dstRect->height <= 0)
+        return;
+
+    drawW = dstRect->width;
+    drawH = (src->format.height * drawW) / src->format.width;
+    if (drawH > dstRect->height)
+    {
+        drawH = dstRect->height;
+        drawW = (src->format.width * drawH) / src->format.height;
+    }
+    if (drawW <= 0 || drawH <= 0)
+        return;
+
+    drawX = dstRect->x + (dstRect->width - drawW) / 2;
+    drawY = dstRect->y + (dstRect->height - drawH) / 2;
+    if (drawX < 0 || drawY < 0 || drawX + drawW > dst->format.width || drawY + drawH > dst->format.height)
+        return;
+
+    for (i = 0; i < 256; i++)
+        remap[i] = jkGuiRend_XboxNearestMenuColor(&((rdColor24*)bitmap->palette)[i]);
+
+    stdDisplay_VBufferLock(src);
+    stdDisplay_VBufferLock(dst);
+    srcBase = (uint8_t*)src->surface_lock_alloc;
+    dstBase = (uint8_t*)dst->surface_lock_alloc + drawY * dst->format.width_in_bytes + drawX;
+    for (row = 0; row < drawH; row++)
+    {
+        int32_t sy = (row * src->format.height) / drawH;
+        uint8_t *srcRow = srcBase + sy * src->format.width_in_bytes;
+        uint8_t *dstRow = dstBase + row * dst->format.width_in_bytes;
+        int32_t col;
+        for (col = 0; col < drawW; col++)
+        {
+            int32_t sx = (col * src->format.width) / drawW;
+            uint8_t pix = srcRow[sx];
+            if (jkGuiRend_XboxGlyphPixelTransparent(bitmap, pix))
+                continue;
+            dstRow[col] = remap[pix];
+        }
+    }
+    stdDisplay_VBufferUnlock(dst);
+    stdDisplay_VBufferUnlock(src);
+}
+
+static void jkGuiRend_XboxLoadButtonGlyphs(void)
+{
+    int32_t i;
+    for (i = 0; i < JKGUI_XBOX_BTN_COUNT; i++)
+    {
+        if (!jkGuiRend_xboxButtonBitmaps[i])
+            jkGuiRend_xboxButtonBitmaps[i] = stdBitmap_LoadPartial((char*)jkGuiRend_xboxButtonPaths[i], 1, 0);
+    }
+}
+
+static void jkGuiRend_XboxUnloadButtonGlyphs(void)
+{
+    int32_t i;
+    for (i = 0; i < JKGUI_XBOX_BTN_COUNT; i++)
+    {
+        if (jkGuiRend_xboxButtonBitmaps[i])
+        {
+            stdBitmap_Free(jkGuiRend_xboxButtonBitmaps[i]);
+            jkGuiRend_xboxButtonBitmaps[i] = NULL;
+        }
+    }
+}
+
+static int32_t jkGuiRend_XboxFitButtonGlyph(stdBitmap *bitmap, rdRect *slotRect, rdRect *drawRect)
+{
+    stdVBuffer *src;
+    int32_t drawW;
+    int32_t drawH;
+
+    if (!bitmap || !slotRect || !drawRect || slotRect->width <= 0 || slotRect->height <= 0)
+        return 0;
+
+    stdBitmap_EnsureData(bitmap);
+    if (!bitmap->mipSurfaces || !bitmap->mipSurfaces[0])
+        return 0;
+
+    src = bitmap->mipSurfaces[0];
+    if (src->format.width <= 0 || src->format.height <= 0)
+        return 0;
+
+    drawW = slotRect->width;
+    drawH = (src->format.height * drawW) / src->format.width;
+    if (drawH > slotRect->height)
+    {
+        drawH = slotRect->height;
+        drawW = (src->format.width * drawH) / src->format.height;
+    }
+    if (drawW <= 0 || drawH <= 0)
+        return 0;
+
+    drawRect->x = slotRect->x + (slotRect->width - drawW) / 2;
+    drawRect->y = slotRect->y + (slotRect->height - drawH) / 2;
+    drawRect->width = drawW;
+    drawRect->height = drawH;
+    return 1;
+}
+
+static void jkGuiRend_XboxFooterPostMenuDraw(void *ctx)
+{
+    int32_t i;
+
+    (void)ctx;
+
+    if (!jkGuiRend_xboxFooterMenu || jkGuiRend_activeMenu != jkGuiRend_xboxFooterMenu)
+        return;
+
+    for (i = 0; i < jkGuiRend_xboxFooterGlyphDrawCount; i++)
+    {
+        jkGuiRendXboxFooterGlyphDraw *draw = &jkGuiRend_xboxFooterGlyphDraws[i];
+        stdVBuffer *src;
+        flex_t scaleX;
+        flex_t scaleY;
+
+        if (!draw->bitmap || !draw->bitmap->mipSurfaces || !draw->bitmap->mipSurfaces[0])
+            continue;
+
+        src = draw->bitmap->mipSurfaces[0];
+        if (src->format.width <= 0 || src->format.height <= 0 || draw->rect.width <= 0 || draw->rect.height <= 0)
+            continue;
+
+        scaleX = (flex_t)draw->rect.width / (flex_t)src->format.width;
+        scaleY = (flex_t)draw->rect.height / (flex_t)src->format.height;
+        std3D_DrawUIBitmapRGBA(draw->bitmap,
+                               0,
+                               (flex_t)draw->rect.x,
+                               (flex_t)draw->rect.y,
+                               NULL,
+                               scaleX,
+                               scaleY,
+                               1,
+                               0xFF,
+                               0xFF,
+                               0xFF,
+                               0xFF);
+    }
+}
+
+static int32_t jkGuiRend_XboxFooterLabelWidth(jkGuiMenu *menu, const wchar_t *label)
+{
+    stdFont *font;
+
+    if (!menu || !label || !label[0])
+        return 0;
+
+    font = menu->fonts[2] ? menu->fonts[2] : menu->fonts[3];
+    if (!font)
+        return 0;
+
+    return stdFont_sub_435810(font, label, _wcslen(label));
+}
+
+static void jkGuiRend_XboxFooterDraw(jkGuiMenu *menu)
+{
+    stdFont *font;
+    int32_t validCount = 0;
+    int32_t widths[JKGUI_XBOX_FOOTER_MAX_ACTIONS];
+    int32_t totalW = 0;
+    int32_t gap = 18;
+    int32_t iconW = JKGUI_XBOX_FOOTER_ICON_W;
+    int32_t iconH = JKGUI_XBOX_FOOTER_ICON_H;
+    int32_t footerH = JKGUI_XBOX_FOOTER_H;
+    int32_t footerY;
+    int32_t labelY;
+    int32_t x;
+    int32_t i;
+
+    jkGuiRend_xboxFooterGlyphDrawCount = 0;
+
+    if (!menu || menu != jkGuiRend_xboxFooterMenu || jkGuiRend_xboxFooterActionCount <= 0 || !jkGuiRend_menuBuffer)
+        return;
+
+    font = menu->fonts[2] ? menu->fonts[2] : menu->fonts[3];
+    if (!font)
+        return;
+
+    footerY = jkGuiRend_menuBuffer->format.height - footerH;
+    if (footerY < 0)
+        footerY = 0;
+    labelY = footerY + (footerH - stdFont_GetHeight(font)) / 2 + 2;
+
+    jkGuiRend_XboxDrawFooterBackdrop(jkGuiRend_menuBuffer);
+    jkGuiRend_XboxLoadButtonGlyphs();
+
+    for (i = 0; i < jkGuiRend_xboxFooterActionCount; i++)
+    {
+        int32_t labelW;
+        if (jkGuiRend_xboxFooterActions[i].button < 0 || jkGuiRend_xboxFooterActions[i].button >= JKGUI_XBOX_BTN_COUNT)
+        {
+            widths[i] = 0;
+            continue;
+        }
+
+        labelW = jkGuiRend_XboxFooterLabelWidth(menu, jkGuiRend_xboxFooterActions[i].label);
+        widths[i] = iconW + 7 + labelW;
+        totalW += widths[i];
+        validCount++;
+    }
+
+    if (!validCount)
+        return;
+
+    totalW += gap * (validCount - 1);
+    if (totalW > jkGuiRend_menuBuffer->format.width - 22)
+    {
+        gap = 10;
+        totalW = 0;
+        for (i = 0; i < jkGuiRend_xboxFooterActionCount; i++)
+            totalW += widths[i];
+        totalW += gap * (validCount - 1);
+    }
+
+    x = JKGUI_XBOX_FOOTER_LEFT;
+
+    for (i = 0; i < jkGuiRend_xboxFooterActionCount; i++)
+    {
+        jkGuiRendXboxFooterAction *action = &jkGuiRend_xboxFooterActions[i];
+        rdRect glyphRect;
+        if (widths[i] <= 0)
+            continue;
+
+        glyphRect.x = x;
+        glyphRect.y = footerY + (footerH - iconH) / 2;
+        glyphRect.width = iconW;
+        glyphRect.height = iconH;
+        if (jkGuiRend_xboxButtonBitmaps[action->button])
+        {
+            rdRect drawRect;
+            if (jkGuiRend_xboxFooterGlyphDrawCount < JKGUI_XBOX_FOOTER_MAX_ACTIONS
+                && jkGuiRend_XboxFitButtonGlyph(jkGuiRend_xboxButtonBitmaps[action->button], &glyphRect, &drawRect))
+            {
+                jkGuiRend_xboxFooterGlyphDraws[jkGuiRend_xboxFooterGlyphDrawCount].bitmap = jkGuiRend_xboxButtonBitmaps[action->button];
+                jkGuiRend_xboxFooterGlyphDraws[jkGuiRend_xboxFooterGlyphDrawCount].rect = drawRect;
+                jkGuiRend_xboxFooterGlyphDrawCount++;
+            }
+        }
+
+        if (action->label && action->label[0])
+            stdFont_Draw1(jkGuiRend_menuBuffer, font, x + iconW + 7, labelY, widths[i] - iconW - 7, action->label, 1);
+        x += widths[i] + gap;
+    }
+
+    if (jkGuiRend_xboxFooterGlyphDrawCount > 0)
+        stdDisplay_XboxSetPostMenuOverlayCallback(jkGuiRend_XboxFooterPostMenuDraw, NULL);
+    else
+        stdDisplay_XboxSetPostMenuOverlayCallback(NULL, NULL);
+}
+
+static int32_t jkGuiRend_XboxFooterInvokeButton(jkGuiMenu *menu, int32_t button)
+{
+    int32_t i;
+
+    if (!menu || menu != jkGuiRend_xboxFooterMenu)
+        return 0;
+
+    for (i = 0; i < jkGuiRend_xboxFooterActionCount; i++)
+    {
+        jkGuiRendXboxFooterAction *action = &jkGuiRend_xboxFooterActions[i];
+        if (action->button != button)
+            continue;
+
+        if (action->element)
+        {
+            if (jkGuiRend_XboxFooterInvokeElement(menu, action->element))
+                return 1;
+            continue;
+        }
+
+        if (action->clickId)
+        {
+            jkGuiRend_PlayWav(menu->soundClick);
+            menu->lastClicked = action->clickId;
+            return 1;
+        }
+
+        return 0;
+    }
+
+    return 0;
+}
+
+static int32_t jkGuiRend_XboxFooterInvokeElement(jkGuiMenu *menu, jkGuiElement *element)
+{
+    jkGuiClickHandlerFunc_t handler;
+
+    if (!menu || !element || element->enableHover)
+        return 0;
+
+    handler = element->clickHandlerFunc;
+    if (!handler)
+        handler = jkGuiRend_elementHandlers[element->type].fnClickHandler;
+    if (!handler)
+        return 0;
+
+    menu->lastMouseDownClickable = element;
+    menu->lastClicked = handler(element, menu, element->rect.x + 1, element->rect.y + 1, 1);
+    if (jkGuiRend_activeMenu == menu)
+        menu->lastMouseDownClickable = NULL;
+    return 1;
+}
+#endif
+
 void jkGuiRend_UpdateDrawMenu(jkGuiMenu *menu)
 {
     const char *newHint;
@@ -341,6 +937,10 @@ void jkGuiRend_Paint(jkGuiMenu *menu)
     menu->focusedElement = lastFocused;
     menu->lastMouseDownClickable = lastDown;
 #endif
+
+#ifdef TARGET_XBOX
+    jkGuiRend_XboxFooterDraw(menu);
+#endif
     
     jkGuiRend_FlipAndDraw(menu, 0);
 
@@ -370,13 +970,16 @@ int32_t jkGuiRend_DisplayAndReturnClicked(jkGuiMenu *menu)
 
     lastActiveMenu = jkGuiRend_activeMenu;
     ++jkGuiRend_thing_five;
+#ifdef TARGET_XBOX
+    jkGuiRend_XboxFooterEnsureDefault(menu);
+#endif
     jkGuiRend_gui_sets_handler_framebufs(menu);
 
 #ifdef QOL_IMPROVEMENTS
     jkGuiRend_FocusElementDir(menu, FOCUS_NONE);
 #endif
 #ifdef TARGET_XBOX
-    if ((!menu->lastMouseOverClickable || menu->lastMouseOverClickable->type == ELEMENT_LISTBOX)
+    if (!menu->lastMouseOverClickable
         && jkGuiRend_IsControllerFocusable(menu->pReturnKeyShortcutElement))
     {
         menu->lastMouseOverClickable = menu->pReturnKeyShortcutElement;
@@ -492,6 +1095,9 @@ void jkGuiRend_sub_50FAD0(jkGuiMenu *menu)
             ++idx;
             if ( menu->paElements[idx].type == ELEMENT_END )
             {
+#ifdef TARGET_XBOX
+                jkGuiRend_XboxApplyInitialFocus(menu);
+#endif
                 jkGuiRend_UpdateMouse();
                 jkGuiRend_ResetMouseLatestMs();
                 return;
@@ -499,6 +1105,10 @@ void jkGuiRend_sub_50FAD0(jkGuiMenu *menu)
         }
         menu->focusedElement = &menu->paElements[idx];
     }
+
+#ifdef TARGET_XBOX
+    jkGuiRend_XboxApplyInitialFocus(menu);
+#endif
 
     jkGuiRend_UpdateMouse();
     jkGuiRend_ResetMouseLatestMs();
@@ -612,6 +1222,12 @@ void jkGuiRend_Shutdown()
     jkGuiRend_hCursor = 0;
 
     jkGuiRend_CursorVisible = 1;
+#endif
+
+#ifdef TARGET_XBOX
+    jkGuiRend_XboxFooterClear();
+    jkGuiRend_XboxUnloadButtonGlyphs();
+    jkGuiRend_xboxFooterDarkRemapChecksum = -1;
 #endif
 }
 
@@ -3049,6 +3665,10 @@ void jkGuiRend_UpdateController()
         return;
     }
     static int lastB1 = 0;
+    static int lastB2 = 0;
+    static int lastB3 = 0;
+    static int lastB4 = 0;
+    static int lastB7 = 0;
     static int keyboardShowedLastUpdate = 0;
     static jkGuiElement* currentKeyboardFocusedElement = NULL;
     static int prev_stdControl_bControlsActive = 0;
@@ -3070,6 +3690,10 @@ void jkGuiRend_UpdateController()
 
     int val = 0;
     int valB1 = 0;
+    int valB2 = 0;
+    int valB3 = 0;
+    int valB4 = 0;
+    int valB7 = 0;
     if ((stdControl_ReadKey(KEY_JOY1_HLEFT, &val) && val)
         || (joyXLeft < -0.5 && lastJoyXLeft >= -0.5)) {
         focusDir = FOCUS_LEFT;
@@ -3107,6 +3731,7 @@ void jkGuiRend_UpdateController()
     lastJoyXLeft = joyXLeft;
     lastJoyYUp = joyYUp;
 
+    val = 0;
     valB1 = stdControl_ReadKey(KEY_JOY1_B1, &val);
 
     extern jkGuiMenu jkGuiSaveLoad_menu;
@@ -3121,6 +3746,10 @@ void jkGuiRend_UpdateController()
         if (!jkGuiRend_xboxSuppressControllerConfirm
             && jkGuiRend_activeMenu != &jkGuiSaveLoad_menu
             && !(jkGuiRend_activeMenu == &jkGuiDialog_OkCancel_menu && jkGuiRend_lastActiveMenu == &jkGuiSaveLoad_menu)) {
+#ifdef TARGET_XBOX
+            if (!jkGuiRend_XboxFooterInvokeButton(jkGuiRend_activeMenu, JKGUI_XBOX_BTN_A))
+#endif
+            {
             jkGuiElement* target = jkGuiRend_GetControllerClickTarget(jkGuiRend_activeMenu);
             if (target) {
                 jkGuiRend_activeMenu->lastMouseDownClickable = target;
@@ -3135,6 +3764,7 @@ void jkGuiRend_UpdateController()
                     jkGuiRend_activeMenu->lastMouseDownClickable = target;
                     jkGuiRend_InvokeClicked(target, jkGuiRend_activeMenu, target->rect.x + 1, target->rect.y + 1, 1);
                 }
+            }
             }
         }
     }
@@ -3158,6 +3788,37 @@ void jkGuiRend_UpdateController()
     }
     lastB1 = valB1;
 
+#ifdef TARGET_XBOX
+    val = 0;
+    valB2 = stdControl_ReadKey(KEY_JOY1_B2, &val);
+    if (!lastB2 && valB2) {
+        if (!jkGuiRend_XboxFooterInvokeButton(jkGuiRend_activeMenu, JKGUI_XBOX_BTN_B))
+            jkGuiRend_WindowHandler(0, WM_KEYFIRST, VK_ESCAPE, 0, 0);
+    }
+    lastB2 = valB2;
+
+    val = 0;
+    valB3 = stdControl_ReadKey(KEY_JOY1_B3, &val);
+    if (!lastB3 && valB3) {
+        if (!jkGuiRend_XboxFooterInvokeButton(jkGuiRend_activeMenu, JKGUI_XBOX_BTN_X)
+            && jkGuiRend_activeMenu && jkGuiRend_activeMenu->pReturnKeyShortcutElement) {
+            jkGuiRend_InvokeClicked(jkGuiRend_activeMenu->pReturnKeyShortcutElement, jkGuiRend_activeMenu, jkGuiRend_mouseX, jkGuiRend_mouseY, 1);
+        }
+    }
+    lastB3 = valB3;
+
+    val = 0;
+    valB4 = stdControl_ReadKey(KEY_JOY1_B4, &val);
+    if (!lastB4 && valB4)
+        jkGuiRend_XboxFooterInvokeButton(jkGuiRend_activeMenu, JKGUI_XBOX_BTN_Y);
+    lastB4 = valB4;
+
+    val = 0;
+    valB7 = stdControl_ReadKey(KEY_JOY1_B7, &val);
+    if (!lastB7 && valB7)
+        jkGuiRend_XboxFooterInvokeButton(jkGuiRend_activeMenu, JKGUI_XBOX_BTN_START);
+    lastB7 = valB7;
+#else
     if (stdControl_ReadKey(KEY_JOY1_B2, &val) && val) {
         jkGuiRend_WindowHandler(0, WM_KEYFIRST, VK_ESCAPE, 0, 0);
     }
@@ -3167,6 +3828,7 @@ void jkGuiRend_UpdateController()
             jkGuiRend_InvokeClicked(jkGuiRend_activeMenu->pReturnKeyShortcutElement, jkGuiRend_activeMenu, jkGuiRend_mouseX, jkGuiRend_mouseY, 1);
         }
     }
+#endif
 
     if (!stdControl_IsSystemKeyboardShowing() || jkGuiRend_activeMenu->focusedElement != currentKeyboardFocusedElement) {
         stdControl_HideSystemKeyboard();

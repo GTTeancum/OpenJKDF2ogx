@@ -28,11 +28,19 @@ static int stdDisplay_xboxModeSet = 0;
 int stdDisplay_xboxCreditsDebug = 0;
 static stdDisplayXboxPostMenuDrawFunc stdDisplay_xboxPostMenuDrawFunc = NULL;
 static void *stdDisplay_xboxPostMenuDrawCtx = NULL;
+static stdDisplayXboxPostMenuDrawFunc stdDisplay_xboxPostMenuOverlayFunc = NULL;
+static void *stdDisplay_xboxPostMenuOverlayCtx = NULL;
 
 void stdDisplay_XboxSetPostMenuDrawCallback(stdDisplayXboxPostMenuDrawFunc fn, void *ctx)
 {
     stdDisplay_xboxPostMenuDrawFunc = fn;
     stdDisplay_xboxPostMenuDrawCtx = ctx;
+}
+
+void stdDisplay_XboxSetPostMenuOverlayCallback(stdDisplayXboxPostMenuDrawFunc fn, void *ctx)
+{
+    stdDisplay_xboxPostMenuOverlayFunc = fn;
+    stdDisplay_xboxPostMenuOverlayCtx = ctx;
 }
 
 void stdDisplay_XboxSetCreditsDebug(int enabled)
@@ -241,6 +249,8 @@ int stdDisplay_DDrawGdiSurfaceFlip()
     std3D_DrawMenuVBuffer8(&Video_menuBuffer, stdDisplay_masterPalette);
     if (stdDisplay_xboxPostMenuDrawFunc)
         stdDisplay_xboxPostMenuDrawFunc(stdDisplay_xboxPostMenuDrawCtx);
+    if (stdDisplay_xboxPostMenuOverlayFunc)
+        stdDisplay_xboxPostMenuOverlayFunc(stdDisplay_xboxPostMenuOverlayCtx);
     std3D_EndScene();
     std3D_Present();
 
@@ -266,7 +276,9 @@ stdVBuffer *stdDisplay_VBufferNew(stdVBufferTexFmt *fmt, int create_ddraw_surfac
 
     memset(out, 0, sizeof(*out));
     out->format = *fmt;
-    bppBytes = (fmt->format.bpp == 16 || fmt->format.is16bit) ? 2 : 1;
+    bppBytes = (fmt->format.is16bit || fmt->format.bpp == 16) ? 2 : (int)(fmt->format.bpp >> 3);
+    if (bppBytes <= 0)
+        bppBytes = 1;
     if (out->format.width_in_pixels <= 0) out->format.width_in_pixels = out->format.width;
     if (out->format.width_in_bytes <= 0) out->format.width_in_bytes = out->format.width * bppBytes;
     bytes = out->format.width_in_bytes * out->format.height;

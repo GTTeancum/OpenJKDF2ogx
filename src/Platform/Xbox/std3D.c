@@ -2236,7 +2236,20 @@ static int xbox_upload_bitmap_mip(stdBitmap_local *bm, int mipIdx, int is_alpha_
         for (i = 0; i < total_pad; ++i) g_texScratch[i] = 0;
     }
 
-    if (vbuf->format.fmt_is16bit) {
+    if (vbuf->format.fmt_bpp == 32) {
+        for (y = 0; y < h; ++y) {
+            const unsigned char *srcRow = src + y * vbuf->format.width_in_bytes;
+            for (x = 0; x < w; ++x) {
+                const unsigned char *px = srcRow + x * 4u;
+                unsigned int o = (y * padW + x) * 4u;
+                g_texScratch[o + 0] = px[0];
+                g_texScratch[o + 1] = px[1];
+                g_texScratch[o + 2] = px[2];
+                g_texScratch[o + 3] = px[3];
+            }
+        }
+        is_alpha_tex = 1;
+    } else if (vbuf->format.fmt_is16bit) {
         /* 16-bit source — engine stores RGB565 (or ARGB1555) in u16 pixels.
          * Use the format-descriptor's r/g/b bits+shifts to extract channels.
          * HUD bitmaps (jkstrings text, status numbers) take this path. */

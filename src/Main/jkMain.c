@@ -913,6 +913,11 @@ LABEL_28:
                 XDBG("MPLoadTrace: GameplayShow server post-load before sithMain_AutoSave\n");
 #endif
                 sithMain_AutoSave();
+#ifdef TARGET_XBOX
+                XDBG("MPLoadTrace: GameplayShow server post-load before split local post-init\n");
+                xboxSplitScreen_PostLoadInitializeLocals();
+                XDBG("MPLoadTrace: GameplayShow server post-load after split local post-init\n");
+#endif
             }
             if ( sithNet_isMulti )
             {

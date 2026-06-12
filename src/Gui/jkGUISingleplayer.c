@@ -120,6 +120,13 @@ int jkGuiSingleplayer_Show()
 
     jkGuiRend_MenuSetReturnKeyShortcutElement(&jkGuiSingleplayer_menu1, &jkGuiSingleplayer_buttons1[2]);
     jkGuiRend_MenuSetEscapeKeyShortcutElement(&jkGuiSingleplayer_menu1, &jkGuiSingleplayer_buttons1[5]);
+#ifdef TARGET_XBOX
+    jkGuiSingleplayer_buttons1[5].bIsVisible = 0;
+    jkGuiRend_XboxFooterBegin(&jkGuiSingleplayer_menu1);
+    jkGuiRend_XboxFooterAddAction(&jkGuiSingleplayer_menu1, JKGUI_XBOX_BTN_A, 0, L"Select");
+    jkGuiRend_XboxFooterAddAction(&jkGuiSingleplayer_menu1, JKGUI_XBOX_BTN_B, -1, L"Back");
+    jkGuiRend_XboxSetInitialFocus(&jkGuiSingleplayer_menu1, &jkGuiSingleplayer_buttons1[2]);
+#endif
     int clicked = jkGuiRend_DisplayAndReturnClicked(&jkGuiSingleplayer_menu1);
     if ( clicked == -1 )
         return clicked;
@@ -166,6 +173,14 @@ int jkGuiSingleplayer_Show()
                     {
                         jkGuiRend_MenuSetReturnKeyShortcutElement(&jkGuiSingleplayer_menu2, &jkGuiSingleplayer_buttons2[7]);
                         jkGuiRend_MenuSetEscapeKeyShortcutElement(&jkGuiSingleplayer_menu2, &jkGuiSingleplayer_buttons2[8]);
+#ifdef TARGET_XBOX
+                        jkGuiSingleplayer_buttons2[7].bIsVisible = 0;
+                        jkGuiSingleplayer_buttons2[8].bIsVisible = 0;
+                        jkGuiRend_XboxFooterBegin(&jkGuiSingleplayer_menu2);
+                        jkGuiRend_XboxFooterAddAction(&jkGuiSingleplayer_menu2, JKGUI_XBOX_BTN_A, 1, L"Play");
+                        jkGuiRend_XboxFooterAddAction(&jkGuiSingleplayer_menu2, JKGUI_XBOX_BTN_B, -1, L"Back");
+                        jkGuiRend_XboxSetInitialFocus(&jkGuiSingleplayer_menu2, &jkGuiSingleplayer_buttons2[6]);
+#endif
                         clicked = jkGuiRend_DisplayAndReturnClicked(&jkGuiSingleplayer_menu2);
                     }
                     if ( clicked == 1 )
@@ -196,6 +211,14 @@ int jkGuiSingleplayer_Show()
                     {
                         jkGuiRend_MenuSetReturnKeyShortcutElement(&jkGuiSingleplayer_menu2, &jkGuiSingleplayer_buttons2[7]);
                         jkGuiRend_MenuSetEscapeKeyShortcutElement(&jkGuiSingleplayer_menu2, &jkGuiSingleplayer_buttons2[8]);
+#ifdef TARGET_XBOX
+                        jkGuiSingleplayer_buttons2[7].bIsVisible = 0;
+                        jkGuiSingleplayer_buttons2[8].bIsVisible = 0;
+                        jkGuiRend_XboxFooterBegin(&jkGuiSingleplayer_menu2);
+                        jkGuiRend_XboxFooterAddAction(&jkGuiSingleplayer_menu2, JKGUI_XBOX_BTN_A, 1, L"Select");
+                        jkGuiRend_XboxFooterAddAction(&jkGuiSingleplayer_menu2, JKGUI_XBOX_BTN_B, -1, L"Back");
+                        jkGuiRend_XboxSetInitialFocus(&jkGuiSingleplayer_menu2, &jkGuiSingleplayer_buttons2[6]);
+#endif
                         clicked = jkGuiRend_DisplayAndReturnClicked(&jkGuiSingleplayer_menu2);
                     }
                     if ( clicked == 1 )
@@ -220,6 +243,14 @@ int jkGuiSingleplayer_Show()
                             jkGuiSingleplayer_sub_41AA30(&array2, &jkGuiSingleplayer_buttons3[6], 0, jkRes_episodeGobName, jkGui_episodeLoad.type, jkGui_episodeLoad.numSeq, jkGui_episodeLoad.currentEpisodeEntryIdx, jkGui_episodeLoad.paEntries);
                             jkGuiRend_MenuSetReturnKeyShortcutElement(&jkGuiSingleplayer_menu3, &jkGuiSingleplayer_buttons3[7]);
                             jkGuiRend_MenuSetEscapeKeyShortcutElement(&jkGuiSingleplayer_menu3, &jkGuiSingleplayer_buttons3[8]);
+#ifdef TARGET_XBOX
+                            jkGuiSingleplayer_buttons3[7].bIsVisible = 0;
+                            jkGuiSingleplayer_buttons3[8].bIsVisible = 0;
+                            jkGuiRend_XboxFooterBegin(&jkGuiSingleplayer_menu3);
+                            jkGuiRend_XboxFooterAddAction(&jkGuiSingleplayer_menu3, JKGUI_XBOX_BTN_A, 1, L"Play");
+                            jkGuiRend_XboxFooterAddAction(&jkGuiSingleplayer_menu3, JKGUI_XBOX_BTN_B, -1, L"Back");
+                            jkGuiRend_XboxSetInitialFocus(&jkGuiSingleplayer_menu3, &jkGuiSingleplayer_buttons3[6]);
+#endif
                             clicked = jkGuiRend_DisplayAndReturnClicked(&jkGuiSingleplayer_menu3);
 
                             debug_episode_idx = 0;
@@ -300,6 +331,11 @@ int jkGuiSingleplayer_Show()
             break;
         jkGuiRend_MenuSetReturnKeyShortcutElement(&jkGuiSingleplayer_menu1, &jkGuiSingleplayer_buttons1[2]);
         jkGuiRend_MenuSetEscapeKeyShortcutElement(&jkGuiSingleplayer_menu1, &jkGuiSingleplayer_buttons1[5]);
+#ifdef TARGET_XBOX
+        jkGuiRend_XboxFooterBegin(&jkGuiSingleplayer_menu1);
+        jkGuiRend_XboxFooterAddAction(&jkGuiSingleplayer_menu1, JKGUI_XBOX_BTN_A, 0, L"Select");
+        jkGuiRend_XboxFooterAddAction(&jkGuiSingleplayer_menu1, JKGUI_XBOX_BTN_B, -1, L"Back");
+#endif
         clicked = jkGuiRend_DisplayAndReturnClicked(&jkGuiSingleplayer_menu1);
         if ( clicked == -1 )
             return clicked;

@@ -186,6 +186,10 @@ void jkGuiMods_Show()
     jkGuiMods_aElements[5].wstr = openjkdf2_waReleaseCommitShort;
 #ifdef TARGET_XBOX
     jkGuiMods_aElements[3].bIsVisible = 0;
+    jkGuiMods_aElements[4].bIsVisible = 0;
+    jkGuiMods_aElements[5].bIsVisible = 0;
+    jkGuiMods_aElements[6].bIsVisible = 0;
+    jkGuiMods_aElements[7].bIsVisible = 0;
 #endif
 
     // Added
@@ -201,6 +205,12 @@ void jkGuiMods_Show()
     {
         jkGuiRend_MenuSetReturnKeyShortcutElement(&jkGuiMods_menu, &jkGuiMods_aElements[6]);
         jkGuiRend_MenuSetEscapeKeyShortcutElement(&jkGuiMods_menu, &jkGuiMods_aElements[7]);
+#ifdef TARGET_XBOX
+        jkGuiRend_XboxFooterBegin(&jkGuiMods_menu);
+        jkGuiRend_XboxFooterAddAction(&jkGuiMods_menu, JKGUI_XBOX_BTN_A, 1, L"Select");
+        jkGuiRend_XboxFooterAddAction(&jkGuiMods_menu, JKGUI_XBOX_BTN_B, -1, L"Back");
+        jkGuiRend_XboxSetInitialFocus(&jkGuiMods_menu, &jkGuiMods_aElements[1]);
+#endif
         v4 = jkGuiRend_DisplayAndReturnClicked(&jkGuiMods_menu);
         
         if (v4 == JKGUIMODS_BTN_OPENRESOURCEFOLDER) {

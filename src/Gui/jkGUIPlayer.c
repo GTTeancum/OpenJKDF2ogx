@@ -292,6 +292,19 @@ void jkGuiPlayer_ShowNewPlayer(int a1)
                 jkGuiRend_MenuSetEscapeKeyShortcutElement(&jkGuiPlayer_menuSelect, 0);
             else
                 jkGuiRend_MenuSetEscapeKeyShortcutElement(&jkGuiPlayer_menuSelect, &jkGuiPlayer_menuSelectElements[3]);
+#ifdef TARGET_XBOX
+            jkGuiPlayer_menuSelectElements[3].bIsVisible = 0;
+            jkGuiPlayer_menuSelectElements[4].bIsVisible = 0;
+            jkGuiPlayer_menuSelectElements[5].bIsVisible = 0;
+            jkGuiPlayer_menuSelectElements[6].bIsVisible = 0;
+            jkGuiRend_XboxFooterBegin(&jkGuiPlayer_menuSelect);
+            jkGuiRend_XboxFooterAddAction(&jkGuiPlayer_menuSelect, JKGUI_XBOX_BTN_A, 1, L"Continue");
+            if (!a1)
+                jkGuiRend_XboxFooterAddAction(&jkGuiPlayer_menuSelect, JKGUI_XBOX_BTN_B, -1, L"Cancel");
+            jkGuiRend_XboxFooterAddAction(&jkGuiPlayer_menuSelect, JKGUI_XBOX_BTN_X, 3, L"Remove");
+            jkGuiRend_XboxFooterAddAction(&jkGuiPlayer_menuSelect, JKGUI_XBOX_BTN_Y, 2, L"New");
+            jkGuiRend_XboxSetInitialFocus(&jkGuiPlayer_menuSelect, &jkGuiPlayer_menuSelectElements[2]);
+#endif
             v2 = jkGuiRend_DisplayAndReturnClicked(&jkGuiPlayer_menuSelect);
         }
         else
@@ -381,6 +394,16 @@ void jkGuiPlayer_ShowNewPlayer(int a1)
             jkGuiRend_MenuSetReturnKeyShortcutElement(&jkGuiPlayer_menuNew, &jkGuiPlayer_menuNewElements[10]);
             if ( !v15 )
                 jkGuiRend_MenuSetEscapeKeyShortcutElement(&jkGuiPlayer_menuNew, &jkGuiPlayer_menuNewElements[9]);
+#ifdef TARGET_XBOX
+            jkGuiPlayer_menuNewElements[9].bIsVisible = 0;
+            jkGuiPlayer_menuNewElements[10].bIsVisible = 0;
+            jkGuiRend_XboxFooterBegin(&jkGuiPlayer_menuNew);
+            jkGuiRend_XboxFooterAddAction(&jkGuiPlayer_menuNew, JKGUI_XBOX_BTN_A, 0, L"Select");
+            if (!v15)
+                jkGuiRend_XboxFooterAddAction(&jkGuiPlayer_menuNew, JKGUI_XBOX_BTN_B, -1, L"Cancel");
+            jkGuiRend_XboxFooterAddAction(&jkGuiPlayer_menuNew, JKGUI_XBOX_BTN_START, 1, L"Done");
+            jkGuiRend_XboxSetInitialFocus(&jkGuiPlayer_menuNew, &jkGuiPlayer_menuNewElements[5]);
+#endif
             v7 = jkGuiRend_DisplayAndReturnClicked(&jkGuiPlayer_menuNew);
             if ( v7 == 1 )
             {

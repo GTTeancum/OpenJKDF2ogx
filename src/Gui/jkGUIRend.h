@@ -85,6 +85,21 @@ extern int32_t jkGuiRend_thing_five;
 extern int32_t jkGuiRend_thing_four;
 #ifdef TARGET_XBOX
 extern int32_t jkGuiRend_xboxSuppressControllerConfirm;
+
+enum
+{
+    JKGUI_XBOX_BTN_A = 0,
+    JKGUI_XBOX_BTN_B,
+    JKGUI_XBOX_BTN_X,
+    JKGUI_XBOX_BTN_Y,
+    JKGUI_XBOX_BTN_WHITE,
+    JKGUI_XBOX_BTN_BLACK,
+    JKGUI_XBOX_BTN_LT,
+    JKGUI_XBOX_BTN_RT,
+    JKGUI_XBOX_BTN_START,
+    JKGUI_XBOX_BTN_BACK,
+    JKGUI_XBOX_BTN_COUNT
+};
 #endif
 
 void jkGuiRend_CopyVBuffer(jkGuiMenu *menu, rdRect *rect);
@@ -159,5 +174,12 @@ void jkGuiRend_TextButtonDraw(jkGuiElement *element, jkGuiMenu *menu, stdVBuffer
 
 void jkGuiRend_FocusElementDir(jkGuiMenu *pMenu, int32_t dir);
 void jkGuiRend_UpdateController();
+#ifdef TARGET_XBOX
+void jkGuiRend_XboxFooterBegin(jkGuiMenu *menu);
+void jkGuiRend_XboxFooterClear(void);
+void jkGuiRend_XboxFooterAddAction(jkGuiMenu *menu, int32_t button, int32_t clickId, const wchar_t *label);
+void jkGuiRend_XboxFooterAddElementAction(jkGuiMenu *menu, int32_t button, jkGuiElement *element, const wchar_t *label);
+void jkGuiRend_XboxSetInitialFocus(jkGuiMenu *menu, jkGuiElement *element);
+#endif
 
 #endif // _JKGUIREND_H

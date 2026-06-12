@@ -1514,6 +1514,11 @@ int jkGuiBuildMulti_ShowEditCharacter(BOOL bIdk)
     jkGuiBuildMulti_buttons[12].wstr = jkGuiBuildMulti_wRbLabel;
     jkGuiRend_MenuSetReturnKeyShortcutElement(&jkGuiBuildMulti_menu, &jkGuiBuildMulti_buttons[15]);
     jkGuiRend_MenuSetEscapeKeyShortcutElement(&jkGuiBuildMulti_menu, &jkGuiBuildMulti_buttons[13]);
+#ifdef TARGET_XBOX
+    jkGuiBuildMulti_buttons[13].bIsVisible = 0;
+    jkGuiBuildMulti_buttons[14].bIsVisible = 0;
+    jkGuiBuildMulti_buttons[15].bIsVisible = 0;
+#endif
     jkGuiRend_SetVisibleAndDraw(&jkGuiBuildMulti_buttons[4], &jkGuiBuildMulti_menu, 0);
     jkGuiRend_SetVisibleAndDraw(&jkGuiBuildMulti_buttons[5], &jkGuiBuildMulti_menu, 0);
     jkGuiBuildMulti_numSabers = 0;
@@ -1641,6 +1646,13 @@ LABEL_32:
     do
     {
         v16 = 0;
+#ifdef TARGET_XBOX
+        jkGuiRend_XboxFooterBegin(&jkGuiBuildMulti_menu);
+        jkGuiRend_XboxFooterAddAction(&jkGuiBuildMulti_menu, JKGUI_XBOX_BTN_A, 0, L"Select");
+        jkGuiRend_XboxFooterAddAction(&jkGuiBuildMulti_menu, JKGUI_XBOX_BTN_B, -1, L"Back");
+        jkGuiRend_XboxFooterAddAction(&jkGuiBuildMulti_menu, JKGUI_XBOX_BTN_Y, 109, L"Force");
+        jkGuiRend_XboxFooterAddAction(&jkGuiBuildMulti_menu, JKGUI_XBOX_BTN_START, 106, L"Save");
+#endif
         v17 = jkGuiRend_DisplayAndReturnClicked(&jkGuiBuildMulti_menu);
         v18 = v17;
         switch ( v17 )
@@ -2297,8 +2309,10 @@ int jkGuiBuildMulti_Show()
         jkGuiBuildMulti_sub_41D680(&jkGuiBuildMulti_menuEditCharacter, jkGuiBuildMulti_menuEditCharacter_buttons[3].selectedTextEntry);
         v3 = 1;
 #ifdef TARGET_XBOX
-        jkGuiBuildMulti_menuEditCharacter_buttons[14].bIsVisible = v2 != 0;
-        jkGuiBuildMulti_menuEditCharacter_buttons[15].bIsVisible = v2 != 0;
+        jkGuiBuildMulti_menuEditCharacter_buttons[12].bIsVisible = 0;
+        jkGuiBuildMulti_menuEditCharacter_buttons[13].bIsVisible = 0;
+        jkGuiBuildMulti_menuEditCharacter_buttons[14].bIsVisible = 0;
+        jkGuiBuildMulti_menuEditCharacter_buttons[15].bIsVisible = 0;
         if (!v2)
         {
             jkGuiBuildMulti_menuEditCharacter_buttons[0].wstr = jkGuiBuildMulti_wNoCharacters;
@@ -2309,6 +2323,14 @@ int jkGuiBuildMulti_Show()
         {
             jkGuiRend_MenuSetReturnKeyShortcutElement(&jkGuiBuildMulti_menuEditCharacter, &jkGuiBuildMulti_menuEditCharacter_buttons[15]);
             jkGuiRend_MenuSetEscapeKeyShortcutElement(&jkGuiBuildMulti_menuEditCharacter, &jkGuiBuildMulti_menuEditCharacter_buttons[12]);
+#ifdef TARGET_XBOX
+            jkGuiRend_XboxFooterBegin(&jkGuiBuildMulti_menuEditCharacter);
+            jkGuiRend_XboxFooterAddAction(&jkGuiBuildMulti_menuEditCharacter, JKGUI_XBOX_BTN_A, 1, L"Edit");
+            jkGuiRend_XboxFooterAddAction(&jkGuiBuildMulti_menuEditCharacter, JKGUI_XBOX_BTN_B, -1, L"Back");
+            jkGuiRend_XboxFooterAddAction(&jkGuiBuildMulti_menuEditCharacter, JKGUI_XBOX_BTN_X, 102, L"Remove");
+            jkGuiRend_XboxFooterAddAction(&jkGuiBuildMulti_menuEditCharacter, JKGUI_XBOX_BTN_Y, 100, L"New");
+            jkGuiRend_XboxSetInitialFocus(&jkGuiBuildMulti_menuEditCharacter, &jkGuiBuildMulti_menuEditCharacter_buttons[3]);
+#endif
             v9 = jkGuiRend_DisplayAndReturnClicked(&jkGuiBuildMulti_menuEditCharacter);
         }
         else
@@ -2316,6 +2338,10 @@ int jkGuiBuildMulti_Show()
 #ifdef TARGET_XBOX
             jkGuiRend_MenuSetReturnKeyShortcutElement(&jkGuiBuildMulti_menuEditCharacter, &jkGuiBuildMulti_menuEditCharacter_buttons[13]);
             jkGuiRend_MenuSetEscapeKeyShortcutElement(&jkGuiBuildMulti_menuEditCharacter, &jkGuiBuildMulti_menuEditCharacter_buttons[12]);
+            jkGuiRend_XboxFooterBegin(&jkGuiBuildMulti_menuEditCharacter);
+            jkGuiRend_XboxFooterAddAction(&jkGuiBuildMulti_menuEditCharacter, JKGUI_XBOX_BTN_A, 100, L"New");
+            jkGuiRend_XboxFooterAddAction(&jkGuiBuildMulti_menuEditCharacter, JKGUI_XBOX_BTN_B, -1, L"Back");
+            jkGuiRend_XboxFooterAddAction(&jkGuiBuildMulti_menuEditCharacter, JKGUI_XBOX_BTN_Y, 100, L"New");
             v9 = jkGuiRend_DisplayAndReturnClicked(&jkGuiBuildMulti_menuEditCharacter);
 #else
             v9 = 100;
@@ -2571,6 +2597,15 @@ int jkGuiBuildMulti_ShowNewCharacter(int rank, int bGameFormatIsJK, int bHasNoVa
         v7 = 0;
         jkGuiRend_MenuSetReturnKeyShortcutElement(jkGuiBuildMulti_pNewCharacterMenu, &jkGuiBuildMulti_pNewCharacterElements[16]); // 13
         jkGuiRend_MenuSetEscapeKeyShortcutElement(jkGuiBuildMulti_pNewCharacterMenu, &jkGuiBuildMulti_pNewCharacterElements[15]); // 12
+#ifdef TARGET_XBOX
+        jkGuiBuildMulti_pNewCharacterElements[15].bIsVisible = 0;
+        jkGuiBuildMulti_pNewCharacterElements[16].bIsVisible = 0;
+        jkGuiRend_XboxFooterBegin(jkGuiBuildMulti_pNewCharacterMenu);
+        jkGuiRend_XboxFooterAddAction(jkGuiBuildMulti_pNewCharacterMenu, JKGUI_XBOX_BTN_A, 0, L"Select");
+        jkGuiRend_XboxFooterAddAction(jkGuiBuildMulti_pNewCharacterMenu, JKGUI_XBOX_BTN_B, -1, L"Cancel");
+        jkGuiRend_XboxFooterAddAction(jkGuiBuildMulti_pNewCharacterMenu, JKGUI_XBOX_BTN_START, 1, L"Done");
+        jkGuiRend_XboxSetInitialFocus(jkGuiBuildMulti_pNewCharacterMenu, &jkGuiBuildMulti_pNewCharacterElements[14]);
+#endif
         v8 = jkGuiRend_DisplayAndReturnClicked(jkGuiBuildMulti_pNewCharacterMenu);
         if ( v8 != 1 )
             goto LABEL_16;
@@ -2833,6 +2868,20 @@ LABEL_7:
         {
             jkGuiRend_MenuSetReturnKeyShortcutElement(&jkGuiBuildMulti_menuLoadCharacter, &jkGuiBuildMulti_menuLoadCharacter_buttons[22]);
             jkGuiRend_MenuSetEscapeKeyShortcutElement(&jkGuiBuildMulti_menuLoadCharacter, &jkGuiBuildMulti_menuLoadCharacter_buttons[18]);
+#ifdef TARGET_XBOX
+            jkGuiBuildMulti_menuLoadCharacter_buttons[18].bIsVisible = 0;
+            jkGuiBuildMulti_menuLoadCharacter_buttons[19].bIsVisible = 0;
+            jkGuiBuildMulti_menuLoadCharacter_buttons[20].bIsVisible = 0;
+            jkGuiBuildMulti_menuLoadCharacter_buttons[21].bIsVisible = 0;
+            jkGuiBuildMulti_menuLoadCharacter_buttons[22].bIsVisible = 0;
+            jkGuiRend_XboxFooterBegin(&jkGuiBuildMulti_menuLoadCharacter);
+            jkGuiRend_XboxFooterAddAction(&jkGuiBuildMulti_menuLoadCharacter, JKGUI_XBOX_BTN_A, 1, L"Load");
+            jkGuiRend_XboxFooterAddAction(&jkGuiBuildMulti_menuLoadCharacter, JKGUI_XBOX_BTN_B, -1, L"Back");
+            jkGuiRend_XboxFooterAddAction(&jkGuiBuildMulti_menuLoadCharacter, JKGUI_XBOX_BTN_X, 102, L"Remove");
+            jkGuiRend_XboxFooterAddAction(&jkGuiBuildMulti_menuLoadCharacter, JKGUI_XBOX_BTN_Y, 100, L"New");
+            jkGuiRend_XboxFooterAddAction(&jkGuiBuildMulti_menuLoadCharacter, JKGUI_XBOX_BTN_START, 101, L"Edit");
+            jkGuiRend_XboxSetInitialFocus(&jkGuiBuildMulti_menuLoadCharacter, &jkGuiBuildMulti_menuLoadCharacter_buttons[3]);
+#endif
             v22 = jkGuiRend_DisplayAndReturnClicked(&jkGuiBuildMulti_menuLoadCharacter);
         }
         else

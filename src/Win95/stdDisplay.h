@@ -55,6 +55,7 @@ void stdDisplay_GammaCorrect(const void *pPal);
 #ifdef TARGET_XBOX
 typedef void (*stdDisplayXboxPostMenuDrawFunc)(void *ctx);
 void stdDisplay_XboxSetPostMenuDrawCallback(stdDisplayXboxPostMenuDrawFunc fn, void *ctx);
+void stdDisplay_XboxSetPostMenuOverlayCallback(stdDisplayXboxPostMenuDrawFunc fn, void *ctx);
 #endif
 
 #if !defined(SDL2_RENDER) && defined(WIN32)

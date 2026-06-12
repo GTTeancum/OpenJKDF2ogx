@@ -20,6 +20,9 @@ static wchar_t* jkStrings_GetXboxSetupString(const char *key)
 #define JK_XBOX_SETUP_STRING(name, value) if (!__strcmpi(key, name)) return (wchar_t*)value
     JK_XBOX_SETUP_STRING("GUI_FULLSUB", L"Full subtitles");
     JK_XBOX_SETUP_STRING("GUI_FULLSUB_HINT", L"Show all dialogue subtitles");
+    JK_XBOX_SETUP_STRING("GUI_NEW_PLAYER", L"New Player");
+    JK_XBOX_SETUP_STRING("GUI_NEW_CHARACTER", L"New Character");
+    JK_XBOX_SETUP_STRING("GUI_NAME", L"Name");
     JK_XBOX_SETUP_STRING("GUI_ROTATEOVERLAY", L"Rotate overlay map");
     JK_XBOX_SETUP_STRING("GUI_ROTATEOVERLAY_HINT", L"Rotate the overlay map with player view");
     JK_XBOX_SETUP_STRING("GUI_DISABLECUTSCENES", L"Disable cutscenes");
