@@ -2,6 +2,7 @@
 
 #include "xbox_wheels.h"
 #include "xbox_debug.h"
+#include "xbox_splitscreen.h"
 #include "../../globals.h"
 #include "../../types_enums.h"
 #include "../../Gameplay/sithInventory.h"
@@ -13,6 +14,14 @@
 #include "gl/gl.h"
 #include <math.h>
 #include <string.h>
+
+#ifdef __cplusplus
+extern "C" {
+#endif
+void std3D_XboxEndViewportUI(void);
+#ifdef __cplusplus
+}
+#endif
 
 #define XBOX_WHEEL_MAX_PORTS 4
 #define XBOX_WHEEL_HOLD_MS 260
@@ -634,6 +643,21 @@ static void xbox_wheels_DrawForce(stdFont *font, XboxWheelState *state)
 void xbox_wheels_Draw(stdFont *font)
 {
     int i;
+
+    if (xboxSplitScreen_IsEnabled())
+    {
+        i = xboxSplitScreen_GetCurrentControllerPort();
+        if (i < 0 || i >= XBOX_WHEEL_MAX_PORTS)
+            return;
+
+        std3D_XboxEndViewportUI();
+        if (s_wheels[i].openKind == XBOX_WHEEL_WEAPON)
+            xbox_wheels_DrawWeapon(font, &s_wheels[i]);
+        else if (s_wheels[i].openKind == XBOX_WHEEL_FORCE)
+            xbox_wheels_DrawForce(font, &s_wheels[i]);
+        return;
+    }
+
     for (i = 0; i < XBOX_WHEEL_MAX_PORTS; i++)
     {
         if (s_wheels[i].openKind == XBOX_WHEEL_WEAPON)

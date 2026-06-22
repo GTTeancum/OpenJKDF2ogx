@@ -22,6 +22,7 @@
 #include "../../globals.h"
 #include "../../Platform/wuRegistry.h"
 #include "xbox_wheels.h"
+#include "xbox_splitscreen.h"
 
 #define DIK_ESCAPE      0x01
 #define DIK_TAB         0x0F
@@ -539,6 +540,7 @@ void stdControl_ReadControls(void)
 {
     int port;
     int oldPoll = g_pollController;
+    int splitContext = xboxSplitScreen_IsEnabled();
     DWORD insertions = 0;
     DWORD removals = 0;
 
@@ -566,10 +568,14 @@ void stdControl_ReadControls(void)
             g_nextOpenAttemptMs = 0;
             XDBGF("stdControl: controller inserted port=%d\n", port);
         }
+        if (splitContext)
+            xboxSplitScreen_SetContextForControllerPort(port);
         stdControl_ReadController(port);
     }
 
     g_pollController = oldPoll;
+    if (splitContext)
+        xboxSplitScreen_RestoreContext();
 }
 
 int stdControl_XboxGetLookSensitivity(void) { return g_lookSensitivity; }

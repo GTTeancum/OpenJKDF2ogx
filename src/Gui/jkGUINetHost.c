@@ -33,10 +33,10 @@ enum jkGuiNetHostElement_t
 {
     NETHOST_GAMENAME_TEXTBOX = 3,
     NETHOST_MAXPLAYERS_TEXTBOX = 5,
-    NETHOST_SCORELIMIT_CHECKBOX = 6,
-    NETHOST_SCORELIMIT_TEXTBOX = 7,
-    NETHOST_TIMELIMIT_CHECKBOX = 8,
-    NETHOST_TIMELIMIT_TEXTBOX = 9,
+    NETHOST_SCORELIMIT_LABEL = 6,
+    NETHOST_SCORELIMIT_SLIDER = 7,
+    NETHOST_TIMELIMIT_LABEL = 8,
+    NETHOST_TIMELIMIT_SLIDER = 9,
     NETHOST_TEAMMODE_CHECKBOX = 10,
     NETHOST_SINGLELEVEL_CHECKBOX = 11,
     NETHOST_STARS_TEXT = 13,
@@ -52,7 +52,16 @@ enum jkGuiNetHostAdvancedElement_t
     NETHOST_TICKRATE_TEXTBOX = 3,
 };
 
+#define NETHOST_SCORE_LIMIT_MAX 999
+#define NETHOST_TIME_LIMIT_MINUTES_MAX 100
+
 static int32_t jkGuiNetHost_aIdk[2] = {0xd, 0xe};
+static int32_t jkGuiNetHost_sliderImages[2] = {JKGUI_BM_SLIDER_BACK_200, JKGUI_BM_SLIDER_THUMB};
+static wchar_t jkGuiNetHost_wstrScoreLimitText[32];
+static wchar_t jkGuiNetHost_wstrTimeLimitText[32];
+
+static void jkGuiNetHost_ScoreLimitSliderDraw(jkGuiElement *element, jkGuiMenu *menu, stdVBuffer *vbuf, int redraw);
+static void jkGuiNetHost_TimeLimitSliderDraw(jkGuiElement *element, jkGuiMenu *menu, stdVBuffer *vbuf, int redraw);
 
 // MOTS altered
 static jkGuiElement jkGuiNetHost_aElements[28] =
@@ -63,10 +72,10 @@ static jkGuiElement jkGuiNetHost_aElements[28] =
     { ELEMENT_TEXTBOX,      0, 0, NULL, 16, { 20, 125, 270, 20 }, 1, 0, NULL, NULL, NULL, NULL, { 0, 0, 0, 0, 0, { 0, 0, 0, 0 } }, 0 },
     { ELEMENT_TEXT,         0, 0, "GUI_MAXPLAYERS", 2, { 20, 155, 200, 40 }, 1, 0, NULL, NULL, NULL, NULL, { 0, 0, 0, 0, 0, { 0, 0, 0, 0 } }, 0 },
     { ELEMENT_TEXTBOX,      0, 0, NULL, 2, { 225, 160, 65, 20 }, 1, 0, NULL, NULL, NULL, NULL, { 0, 0, 0, 0, 0, { 0, 0, 0, 0 } }, 0 },
-    { ELEMENT_CHECKBOX,     0, 0, "GUI_SCORELIMIT", 0, { 20, 190, 200, 40 }, 1, 0, "GUI_SCORELIMIT_HINT", NULL, NULL, NULL, { 0, 0, 0, 0, 0, { 0, 0, 0, 0 } }, 0 },
-    { ELEMENT_TEXTBOX,      0, 0, NULL, 3, { 225, 195, 65, 20 }, 1, 0, NULL, NULL, NULL, NULL, { 0, 0, 0, 0, 0, { 0, 0, 0, 0 } }, 0 },
-    { ELEMENT_CHECKBOX,     0, 0, "GUI_TIMELIMIT", 0, { 20, 225, 200, 40 }, 1, 0, "GUI_TIMELIMIT_HINT", NULL, NULL, NULL, { 0, 0, 0, 0, 0, { 0, 0, 0, 0 } }, 0 },
-    { ELEMENT_TEXTBOX,      0, 0, NULL, 3, { 225, 230, 65, 20 }, 1, 0, NULL, NULL, NULL, NULL, { 0, 0, 0, 0, 0, { 0, 0, 0, 0 } }, 0 },
+    { ELEMENT_TEXT,         0, 0, NULL, 2, { 20, 185, 270, 25 }, 1, 0, NULL, NULL, NULL, NULL, { 0, 0, 0, 0, 0, { 0, 0, 0, 0 } }, 0 },
+    { ELEMENT_SLIDER,       0, 0, (const char*)NETHOST_SCORE_LIMIT_MAX, 100, { 20, 210, 260, 30 }, 1, 0, "GUI_SCORELIMIT_HINT", jkGuiNetHost_ScoreLimitSliderDraw, NULL, jkGuiNetHost_sliderImages, { 0, 0, 0, 0, 0, { 0, 0, 0, 0 } }, 0 },
+    { ELEMENT_TEXT,         0, 0, NULL, 2, { 20, 240, 270, 25 }, 1, 0, NULL, NULL, NULL, NULL, { 0, 0, 0, 0, 0, { 0, 0, 0, 0 } }, 0 },
+    { ELEMENT_SLIDER,       0, 0, (const char*)NETHOST_TIME_LIMIT_MINUTES_MAX, 0, { 20, 265, 260, 30 }, 1, 0, "GUI_TIMELIMIT_HINT", jkGuiNetHost_TimeLimitSliderDraw, NULL, jkGuiNetHost_sliderImages, { 0, 0, 0, 0, 0, { 0, 0, 0, 0 } }, 0 },
     { ELEMENT_CHECKBOX,     0, 0, "GUI_TEAMMODE", 0, { 20, 260, 200, 40 }, 1, 0, "GUI_TEAMMODE_HINT", NULL, NULL, NULL, { 0, 0, 0, 0, 0, { 0, 0, 0, 0 } }, 0 },
     { ELEMENT_CHECKBOX,     0, 0, "GUI_SINGLELEVEL", 0, { 20, 295, 200, 40 }, 1, 0, "GUI_SINGLELEVEL_HINT", NULL, NULL, NULL, { 0, 0, 0, 0, 0, { 0, 0, 0, 0 } }, 0 },
     { ELEMENT_TEXT,         0, 0, "GUI_MAXSTARS", 2, { 310, 80, 150, 40 }, 1, 0, NULL, NULL, NULL, NULL, { 0, 0, 0, 0, 0, { 0, 0, 0, 0 } }, 0 },
@@ -115,10 +124,144 @@ static jkGuiMenu jkGuiNetHost_menuSettings =
     jkGuiNetHost_aSettingsElements, 0, 65535, 65535, 15, NULL, NULL, jkGui_stdBitmaps, jkGui_stdFonts, 0, NULL, "thermloop01.wav", "thrmlpu2.wav", NULL, NULL, NULL, 0, NULL, NULL
 };
 
+#ifdef TARGET_XBOX
+static int jkGuiNetHost_bXboxSplitScreenMode;
+#endif
+
+static void jkGuiNetHost_SetRect(jkGuiElement *element, int x, int y, int w, int h)
+{
+    element->rect.x = x;
+    element->rect.y = y;
+    element->rect.width = w;
+    element->rect.height = h;
+}
+
+static int jkGuiNetHost_ClampInt(int value, int minVal, int maxVal)
+{
+    if (value < minVal)
+        return minVal;
+    if (value > maxVal)
+        return maxVal;
+    return value;
+}
+
+static int jkGuiNetHost_TimeLimitToMinutes(int timeLimitMs)
+{
+    if (timeLimitMs <= 0)
+        return 0;
+    return timeLimitMs / 60000;
+}
+
+static void jkGuiNetHost_UpdateLimitLabels(void)
+{
+    int scoreLimit = jkGuiNetHost_aElements[NETHOST_SCORELIMIT_SLIDER].selectedTextEntry;
+    int timeLimit = jkGuiNetHost_aElements[NETHOST_TIMELIMIT_SLIDER].selectedTextEntry;
+
+    if (scoreLimit <= 0)
+        jk_snwprintf(jkGuiNetHost_wstrScoreLimitText,
+            sizeof(jkGuiNetHost_wstrScoreLimitText) / sizeof(jkGuiNetHost_wstrScoreLimitText[0]),
+            L"Score Limit: Infinite");
+    else
+        jk_snwprintf(jkGuiNetHost_wstrScoreLimitText,
+            sizeof(jkGuiNetHost_wstrScoreLimitText) / sizeof(jkGuiNetHost_wstrScoreLimitText[0]),
+            L"Score Limit: %d",
+            scoreLimit);
+
+    if (timeLimit <= 0)
+        jk_snwprintf(jkGuiNetHost_wstrTimeLimitText,
+            sizeof(jkGuiNetHost_wstrTimeLimitText) / sizeof(jkGuiNetHost_wstrTimeLimitText[0]),
+            L"Time Limit: Infinite");
+    else
+        jk_snwprintf(jkGuiNetHost_wstrTimeLimitText,
+            sizeof(jkGuiNetHost_wstrTimeLimitText) / sizeof(jkGuiNetHost_wstrTimeLimitText[0]),
+            L"Time Limit: %d min",
+            timeLimit);
+
+    jkGuiNetHost_aElements[NETHOST_SCORELIMIT_LABEL].wstr = jkGuiNetHost_wstrScoreLimitText;
+    jkGuiNetHost_aElements[NETHOST_TIMELIMIT_LABEL].wstr = jkGuiNetHost_wstrTimeLimitText;
+}
+
+static void jkGuiNetHost_ScoreLimitSliderDraw(jkGuiElement *element, jkGuiMenu *menu, stdVBuffer *vbuf, int redraw)
+{
+    jkGuiNetHost_UpdateLimitLabels();
+    jkGuiRend_SliderDraw(element, menu, vbuf, redraw);
+    jkGuiRend_UpdateAndDrawClickable(&jkGuiNetHost_aElements[NETHOST_SCORELIMIT_LABEL], menu, 1);
+}
+
+static void jkGuiNetHost_TimeLimitSliderDraw(jkGuiElement *element, jkGuiMenu *menu, stdVBuffer *vbuf, int redraw)
+{
+    jkGuiNetHost_UpdateLimitLabels();
+    jkGuiRend_SliderDraw(element, menu, vbuf, redraw);
+    jkGuiRend_UpdateAndDrawClickable(&jkGuiNetHost_aElements[NETHOST_TIMELIMIT_LABEL], menu, 1);
+}
+
+static void jkGuiNetHost_ApplyXboxLayout(void)
+{
+#ifdef TARGET_XBOX
+    int splitMode = jkGuiNetHost_bXboxSplitScreenMode;
+
+    jkGuiNetHost_aElements[2].bIsVisible = 0;
+    jkGuiNetHost_aElements[NETHOST_GAMENAME_TEXTBOX].bIsVisible = 0;
+    jkGuiNetHost_aElements[4].bIsVisible = 0;
+    jkGuiNetHost_aElements[NETHOST_MAXPLAYERS_TEXTBOX].bIsVisible = 0;
+    jkGuiNetHost_aElements[16].bIsVisible = 0;
+    jkGuiNetHost_aElements[NETHOST_PASSWORD_TEXTBOX].bIsVisible = 0;
+    jkGuiNetHost_aElements[NETHOST_SCORELIMIT_LABEL].bIsVisible = !splitMode;
+    jkGuiNetHost_aElements[NETHOST_SCORELIMIT_SLIDER].bIsVisible = !splitMode;
+    jkGuiNetHost_aElements[NETHOST_TIMELIMIT_LABEL].bIsVisible = !splitMode;
+    jkGuiNetHost_aElements[NETHOST_TIMELIMIT_SLIDER].bIsVisible = !splitMode;
+    jkGuiNetHost_aElements[NETHOST_TEAMMODE_CHECKBOX].bIsVisible = !splitMode;
+    jkGuiNetHost_aElements[NETHOST_SINGLELEVEL_CHECKBOX].bIsVisible = !splitMode;
+    jkGuiNetHost_aElements[12].bIsVisible = !splitMode;
+    jkGuiNetHost_aElements[NETHOST_STARS_TEXT].bIsVisible = !splitMode;
+    jkGuiNetHost_aElements[14].bIsVisible = !splitMode;
+    jkGuiNetHost_aElements[15].bIsVisible = !splitMode;
+#ifdef QOL_IMPROVEMENTS
+    jkGuiNetHost_aElements[25].bIsVisible = 0;
+    jkGuiNetHost_aElements[NETHOST_PORT_TEXTBOX].bIsVisible = 0;
+#endif
+
+    if (splitMode)
+    {
+        jkGuiNetHost_SetRect(&jkGuiNetHost_aElements[18], 70, 92, 500, 24);
+        jkGuiNetHost_SetRect(&jkGuiNetHost_aElements[NETHOST_EPISODE_LISTBOX], 70, 122, 500, 95);
+        jkGuiNetHost_SetRect(&jkGuiNetHost_aElements[20], 70, 238, 500, 24);
+        jkGuiNetHost_SetRect(&jkGuiNetHost_aElements[NETHOST_LEVEL_LISTBOX], 70, 268, 500, 120);
+        return;
+    }
+
+    jkGuiNetHost_SetRect(&jkGuiNetHost_aElements[NETHOST_SCORELIMIT_LABEL], 55, 112, 280, 24);
+    jkGuiNetHost_SetRect(&jkGuiNetHost_aElements[NETHOST_SCORELIMIT_SLIDER], 55, 137, 270, 30);
+    jkGuiNetHost_SetRect(&jkGuiNetHost_aElements[NETHOST_TIMELIMIT_LABEL], 55, 172, 280, 24);
+    jkGuiNetHost_SetRect(&jkGuiNetHost_aElements[NETHOST_TIMELIMIT_SLIDER], 55, 197, 270, 30);
+    jkGuiNetHost_SetRect(&jkGuiNetHost_aElements[NETHOST_TEAMMODE_CHECKBOX], 55, 244, 230, 40);
+    jkGuiNetHost_SetRect(&jkGuiNetHost_aElements[NETHOST_SINGLELEVEL_CHECKBOX], 55, 286, 260, 40);
+
+    jkGuiNetHost_SetRect(&jkGuiNetHost_aElements[12], 55, 330, 230, 28);
+    jkGuiNetHost_SetRect(&jkGuiNetHost_aElements[14], 55, 360, 30, 30);
+    jkGuiNetHost_SetRect(&jkGuiNetHost_aElements[15], 90, 360, 30, 30);
+    jkGuiNetHost_SetRect(&jkGuiNetHost_aElements[NETHOST_STARS_TEXT], 135, 362, 185, 30);
+
+    jkGuiNetHost_SetRect(&jkGuiNetHost_aElements[18], 350, 92, 240, 24);
+    jkGuiNetHost_SetRect(&jkGuiNetHost_aElements[NETHOST_EPISODE_LISTBOX], 350, 122, 260, 100);
+    jkGuiNetHost_SetRect(&jkGuiNetHost_aElements[20], 350, 238, 240, 24);
+    jkGuiNetHost_SetRect(&jkGuiNetHost_aElements[NETHOST_LEVEL_LISTBOX], 350, 268, 260, 125);
+#endif
+}
+
 static int jkGuiNetHost_bInitted;
 static wchar_t jkGuiNetHost_wstrStarsText[32];
 static Darray jkGuiNetHost_dArray1;
 static Darray jkGuiNetHost_dArray2;
+
+static int jkGuiNetHost_ShouldShowAdvanced(void)
+{
+#ifdef TARGET_XBOX
+    return !jkGuiNetHost_bXboxSplitScreenMode;
+#else
+    return 1;
+#endif
+}
 
 // Added
 wchar_t jkGuiNetHost_portText[32];
@@ -198,10 +341,10 @@ void jkGuiNetHost_LoadSettings()
     jkGuiNetHost_maxPlayers = wuRegistry_GetInt("maxPlayers", jkGuiNetHost_maxPlayers);
     jkGuiNetHost_tickRate = wuRegistry_GetInt("tickRate", jkGuiNetHost_tickRate);
 
-    // MOTS added:
-    //if (jkGuiNetHost_maxRank > 8) {
-    //    jkGuiNetHost_maxRank = 8;
-    //}
+    jkGuiNetHost_maxRank = jkGuiNetHost_ClampInt(jkGuiNetHost_maxRank, 0, 8);
+    jkGuiNetHost_scoreLimit = jkGuiNetHost_ClampInt(jkGuiNetHost_scoreLimit, 0, NETHOST_SCORE_LIMIT_MAX);
+    jkGuiNetHost_timeLimit = jkGuiNetHost_TimeLimitToMinutes(jkGuiNetHost_timeLimit);
+    jkGuiNetHost_timeLimit = jkGuiNetHost_ClampInt(jkGuiNetHost_timeLimit, 0, NETHOST_TIME_LIMIT_MINUTES_MAX) * 60000;
 
     memset(jkGuiNetHost_gameName, 0, sizeof(jkGuiNetHost_gameName));
 #ifndef ARCH_WASM
@@ -319,8 +462,15 @@ int jkGuiNetHost_Show(jkMultiEntry3 *pMultiEntry)
     stdString_SafeWStrCopy(v25, L"8", 0x20);
     stdString_SafeWStrCopy(v26, L"", 0x20);
     stdString_SafeWStrCopy(v27, L"", 0x20);
-    jkGuiNetHost_aElements[NETHOST_SCORELIMIT_CHECKBOX].selectedTextEntry = jkGuiNetHost_gameFlags & MULTIMODEFLAG_SCORELIMIT;
-    jkGuiNetHost_aElements[NETHOST_TIMELIMIT_CHECKBOX].selectedTextEntry = jkGuiNetHost_gameFlags & MULTIMODEFLAG_TIMELIMIT;
+    jkGuiNetHost_aElements[NETHOST_SCORELIMIT_SLIDER].selectedTextEntry =
+        (jkGuiNetHost_gameFlags & MULTIMODEFLAG_SCORELIMIT)
+            ? jkGuiNetHost_ClampInt(jkGuiNetHost_scoreLimit, 0, NETHOST_SCORE_LIMIT_MAX)
+            : 0;
+    jkGuiNetHost_aElements[NETHOST_TIMELIMIT_SLIDER].selectedTextEntry =
+        (jkGuiNetHost_gameFlags & MULTIMODEFLAG_TIMELIMIT)
+            ? jkGuiNetHost_ClampInt(jkGuiNetHost_TimeLimitToMinutes(jkGuiNetHost_timeLimit), 0, NETHOST_TIME_LIMIT_MINUTES_MAX)
+            : 0;
+    jkGuiNetHost_UpdateLimitLabels();
     jkGuiNetHost_aElements[NETHOST_SINGLELEVEL_CHECKBOX].selectedTextEntry = jkGuiNetHost_gameFlags & MULTIMODEFLAG_SINGLE_LEVEL;
     jkGuiNetHost_aElements[NETHOST_TEAMMODE_CHECKBOX].selectedTextEntry = jkGuiNetHost_gameFlags & MULTIMODEFLAG_TEAMS;
     if ( !jkGuiNetHost_gameName[0] )
@@ -336,18 +486,11 @@ int jkGuiNetHost_Show(jkMultiEntry3 *pMultiEntry)
 #endif
     jkGuiNetHost_aElements[NETHOST_MAXPLAYERS_TEXTBOX].wstr = v25;
     jkGuiNetHost_aElements[NETHOST_MAXPLAYERS_TEXTBOX].selectedTextEntry = 3;
-    jk_snwprintf(v27, 0x20u, L"%d", jkGuiNetHost_scoreLimit);
-    //a2[0] = (unsigned int)jkGuiNetHost_timeLimit; wat??
-    jkGuiNetHost_aElements[NETHOST_SCORELIMIT_TEXTBOX].wstr = v27;
-    jkGuiNetHost_aElements[NETHOST_SCORELIMIT_TEXTBOX].selectedTextEntry = 4;
 #ifdef QOL_IMPROVEMENTS
     jk_snwprintf(jkGuiNetHost_portText, 0x20u, L"%d", jkGuiNetHost_portNum);
     jkGuiNetHost_aElements[NETHOST_PORT_TEXTBOX].wstr = jkGuiNetHost_portText;
     jkGuiNetHost_aElements[NETHOST_PORT_TEXTBOX].selectedTextEntry = 31;
 #endif
-    jk_snwprintf(v26, 0x20u, L"%d", (unsigned int)(__int64)((flex_d_t)(unsigned int)jkGuiNetHost_timeLimit * 0.000016666667));
-    jkGuiNetHost_aElements[NETHOST_TIMELIMIT_TEXTBOX].wstr = v26;
-    jkGuiNetHost_aElements[NETHOST_TIMELIMIT_TEXTBOX].selectedTextEntry = 4;
     __snprintf(v29, 32, "RANK_%d_L", jkGuiNetHost_maxRank); // sprintf -> snprintf
     jk_snwprintf(jkGuiNetHost_wstrStarsText, 0x80u, jkStrings_GetUniStringWithFallback("GUI_RANK"), jkGuiNetHost_maxRank, jkStrings_GetUniStringWithFallback(v29));
     memset(v30, 0, sizeof(v30));
@@ -369,12 +512,28 @@ int jkGuiNetHost_Show(jkMultiEntry3 *pMultiEntry)
     jkGui_sub_412E20(&jkGuiNetHost_menu, 100, 101, 101);
     jkGuiRend_MenuSetReturnKeyShortcutElement(&jkGuiNetHost_menu, &jkGuiNetHost_aElements[23]);
     jkGuiRend_MenuSetEscapeKeyShortcutElement(&jkGuiNetHost_menu, &jkGuiNetHost_aElements[24]);
+#ifdef TARGET_XBOX
+    jkGuiNetHost_aElements[22].bIsVisible = 0;
+    jkGuiNetHost_aElements[23].bIsVisible = 0;
+    jkGuiNetHost_aElements[24].bIsVisible = 0;
+    jkGuiNetHost_ApplyXboxLayout();
+    if (jkGuiNetHost_bXboxSplitScreenMode)
+        jkGuiRend_XboxSetInitialFocus(&jkGuiNetHost_menu, &jkGuiNetHost_aElements[NETHOST_EPISODE_LISTBOX]);
+#endif
     
     jkGuiNetHost_aElements[NETHOST_EPISODE_LISTBOX].selectedTextEntry = 0;
     jkGuiNetHost_sub_4119D0(&jkGuiNetHost_aElements[NETHOST_EPISODE_LISTBOX], &jkGuiNetHost_menu, -1, -1, 0);
 
     do
     {
+#ifdef TARGET_XBOX
+        jkGuiRend_XboxFooterBegin(&jkGuiNetHost_menu);
+        jkGuiRend_XboxFooterAddAction(&jkGuiNetHost_menu, JKGUI_XBOX_BTN_A, 0, L"Select");
+        jkGuiRend_XboxFooterAddAction(&jkGuiNetHost_menu, JKGUI_XBOX_BTN_B, GUI_CANCEL, L"Back");
+        if (jkGuiNetHost_ShouldShowAdvanced())
+            jkGuiRend_XboxFooterAddAction(&jkGuiNetHost_menu, JKGUI_XBOX_BTN_X, GUI_ADVANCED, L"Advanced");
+        jkGuiRend_XboxFooterAddAction(&jkGuiNetHost_menu, JKGUI_XBOX_BTN_START, GUI_OK, L"Begin");
+#endif
         v4 = jkGuiRend_DisplayAndReturnClicked(&jkGuiNetHost_menu);
         if ( v4 == GUI_OK )
         {
@@ -400,18 +559,18 @@ int jkGuiNetHost_Show(jkMultiEntry3 *pMultiEntry)
             pMultiEntry->maxPlayers = v10;
             jkGuiNetHost_maxPlayers = v10;
             pMultiEntry->maxRank = jkGuiNetHost_maxRank;
-            v23 = wstr_to_int_clamped(v26, 1, 100);
+            v23 = jkGuiNetHost_ClampInt(jkGuiNetHost_aElements[NETHOST_TIMELIMIT_SLIDER].selectedTextEntry, 0, NETHOST_TIME_LIMIT_MINUTES_MAX);
             v11 = (__int64)((flex_d_t)v23 * 60000.0);
             pMultiEntry->timeLimit = v11;
             jkGuiNetHost_timeLimit = v11;
-            if ( jkGuiNetHost_aElements[NETHOST_TIMELIMIT_CHECKBOX].selectedTextEntry )
+            if ( v23 > 0 )
             {
                 pMultiEntry->multiModeFlags |= MULTIMODEFLAG_TIMELIMIT;
             }
-            v13 = wstr_to_int_clamped(v27, 0, 999);
+            v13 = jkGuiNetHost_ClampInt(jkGuiNetHost_aElements[NETHOST_SCORELIMIT_SLIDER].selectedTextEntry, 0, NETHOST_SCORE_LIMIT_MAX);
             pMultiEntry->scoreLimit = v13;
             jkGuiNetHost_scoreLimit = v13;
-            if ( jkGuiNetHost_aElements[NETHOST_SCORELIMIT_CHECKBOX].selectedTextEntry )
+            if ( v13 > 0 )
             {
                 pMultiEntry->multiModeFlags |= MULTIMODEFLAG_SCORELIMIT;
             }
@@ -455,8 +614,17 @@ int jkGuiNetHost_Show(jkMultiEntry3 *pMultiEntry)
             pMultiEntry->multiModeFlags = jkGuiNetHost_gameFlags;
             pMultiEntry->sessionFlags = jkGuiNetHost_sessionFlags;
 #endif
+#ifdef TARGET_XBOX
+            if (jkGuiNetHost_bXboxSplitScreenMode)
+            {
+                pMultiEntry->scoreLimit = 0;
+                pMultiEntry->timeLimit = 0;
+                pMultiEntry->multiModeFlags = MULTIMODEFLAG_SINGLE_LEVEL;
+                pMultiEntry->sessionFlags &= ~SESSIONFLAG_ISDEDICATED;
+            }
+#endif
         }
-        else if ( v4 == GUI_ADVANCED )
+        else if ( v4 == GUI_ADVANCED && jkGuiNetHost_ShouldShowAdvanced() )
         {
             stdString_SafeWStrCopy(a1, L"", 0x20);
             jk_snwprintf(a1, 0x20u, L"%d", jkGuiNetHost_tickRate);
@@ -465,9 +633,26 @@ int jkGuiNetHost_Show(jkMultiEntry3 *pMultiEntry)
 #ifdef QOL_IMPROVEMENTS
             jkGuiNetHost_aSettingsElements[4].selectedTextEntry = jkGuiNetHost_bIsDedicated;
             jkGuiNetHost_aSettingsElements[5].selectedTextEntry = jkGuiNetHost_bIsCoop;
+            jkGuiRend_MenuSetReturnKeyShortcutElement(&jkGuiNetHost_menuSettings, &jkGuiNetHost_aSettingsElements[6]);
+            jkGuiRend_MenuSetEscapeKeyShortcutElement(&jkGuiNetHost_menuSettings, &jkGuiNetHost_aSettingsElements[7]);
+#ifdef TARGET_XBOX
+            jkGuiNetHost_aSettingsElements[6].bIsVisible = 0;
+            jkGuiNetHost_aSettingsElements[7].bIsVisible = 0;
 #endif
+#else
             jkGuiRend_MenuSetReturnKeyShortcutElement(&jkGuiNetHost_menuSettings, &jkGuiNetHost_aSettingsElements[4]);
             jkGuiRend_MenuSetEscapeKeyShortcutElement(&jkGuiNetHost_menuSettings, &jkGuiNetHost_aSettingsElements[5]);
+#ifdef TARGET_XBOX
+            jkGuiNetHost_aSettingsElements[4].bIsVisible = 0;
+            jkGuiNetHost_aSettingsElements[5].bIsVisible = 0;
+#endif
+#endif
+#ifdef TARGET_XBOX
+            jkGuiRend_XboxFooterBegin(&jkGuiNetHost_menuSettings);
+            jkGuiRend_XboxFooterAddAction(&jkGuiNetHost_menuSettings, JKGUI_XBOX_BTN_A, 0, L"Select");
+            jkGuiRend_XboxFooterAddAction(&jkGuiNetHost_menuSettings, JKGUI_XBOX_BTN_B, GUI_CANCEL, L"Back");
+            jkGuiRend_XboxFooterAddAction(&jkGuiNetHost_menuSettings, JKGUI_XBOX_BTN_START, GUI_OK, L"Done");
+#endif
             if ( jkGuiRend_DisplayAndReturnClicked(&jkGuiNetHost_menuSettings) == GUI_OK )
             {
                 pMultiEntry->sessionFlags = 0;
@@ -486,13 +671,57 @@ int jkGuiNetHost_Show(jkMultiEntry3 *pMultiEntry)
 #endif
         }
     }
-    while ( v4 == GUI_ADVANCED );
+    while ( v4 == GUI_ADVANCED && jkGuiNetHost_ShouldShowAdvanced() );
 
-    jkGuiNetHost_SaveSettings(); // Added: Make sure stuff actually gets into the registry
+#ifdef TARGET_XBOX
+    if (!jkGuiNetHost_bXboxSplitScreenMode)
+#endif
+        jkGuiNetHost_SaveSettings(); // Added: Make sure stuff actually gets into the registry
     jkGuiRend_DarrayFree(&jkGuiNetHost_dArray1);
     jkGuiRend_DarrayFree(&jkGuiNetHost_dArray2);
     return v4;
 }
+
+#ifdef TARGET_XBOX
+int jkGuiNetHost_ShowXboxSplitScreen(jkMultiEntry3 *pMultiEntry)
+{
+    int oldMode = jkGuiNetHost_bXboxSplitScreenMode;
+    int oldMaxRank = jkGuiNetHost_maxRank;
+    int oldTimeLimit = jkGuiNetHost_timeLimit;
+    int oldScoreLimit = jkGuiNetHost_scoreLimit;
+    int oldMaxPlayers = jkGuiNetHost_maxPlayers;
+    int oldSessionFlags = jkGuiNetHost_sessionFlags;
+    int oldGameFlags = jkGuiNetHost_gameFlags;
+    int oldTickRate = jkGuiNetHost_tickRate;
+#ifdef QOL_IMPROVEMENTS
+    int oldDedicated = jkGuiNetHost_bIsDedicated;
+    int oldCoop = jkGuiNetHost_bIsCoop;
+    int oldEpisodeCoop = jkGuiNetHost_bIsEpisodeCoop;
+#endif
+    int result;
+
+    jkGuiNetHost_LoadSettings();
+
+    jkGuiNetHost_bXboxSplitScreenMode = 1;
+    jkGui_InitMenu(&jkGuiNetHost_menu, jkGui_stdBitmaps[JKGUI_BM_BK_ESC]);
+    result = jkGuiNetHost_Show(pMultiEntry);
+    jkGui_InitMenu(&jkGuiNetHost_menu, jkGui_stdBitmaps[JKGUI_BM_BK_MULTI]);
+    jkGuiNetHost_maxRank = oldMaxRank;
+    jkGuiNetHost_timeLimit = oldTimeLimit;
+    jkGuiNetHost_scoreLimit = oldScoreLimit;
+    jkGuiNetHost_maxPlayers = oldMaxPlayers;
+    jkGuiNetHost_sessionFlags = oldSessionFlags;
+    jkGuiNetHost_gameFlags = oldGameFlags;
+    jkGuiNetHost_tickRate = oldTickRate;
+#ifdef QOL_IMPROVEMENTS
+    jkGuiNetHost_bIsDedicated = oldDedicated;
+    jkGuiNetHost_bIsCoop = oldCoop;
+    jkGuiNetHost_bIsEpisodeCoop = oldEpisodeCoop;
+#endif
+    jkGuiNetHost_bXboxSplitScreenMode = oldMode;
+    return result;
+}
+#endif
 
 int jkGuiNetHost_sub_4118C0(jkMultiEntry3 *pEntry)
 {
@@ -506,8 +735,27 @@ int jkGuiNetHost_sub_4118C0(jkMultiEntry3 *pEntry)
     jk_snwprintf(a1a, 0x20u, L"%d", jkGuiNetHost_tickRate);
     jkGuiNetHost_aSettingsElements[NETHOST_TICKRATE_TEXTBOX].wstr = a1a;
     jkGuiNetHost_aSettingsElements[NETHOST_TICKRATE_TEXTBOX].selectedTextEntry = 32;
+#ifdef QOL_IMPROVEMENTS
+    jkGuiRend_MenuSetReturnKeyShortcutElement(&jkGuiNetHost_menuSettings, &jkGuiNetHost_aSettingsElements[6]);
+    jkGuiRend_MenuSetEscapeKeyShortcutElement(&jkGuiNetHost_menuSettings, &jkGuiNetHost_aSettingsElements[7]);
+#ifdef TARGET_XBOX
+    jkGuiNetHost_aSettingsElements[6].bIsVisible = 0;
+    jkGuiNetHost_aSettingsElements[7].bIsVisible = 0;
+#endif
+#else
     jkGuiRend_MenuSetReturnKeyShortcutElement(&jkGuiNetHost_menuSettings, &jkGuiNetHost_aSettingsElements[4]);
     jkGuiRend_MenuSetEscapeKeyShortcutElement(&jkGuiNetHost_menuSettings, &jkGuiNetHost_aSettingsElements[5]);
+#ifdef TARGET_XBOX
+    jkGuiNetHost_aSettingsElements[4].bIsVisible = 0;
+    jkGuiNetHost_aSettingsElements[5].bIsVisible = 0;
+#endif
+#endif
+#ifdef TARGET_XBOX
+    jkGuiRend_XboxFooterBegin(&jkGuiNetHost_menuSettings);
+    jkGuiRend_XboxFooterAddAction(&jkGuiNetHost_menuSettings, JKGUI_XBOX_BTN_A, 0, L"Select");
+    jkGuiRend_XboxFooterAddAction(&jkGuiNetHost_menuSettings, JKGUI_XBOX_BTN_B, GUI_CANCEL, L"Back");
+    jkGuiRend_XboxFooterAddAction(&jkGuiNetHost_menuSettings, JKGUI_XBOX_BTN_START, GUI_OK, L"Done");
+#endif
     v1 = jkGuiRend_DisplayAndReturnClicked(&jkGuiNetHost_menuSettings);
     if ( v1 == GUI_OK )
     {

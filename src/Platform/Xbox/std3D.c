@@ -143,6 +143,7 @@ static int g_xboxViewportY = 0;
 static int g_xboxViewportW = 640;
 static int g_xboxViewportH = 480;
 static int g_xboxScreenSpaceRenderList = 0;
+static int g_xboxUiViewportOverlay = 0;
 
 static void std3D_XboxApplyViewport(void)
 {
@@ -164,6 +165,19 @@ extern "C" void std3D_XboxSetViewport(int x, int y, int w, int h)
 extern "C" void std3D_XboxResetViewport(void)
 {
     std3D_XboxSetViewport(0, 0, 640, 480);
+}
+
+extern "C" void std3D_XboxBeginViewportUI(int x, int y, int w, int h)
+{
+    std3D_XboxSetViewport(x, y, w, h);
+    g_xboxUiViewportOverlay = 1;
+    glViewport(0, 0, 640, 480);
+}
+
+extern "C" void std3D_XboxEndViewportUI(void)
+{
+    g_xboxUiViewportOverlay = 0;
+    std3D_XboxApplyViewport();
 }
 
 extern "C" void std3D_XboxSetScreenSpaceRenderList(int enable)
@@ -1428,6 +1442,31 @@ void std3D_DrawRenderList(void)
                 last_flags = -2;
             }
 
+            if (!textured) {
+                glDisable(GL_CULL_FACE);
+
+                if (g_xboxScreenSpaceRenderList) {
+                    glDepthFunc(GL_LEQUAL);
+                    glDepthMask(GL_TRUE);
+                } else {
+                    if (t->flags & 0x800) glDepthFunc(GL_LESS);
+                    else                  glDepthFunc(GL_ALWAYS);
+
+                    if (t->flags & 0x1000) glDepthMask(GL_TRUE);
+                    else                   glDepthMask(GL_FALSE);
+                }
+
+                if (t->flags & 0x200) glDisable(GL_ALPHA_TEST);
+                else                  glEnable(GL_ALPHA_TEST);
+
+                if (t->flags & 0x600) {
+                    glEnable(GL_BLEND);
+                    glBlendFunc(GL_ONE, GL_ONE_MINUS_SRC_ALPHA);
+                } else {
+                    glDisable(GL_BLEND);
+                }
+            }
+
             if (textured) {
                 if (id != last_id) {
                     g_pfnBindTexture(GL_TEXTURE_2D, id);
@@ -1557,14 +1596,14 @@ void std3D_DrawRenderList(void)
                         glTexCoord2f(bc->tu, bc->tv);
                         V3F_ENGINE_TO_GL(bc);
                     } else {
-                        if (V_COLOR_RGB_NONZERO(ba)) glColor4f(V_COLOR_R(ba), V_COLOR_G(ba), V_COLOR_B(ba), 1.0f);
-                        else                         glColor4f(ba->lightLevel, ba->lightLevel, ba->lightLevel, 1.0f);
+                        if (V_COLOR_RGB_NONZERO(ba)) glColor4f(V_COLOR_R(ba), V_COLOR_G(ba), V_COLOR_B(ba), V_COLOR_A(ba));
+                        else                         glColor4f(ba->lightLevel, ba->lightLevel, ba->lightLevel, V_COLOR_A(ba));
                         V3F_ENGINE_TO_GL(ba);
-                        if (V_COLOR_RGB_NONZERO(bb)) glColor4f(V_COLOR_R(bb), V_COLOR_G(bb), V_COLOR_B(bb), 1.0f);
-                        else                         glColor4f(bb->lightLevel, bb->lightLevel, bb->lightLevel, 1.0f);
+                        if (V_COLOR_RGB_NONZERO(bb)) glColor4f(V_COLOR_R(bb), V_COLOR_G(bb), V_COLOR_B(bb), V_COLOR_A(bb));
+                        else                         glColor4f(bb->lightLevel, bb->lightLevel, bb->lightLevel, V_COLOR_A(bb));
                         V3F_ENGINE_TO_GL(bb);
-                        if (V_COLOR_RGB_NONZERO(bc)) glColor4f(V_COLOR_R(bc), V_COLOR_G(bc), V_COLOR_B(bc), 1.0f);
-                        else                         glColor4f(bc->lightLevel, bc->lightLevel, bc->lightLevel, 1.0f);
+                        if (V_COLOR_RGB_NONZERO(bc)) glColor4f(V_COLOR_R(bc), V_COLOR_G(bc), V_COLOR_B(bc), V_COLOR_A(bc));
+                        else                         glColor4f(bc->lightLevel, bc->lightLevel, bc->lightLevel, V_COLOR_A(bc));
                         V3F_ENGINE_TO_GL(bc);
                     }
                 }
@@ -2463,7 +2502,10 @@ void std3D_PurgeBitmapRefs(void *pBmp)
  * the 2D setup defensively. Cheap (a few state pokes). */
 static void xbox_set_ui_state(int enable_blend)
 {
-    std3D_XboxApplyViewport();
+    if (g_xboxUiViewportOverlay)
+        glViewport(0, 0, 640, 480);
+    else
+        std3D_XboxApplyViewport();
     glMatrixMode(GL_PROJECTION);
     glLoadIdentity();
     glOrtho(0.0, 640.0, 480.0, 0.0, -99999.0, 99999.0);
@@ -2478,6 +2520,38 @@ static void xbox_set_ui_state(int enable_blend)
     } else {
         glDisable(GL_BLEND);
     }
+}
+
+static void std3D_XboxTransformViewportUiRect(float *x, float *y, float w, float h)
+{
+    float srcX;
+    float srcY;
+    float centerX;
+    float centerY;
+    float viewportTopY;
+
+    if (!g_xboxUiViewportOverlay || !x || !y)
+        return;
+
+    srcX = *x;
+    srcY = *y;
+    centerX = srcX + (w * 0.5f);
+    centerY = srcY + (h * 0.5f);
+    viewportTopY = 480.0f - (float)(g_xboxViewportY + g_xboxViewportH);
+
+    if (centerX > 400.0f)
+        *x = (float)g_xboxViewportX + (float)g_xboxViewportW - (640.0f - srcX);
+    else if (centerX >= 240.0f)
+        *x = (float)g_xboxViewportX + ((float)g_xboxViewportW * 0.5f) + (srcX - 320.0f);
+    else
+        *x = (float)g_xboxViewportX + srcX;
+
+    if (centerY > 320.0f)
+        *y = viewportTopY + (float)g_xboxViewportH - (480.0f - srcY);
+    else if (centerY >= 160.0f)
+        *y = viewportTopY + ((float)g_xboxViewportH * 0.5f) + (srcY - 240.0f);
+    else
+        *y = viewportTopY + srcY;
 }
 
 static unsigned int std3D_xboxMenuSig8(const stdVBuffer *vbuf)
@@ -3167,6 +3241,8 @@ void std3D_DrawUIBitmapRGBA(void *pBmp_v, int mipIdx, float dstX, float dstY,
         dstH = srcH * scaleY;
     }
 
+    std3D_XboxTransformViewportUiRect(&dstX, &dstY, dstW, dstH);
+
     /* UI bitmaps that arrived as 16-bit (RGB565) encode transparency via
      * vbuf->transparent_color (typically magenta).  Their palFmt bit
      * doesn't reflect that, so always enable alpha blend when the source
@@ -3248,6 +3324,8 @@ void std3D_DrawUIClearedRectRGBA(unsigned char cr, unsigned char cg,
     w = (float)dstRect->width;
     h = (float)dstRect->height;
     if (w <= 0.0f || h <= 0.0f) return;
+
+    std3D_XboxTransformViewportUiRect(&x, &y, w, h);
 
     xbox_set_ui_state(ca < 0xFF);
     glDisable(GL_TEXTURE_2D);

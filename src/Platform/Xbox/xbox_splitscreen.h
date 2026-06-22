@@ -10,6 +10,7 @@ extern "C" {
 #define XBOX_SPLITSCREEN_MAX_LOCAL_PLAYERS 4
 
 int  xboxSplitScreen_IsEnabled(void);
+int  xboxSplitScreen_IsRequested(void);
 int  xboxSplitScreen_GetLocalPlayerCount(void);
 int  xboxSplitScreen_GetRequestedLocalPlayerCount(void);
 void xboxSplitScreen_Enable(void);
@@ -23,7 +24,10 @@ void xboxSplitScreen_BeginControlFrame(void);
 void xboxSplitScreen_TickControls(float deltaSecs, int deltaMs);
 void xboxSplitScreen_EndControlFrame(void);
 void xboxSplitScreen_SetContextForLocalSlot(int slot);
+void xboxSplitScreen_SetContextForControllerPort(int controllerPort);
 void xboxSplitScreen_RestoreContext(void);
+int  xboxSplitScreen_GetCurrentControllerPort(void);
+int  xboxSplitScreen_IsInControlTick(void);
 void xboxSplitScreen_GetViewport(int slot, int *x, int *y, int *w, int *h);
 void xboxSplitScreen_ApplyViewport(int slot);
 void xboxSplitScreen_ResetViewport(void);

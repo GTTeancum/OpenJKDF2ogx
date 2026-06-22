@@ -14,9 +14,22 @@
 void jkGuiNetHost_SaveSettings();
 void jkGuiNetHost_LoadSettings();
 
+#ifdef QOL_IMPROVEMENTS
+#ifdef __cplusplus
+extern "C" {
+#endif
+extern int jkGuiNetHost_bIsDedicated;
+#ifdef __cplusplus
+}
+#endif
+#endif
+
 void jkGuiNetHost_Startup();
 void jkGuiNetHost_Shutdown();
 int jkGuiNetHost_Show(jkMultiEntry3 *pMultiEntry);
+#ifdef TARGET_XBOX
+int jkGuiNetHost_ShowXboxSplitScreen(jkMultiEntry3 *pMultiEntry);
+#endif
 
 int jkGuiNetHost_sub_4118C0(jkMultiEntry3 *pEntry);
 int jkGuiNetHost_sub_4119D0(jkGuiElement *pElement, jkGuiMenu *pMenu, int32_t mouseX, int32_t mouseY, int redraw);

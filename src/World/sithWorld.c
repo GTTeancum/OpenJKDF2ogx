@@ -726,24 +726,54 @@ uint32_t sithWorld_CalcChecksum(sithWorld *pWorld, uint32_t seed)
     // Starting hash seed
     uint32_t hash = seed;
 
+#ifdef TARGET_XBOX
+    xbox_debug_Printf("MPLoadTrace: CalcChecksum enter world=%p cogs=%d verts=%d templates=%d static=%p\n",
+                      (void*)pWorld,
+                      pWorld ? pWorld->numCogScriptsLoaded : -1,
+                      pWorld ? pWorld->numVertices : -1,
+                      pWorld ? pWorld->numTemplatesLoaded : -1,
+                      (void*)sithWorld_pStatic);
+#endif
+
+    if (!pWorld)
+    {
+#ifdef TARGET_XBOX
+        XDBG("MPLoadTrace: CalcChecksum null world\n");
+#endif
+        return hash;
+    }
+
     // Hash all world cogscript __VM bytecode__ (*not* text)
+#ifdef TARGET_XBOX
+    XDBG("MPLoadTrace: CalcChecksum before world cogs\n");
+#endif
     for (int i = 0; i < pWorld->numCogScriptsLoaded; i++)
     {
         hash = util_Weirdchecksum((uint8_t *)pWorld->cogScripts[i].script_program, pWorld->cogScripts[i].codeSize, hash);
     }
 
     // Hash all world vertices
+#ifdef TARGET_XBOX
+    XDBG("MPLoadTrace: CalcChecksum before vertices\n");
+#endif
     hash = util_Weirdchecksum((uint8_t *)pWorld->vertices, 12 * pWorld->numVertices, hash);
 
     // Hash all thing templates
+#ifdef TARGET_XBOX
+    XDBG("MPLoadTrace: CalcChecksum before templates\n");
+#endif
     for (int i = 0; i < pWorld->numTemplatesLoaded; i++)
     {
         hash = sithThing_Checksum(&pWorld->templates[i], hash);
     }
-    
+
     // Hash static COG __VM bytecode__ (*not* text)
     if (sithWorld_pStatic )
     {
+#ifdef TARGET_XBOX
+        xbox_debug_Printf("MPLoadTrace: CalcChecksum before static cogs count=%d\n",
+                          sithWorld_pStatic->numCogScriptsLoaded);
+#endif
         for (int i = 0; i < sithWorld_pStatic->numCogScriptsLoaded; i++)
         {
             hash = util_Weirdchecksum((uint8_t *)sithWorld_pStatic->cogScripts[i].script_program, sithWorld_pStatic->cogScripts[i].codeSize, hash);
@@ -751,9 +781,15 @@ uint32_t sithWorld_CalcChecksum(sithWorld *pWorld, uint32_t seed)
     }
 
     if (Main_bMotsCompat && sithWorld_checksumExtraFunc) {
+#ifdef TARGET_XBOX
+        XDBG("MPLoadTrace: CalcChecksum before mots extra\n");
+#endif
         hash = sithWorld_checksumExtraFunc(hash);
     }
 
+#ifdef TARGET_XBOX
+    xbox_debug_Printf("MPLoadTrace: CalcChecksum done value=0x%08X\n", hash);
+#endif
     return hash;
 }
 

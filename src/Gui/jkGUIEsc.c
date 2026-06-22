@@ -63,6 +63,30 @@ static jkGuiElement jkGuiEsc_aElements[10] = {
 
 static jkGuiMenu jkGuiEsc_menu = { jkGuiEsc_aElements, -1, 0x0FFFF, 0x0FFFF, 0x0F, 0, 0, jkGui_stdBitmaps, jkGui_stdFonts, 0, 0, "thermloop01.wav", "thrmlpu2.wav", 0, 0, 0, 0, 0, 0 };
 
+#ifdef TARGET_XBOX
+static void jkGuiEsc_SetRect(jkGuiElement *element, int x, int y, int w, int h)
+{
+    element->rect.x = x;
+    element->rect.y = y;
+    element->rect.width = w;
+    element->rect.height = h;
+}
+
+static void jkGuiEsc_ApplyXboxLayout(void)
+{
+    jkGuiEsc_SetRect(&jkGuiEsc_aElements[JKGUIESC_ELMT_OBJECTIVES],   0,  45, 400, 38);
+    jkGuiEsc_SetRect(&jkGuiEsc_aElements[JKGUIESC_ELMT_MAP],          0,  90, 400, 38);
+    jkGuiEsc_SetRect(&jkGuiEsc_aElements[JKGUIESC_ELMT_JEDIPOWERS],   0, 135, 400, 38);
+    jkGuiEsc_SetRect(&jkGuiEsc_aElements[JKGUIESC_ELMT_RETURNTOGAME], 0, 215, 400, 38);
+
+    jkGuiEsc_SetRect(&jkGuiEsc_aElements[JKGUIESC_ELMT_RESTART],    390, 145, 250, 38);
+    jkGuiEsc_SetRect(&jkGuiEsc_aElements[JKGUIESC_ELMT_LOAD],       390, 190, 250, 38);
+    jkGuiEsc_SetRect(&jkGuiEsc_aElements[JKGUIESC_ELMT_SAVE],       390, 235, 250, 38);
+    jkGuiEsc_SetRect(&jkGuiEsc_aElements[JKGUIESC_ELMT_SETUP],      390, 280, 250, 38);
+    jkGuiEsc_SetRect(&jkGuiEsc_aElements[JKGUIESC_ELMT_ABORT],      390, 325, 250, 38);
+}
+#endif
+
 int jkGuiEsc_HandleControllerFocus(jkGuiMenu *menu, int32_t dir)
 {
     static const int order[] = {
@@ -179,6 +203,10 @@ void jkGuiEsc_Show()
                 jkGuiEsc_aElements[JKGUIESC_ELMT_SAVE].bIsVisible = 0;
         }
     }
+
+#ifdef TARGET_XBOX
+    jkGuiEsc_ApplyXboxLayout();
+#endif
 
     while ( 1 )
     {

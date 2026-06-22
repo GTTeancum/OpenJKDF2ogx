@@ -25,6 +25,7 @@
 
 #ifdef TARGET_XBOX
 #include "Platform/Xbox/xbox_debug.h"
+#include "Platform/Xbox/xbox_splitscreen.h"
 #endif
 
 // Added
@@ -309,7 +310,10 @@ void sithControl_Tick(flex_t deltaSecs, int deltaMs)
     if ( sithWorld_pCurrentWorld->playerThing && sithControl_numHandlers > 0 )
     {
 #ifndef FIXED_TIMESTEP_PHYS
-        sithControl_ReadControls();
+#ifdef TARGET_XBOX
+        if (!xboxSplitScreen_IsInControlTick())
+#endif
+            sithControl_ReadControls();
 #endif
 #ifdef TARGET_XBOX
         { static int _h = 0; if (_h < 3) {
@@ -328,7 +332,10 @@ void sithControl_Tick(flex_t deltaSecs, int deltaMs)
                 break;
         }
 #ifndef FIXED_TIMESTEP_PHYS
-        sithControl_FinishRead();
+#ifdef TARGET_XBOX
+        if (!xboxSplitScreen_IsInControlTick())
+#endif
+            sithControl_FinishRead();
 #endif
     }
 }

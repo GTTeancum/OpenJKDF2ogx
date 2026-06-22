@@ -1,6 +1,7 @@
 #include "xbox_splitscreen.h"
 
 #include "xbox_debug.h"
+#include "Cog/sithCog.h"
 #include "Devices/sithControl.h"
 #include "Dss/sithMulti.h"
 #include "Gameplay/jkSaber.h"
@@ -38,6 +39,8 @@ extern "C" {
 #endif
 void std3D_XboxSetViewport(int x, int y, int w, int h);
 void std3D_XboxResetViewport(void);
+void std3D_XboxBeginViewportUI(int x, int y, int w, int h);
+void std3D_XboxEndViewportUI(void);
 #ifdef __cplusplus
 }
 #endif
@@ -54,29 +57,125 @@ static int g_xboxSplitScreenLoggedViewports = 0;
 static int g_xboxSplitScreenLoggedSlots = 0;
 static unsigned int g_xboxSplitScreenFrameCount = 0;
 static unsigned int g_xboxSplitScreenRespawnAt[XBOX_SPLITSCREEN_MAX_LOCAL_PLAYERS] = {0};
+static int g_xboxSplitScreenCameraIdx[XBOX_SPLITSCREEN_MAX_LOCAL_PLAYERS] = {0};
+static int g_xboxSplitScreenCurrentSlot = 0;
+static int g_xboxSplitScreenInControlTick = 0;
+
+static int xboxSplitScreen_ClampSlot(int slot)
+{
+    if (slot < 0)
+        slot = 0;
+    if (slot >= g_xboxSplitScreenLocalCount)
+        slot = g_xboxSplitScreenLocalCount - 1;
+    if (slot < 0)
+        slot = 0;
+    if (slot >= XBOX_SPLITSCREEN_MAX_LOCAL_PLAYERS)
+        slot = XBOX_SPLITSCREEN_MAX_LOCAL_PLAYERS - 1;
+    return slot;
+}
+
+static void xboxSplitScreen_ApplyCameraForSlot(int slot)
+{
+    int camIdx;
+
+    slot = xboxSplitScreen_ClampSlot(slot);
+    camIdx = g_xboxSplitScreenCameraIdx[slot] ? 1 : 0;
+    sithCamera_curCameraIdx = camIdx;
+    sithCamera_SetCurrentCamera(&sithCamera_cameras[camIdx ? 1 : 0]);
+}
+
+static void xboxSplitScreen_SaveCameraForSlot(int slot)
+{
+    slot = xboxSplitScreen_ClampSlot(slot);
+    g_xboxSplitScreenCameraIdx[slot] = (sithCamera_curCameraIdx != 0) ? 1 : 0;
+}
+
+static void xboxSplitScreen_SendJoinForSlot(int slot)
+{
+    sithThing *player;
+
+    slot = xboxSplitScreen_ClampSlot(slot);
+    player = jkPlayer_playerInfos[slot].playerThing;
+    if (!sithNet_isServer || !player)
+        return;
+
+    XDBGF("SplitScreenJoin: slot=%d thing=%p thingIdx=%d netId=%d team=%d flags=0x%X\n",
+          slot,
+          (void*)player,
+          player->thingIdx,
+          jkPlayer_playerInfos[slot].net_id,
+          jkPlayer_playerInfos[slot].teamNum,
+          jkPlayer_playerInfos[slot].flags);
+    sithCog_SendSimpleMessageToAll(SITH_MESSAGE_JOIN, 3, player->thingIdx, 0, slot);
+}
+
+static void xboxSplitScreen_SetInventoryBinQuiet(sithThing *player, int binIdx, flex_t amount, int stateFlags)
+{
+    sithPlayerInfo *info;
+    sithItemDescriptor *desc;
+    sithItemInfo *item;
+
+    if (!player || binIdx < 0 || binIdx >= SITHBIN_NUMBINS)
+        return;
+    info = player->actorParams.playerinfo;
+    if (!info || info == (sithPlayerInfo*)-136)
+        return;
+    desc = &sithInventory_aDescriptors[binIdx];
+    if ((desc->flags & ITEMINFO_VALID) == 0)
+        return;
+
+    if (amount < desc->ammoMin)
+        amount = desc->ammoMin;
+    if (amount > desc->ammoMax)
+        amount = desc->ammoMax;
+
+    item = &info->iteminfo[binIdx];
+    item->ammoAmt = amount;
+    item->state |= stateFlags;
+}
 
 static void xboxSplitScreen_SeedPlayerWeapon(sithThing *player)
 {
+    sithPlayerInfo *info;
+    int curWeapon;
+
     if (!player || player->type != SITH_THING_PLAYER || !player->actorParams.playerinfo)
         return;
 
-    sithInventory_SetBinAmount(player, SITHBIN_FISTS, 1.0f);
-    sithInventory_SetAvailable(player, SITHBIN_FISTS, 1);
-    sithInventory_SetCarries(player, SITHBIN_FISTS, 1);
+    info = player->actorParams.playerinfo;
+    xbox_debug_Printf("MPLoadTrace: SplitScreen seed weapon enter player=%p info=%p cur=%d pov=%p\n",
+                      (void*)player,
+                      (void*)info,
+                      info ? info->curWeapon : -1,
+                      player->playerInfo ? (void*)player->playerInfo->povModel.model3 : 0);
 
-    sithInventory_SetBinAmount(player, SITHBIN_BRYARPISTOL, 1.0f);
-    sithInventory_SetAvailable(player, SITHBIN_BRYARPISTOL, 1);
-    sithInventory_SetCarries(player, SITHBIN_BRYARPISTOL, 1);
-    sithInventory_SetBinAmount(player, SITHBIN_ENERGY, 50.0f);
+    xboxSplitScreen_SetInventoryBinQuiet(player, SITHBIN_FISTS, 1.0f, ITEMSTATE_AVAILABLE | ITEMSTATE_CARRIES);
+    xboxSplitScreen_SetInventoryBinQuiet(player, SITHBIN_BRYARPISTOL, 1.0f, ITEMSTATE_AVAILABLE | ITEMSTATE_CARRIES);
+    xboxSplitScreen_SetInventoryBinQuiet(player, SITHBIN_ENERGY, 50.0f, 0);
 
-    if (!player->playerInfo || !player->playerInfo->povModel.model3 ||
-        sithInventory_GetCurWeapon(player) == SITHBIN_NONE)
+    curWeapon = info->curWeapon;
+    if (curWeapon == SITHBIN_NONE ||
+        curWeapon < 0 ||
+        curWeapon >= SITHBIN_NUMBINS ||
+        (sithInventory_aDescriptors[curWeapon].flags & ITEMINFO_WEAPON) == 0)
+    {
+        info->curWeapon = SITHBIN_BRYARPISTOL;
+    }
+
+    if (sithInventory_GetCurWeapon(player) != SITHBIN_BRYARPISTOL ||
+        !player->playerInfo ||
+        !player->playerInfo->povModel.model3)
     {
         sithWeapon_StartupEntry();
         sithInventory_SetCurWeapon(player, SITHBIN_FISTS);
         sithWeapon_SelectWeapon(player, SITHBIN_BRYARPISTOL, 0);
         sithWeapon_handle_inv_msgs(player);
     }
+
+    xbox_debug_Printf("MPLoadTrace: SplitScreen seed weapon done cur=%d fistsState=0x%X bryarState=0x%X\n",
+                      info->curWeapon,
+                      info->iteminfo[SITHBIN_FISTS].state,
+                      info->iteminfo[SITHBIN_BRYARPISTOL].state);
 }
 
 static void xboxSplitScreen_ClearLocalInvulnerability(void)
@@ -105,6 +204,11 @@ static void xboxSplitScreen_RestoreLocalName(int slot)
 int xboxSplitScreen_IsEnabled(void)
 {
     return g_xboxSplitScreenEnabled;
+}
+
+int xboxSplitScreen_IsRequested(void)
+{
+    return g_xboxSplitScreenRequested;
 }
 
 int xboxSplitScreen_GetLocalPlayerCount(void)
@@ -203,8 +307,11 @@ void xboxSplitScreen_Disable(void)
     g_xboxSplitScreenLoggedViewports = 0;
     g_xboxSplitScreenLoggedSlots = 0;
     g_xboxSplitScreenFrameCount = 0;
+    g_xboxSplitScreenCurrentSlot = 0;
+    g_xboxSplitScreenInControlTick = 0;
     for (i = 0; i < XBOX_SPLITSCREEN_MAX_LOCAL_PLAYERS; i++)
     {
+        g_xboxSplitScreenCameraIdx[i] = 0;
         g_xboxSplitScreenRespawnAt[i] = 0;
         g_xboxSplitScreenLocalNames[i][0] = 0;
         g_xboxSplitScreenControllerForSlot[i] = i;
@@ -220,6 +327,11 @@ void xboxSplitScreen_OnMultiplayerServerStarted(void)
 {
     int i;
     int count = xboxSplitScreen_GetRequestedLocalPlayerCount();
+
+    xbox_debug_Printf("MPLoadTrace: SplitScreen server-start enter requested=%d reqCount=%d maxPlayers=%d\n",
+                      g_xboxSplitScreenRequested,
+                      count,
+                      jkPlayer_maxPlayers);
 
     if (!g_xboxSplitScreenRequested)
     {
@@ -240,20 +352,39 @@ void xboxSplitScreen_OnMultiplayerServerStarted(void)
 
     g_xboxSplitScreenLocalCount = count;
     g_xboxSplitScreenEnabled = 0;
+    g_xboxSplitScreenCurrentSlot = 0;
+    g_xboxSplitScreenInControlTick = 0;
 
     for (i = 0; i < count; i++)
     {
         int haveMpc = 0;
         jkPlayerMpcInfo mpcInfo;
+        g_xboxSplitScreenCameraIdx[i] = 0;
+
+        xbox_debug_Printf("MPLoadTrace: SplitScreen slot %d begin thing=%p sector=%p pendingMpc=%d\n",
+                          i,
+                          (void*)jkPlayer_playerInfos[i].playerThing,
+                          jkPlayer_playerInfos[i].playerThing ? (void*)jkPlayer_playerInfos[i].playerThing->sector : 0,
+                          g_xboxSplitScreenPendingMpcSet[i]);
 
         if (!jkPlayer_playerInfos[i].playerThing || !jkPlayer_playerInfos[i].playerThing->sector)
+        {
+            xbox_debug_Printf("MPLoadTrace: SplitScreen slot %d skipped missing player thing/sector\n", i);
             continue;
+        }
 
+        xbox_debug_Printf("MPLoadTrace: SplitScreen slot %d before net activate\n", i);
         sithPlayer_sub_4C87C0(i, i + 1);
         jkPlayer_playerInfos[i].teamNum = 0;
+        xbox_debug_Printf("MPLoadTrace: SplitScreen slot %d before context\n", i);
         xboxSplitScreen_SetContextForLocalSlot(i);
+        xbox_debug_Printf("MPLoadTrace: SplitScreen slot %d after context\n", i);
         if (g_xboxSplitScreenPendingMpcSet[i])
+        {
+            xbox_debug_Printf("MPLoadTrace: SplitScreen slot %d before MPC parse\n", i);
             haveMpc = jkPlayer_MPCParse(&mpcInfo, &jkPlayer_playerInfos[i], jkPlayer_playerShortName, g_xboxSplitScreenPendingMpcNames[i], 1);
+            xbox_debug_Printf("MPLoadTrace: SplitScreen slot %d after MPC parse result=%d\n", i, haveMpc);
+        }
 
         if (haveMpc)
         {
@@ -263,7 +394,9 @@ void xboxSplitScreen_OnMultiplayerServerStarted(void)
             jkPlayer_playerInfos[i].multi_name[31] = 0;
             _wcsncpy(g_xboxSplitScreenLocalNames[i], mpcInfo.name, 31);
             g_xboxSplitScreenLocalNames[i][31] = 0;
+            xbox_debug_Printf("MPLoadTrace: SplitScreen slot %d before MPC apply\n", i);
             xboxSplitScreen_ApplyMpcInfo(jkPlayer_playerInfos[i].playerThing, &mpcInfo);
+            xbox_debug_Printf("MPLoadTrace: SplitScreen slot %d after MPC apply\n", i);
         }
         else
         {
@@ -272,7 +405,9 @@ void xboxSplitScreen_OnMultiplayerServerStarted(void)
             jk_snwprintf(g_xboxSplitScreenLocalNames[i], 32, L"Xbox P%d", i + 1);
         }
 
+        xbox_debug_Printf("MPLoadTrace: SplitScreen slot %d before seed weapon\n", i);
         xboxSplitScreen_SeedPlayerWeapon(jkPlayer_playerInfos[i].playerThing);
+        xbox_debug_Printf("MPLoadTrace: SplitScreen slot %d after seed weapon\n", i);
         XDBGF("SplitScreenInit: slot=%d controller=%d thing=%p mpc=%d sector=%p curW=%d pov=%p flags=0x%X tf=0x%X\n",
               i,
               g_xboxSplitScreenControllerForSlot[i],
@@ -286,9 +421,17 @@ void xboxSplitScreen_OnMultiplayerServerStarted(void)
               jkPlayer_playerInfos[i].playerThing ? jkPlayer_playerInfos[i].playerThing->thingflags : 0);
     }
 
+    xbox_debug_Printf("MPLoadTrace: SplitScreen before restore slot 0\n");
     xboxSplitScreen_SetContextForLocalSlot(0);
+    xbox_debug_Printf("MPLoadTrace: SplitScreen before reset pal effects\n");
     sithPlayer_ResetPalEffects();
+    xbox_debug_Printf("MPLoadTrace: SplitScreen before clear invuln\n");
     xboxSplitScreen_ClearLocalInvulnerability();
+
+    xbox_debug_Printf("MPLoadTrace: SplitScreen server-start done locals=%d enabled=%d maxPlayers=%d\n",
+                      g_xboxSplitScreenLocalCount,
+                      g_xboxSplitScreenEnabled,
+                      jkPlayer_maxPlayers);
 
     XDBGF("SplitScreen: local players=%d enabled=%d maxPlayers=%d awaiting post-load init\n",
           g_xboxSplitScreenLocalCount, g_xboxSplitScreenEnabled, jkPlayer_maxPlayers);
@@ -296,18 +439,15 @@ void xboxSplitScreen_OnMultiplayerServerStarted(void)
 
 void xboxSplitScreen_SetContextForLocalSlot(int slot)
 {
-    if (slot < 0)
-        slot = 0;
-    if (slot >= g_xboxSplitScreenLocalCount)
-        slot = g_xboxSplitScreenLocalCount - 1;
-    if (slot < 0)
-        slot = 0;
+    slot = xboxSplitScreen_ClampSlot(slot);
+    g_xboxSplitScreenCurrentSlot = slot;
 
     if (jkPlayer_playerInfos[slot].playerThing && jkPlayer_playerInfos[slot].playerThing->sector)
     {
         sithPlayer_idk(slot);
         xboxSplitScreen_RestoreLocalName(slot);
         sithCamera_SetsFocus();
+        xboxSplitScreen_ApplyCameraForSlot(slot);
         xboxSplitScreen_ClearLocalInvulnerability();
     }
 }
@@ -315,6 +455,38 @@ void xboxSplitScreen_SetContextForLocalSlot(int slot)
 void xboxSplitScreen_RestoreContext(void)
 {
     xboxSplitScreen_SetContextForLocalSlot(0);
+}
+
+void xboxSplitScreen_SetContextForControllerPort(int controllerPort)
+{
+    int i;
+
+    if (!g_xboxSplitScreenEnabled)
+        return;
+
+    for (i = 0; i < g_xboxSplitScreenLocalCount; i++)
+    {
+        if (g_xboxSplitScreenControllerForSlot[i] == controllerPort)
+        {
+            xboxSplitScreen_SetContextForLocalSlot(i);
+            return;
+        }
+    }
+}
+
+int xboxSplitScreen_GetCurrentControllerPort(void)
+{
+    int slot = xboxSplitScreen_ClampSlot(g_xboxSplitScreenCurrentSlot);
+    int controllerPort = g_xboxSplitScreenControllerForSlot[slot];
+
+    if (controllerPort < 0 || controllerPort >= XBOX_SPLITSCREEN_MAX_LOCAL_PLAYERS)
+        controllerPort = slot;
+    return controllerPort;
+}
+
+int xboxSplitScreen_IsInControlTick(void)
+{
+    return g_xboxSplitScreenInControlTick;
 }
 
 void xboxSplitScreen_PostLoadInitializeLocals(void)
@@ -357,6 +529,9 @@ void xboxSplitScreen_PostLoadInitializeLocals(void)
         xboxSplitScreen_SeedPlayerWeapon(player);
         sithMulti_SendWelcome(stdComm_dplayIdSelf, i, -1);
         sithMulti_SendWelcome(stdComm_dplayIdSelf, i, -1);
+        if (i > 0)
+            xboxSplitScreen_SendJoinForSlot(i);
+        xboxSplitScreen_SaveCameraForSlot(i);
         g_xboxSplitScreenRespawnAt[i] = 0;
 
         XDBGF("SplitScreenPostLoad: slot=%d thing=%p sector=%p curW=%d pov=%p flags=0x%X tf=0x%X\n",
@@ -445,10 +620,14 @@ void xboxSplitScreen_TickControls(float deltaSecs, int deltaMs)
 
             stdControl_XboxSetActiveController(controllerPort);
             xboxSplitScreen_SetContextForLocalSlot(i);
+            g_xboxSplitScreenInControlTick = 1;
             sithControl_Tick(deltaSecs, deltaMs);
+            g_xboxSplitScreenInControlTick = 0;
+            xboxSplitScreen_SaveCameraForSlot(i);
         }
     }
 
+    g_xboxSplitScreenInControlTick = 0;
     stdControl_XboxSetActiveController(0);
     xboxSplitScreen_RestoreContext();
 }
@@ -608,11 +787,14 @@ int xboxSplitScreen_RenderGameplayFrame(void)
 
     for (i = 0; i < g_xboxSplitScreenLocalCount; i++)
     {
+        int vx, vy, vw, vh;
+
         if (!jkPlayer_playerInfos[i].playerThing || !jkPlayer_playerInfos[i].playerThing->sector)
             continue;
 
         xboxSplitScreen_SetContextForLocalSlot(i);
-        xboxSplitScreen_ApplyViewport(i);
+        xboxSplitScreen_GetViewport(i, &vx, &vy, &vw, &vh);
+        std3D_XboxSetViewport(vx, vy, vw, vh);
         if (!sithCamera_currentCamera || !sithCamera_currentCamera->primaryFocus)
         {
             XDBGF("SplitScreenSlot: skip frame=%u slot=%d cam=%p focus=%p thing=%p sector=%p\n",
@@ -653,7 +835,9 @@ int xboxSplitScreen_RenderGameplayFrame(void)
         }
 
         jkPlayer_DrawPov();
+        std3D_XboxBeginViewportUI(vx, vy, vw, vh);
         xboxSplitScreen_DrawHudForCurrentPlayer();
+        std3D_XboxEndViewportUI();
         jkHudInv_Draw();
     }
 

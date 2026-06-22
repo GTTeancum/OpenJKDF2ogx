@@ -14,6 +14,7 @@
 #include "Gui/jkGUITitle.h"
 #include "Gui/jkGUISingleplayer.h"
 #include "Gui/jkGUIMultiplayer.h"
+#include "Gui/jkGUINetHost.h"
 #include "Gui/jkGUIBuildMulti.h"
 #include "Gui/jkGUIDialog.h"
 #include "Gui/jkGUIPlayer.h"
@@ -28,6 +29,7 @@
 #include "Main/jkRes.h"
 #include "General/stdString.h"
 #include "Platform/stdControl.h"
+#include "Dss/sithMulti.h"
 #include "General/util.h"
 #include "General/stdFnames.h"
 #include "Main/sithCvar.h"
@@ -595,10 +597,13 @@ static void jkGuiMain_XboxReadyTick(jkGuiMenu *menu)
         if (!(mask & (1 << slot)))
             continue;
 
-        if (jkGuiMain_XboxReadyReadEdge(slot, KEY_JOY1_B7, &jkGuiMain_xboxReadyPrevStart[slot]) && jkGuiMain_XboxReadyCount() > 0)
+        if (jkGuiMain_XboxReadyReadEdge(slot, KEY_JOY1_B7, &jkGuiMain_xboxReadyPrevStart[slot]))
         {
-            jkGuiMain_xboxReadyStartRequested = 1;
-            menu->lastClicked = 20;
+            if (slot == 0 && jkGuiMain_XboxReadyCount() > 0)
+            {
+                jkGuiMain_xboxReadyStartRequested = 1;
+                menu->lastClicked = 20;
+            }
             continue;
         }
 
@@ -674,12 +679,15 @@ static int jkGuiMain_XboxShowSplitReady(void)
     jkGuiMain_XboxReadyPrimeEdges();
 
     jkGuiRend_MenuSetReturnKeyShortcutElement(&jkGuiMain_xboxReadyMenu, 0);
-    jkGuiRend_MenuSetEscapeKeyShortcutElement(&jkGuiMain_xboxReadyMenu, &jkGuiMain_xboxReadyElements[JKGUI_XBOX_READY_CANCEL]);
+    jkGuiRend_MenuSetEscapeKeyShortcutElement(&jkGuiMain_xboxReadyMenu, 0);
     jkGuiMain_xboxReadyMenu.idkFunc = jkGuiMain_XboxReadyTick;
     jkGuiRend_xboxSuppressControllerConfirm = 1;
     do
     {
         jkGuiRend_XboxFooterBegin(&jkGuiMain_xboxReadyMenu);
+        jkGuiRend_XboxFooterAddAction(&jkGuiMain_xboxReadyMenu, JKGUI_XBOX_BTN_A, 0, L"Join");
+        jkGuiRend_XboxFooterAddAction(&jkGuiMain_xboxReadyMenu, JKGUI_XBOX_BTN_B, 0, L"Back/Leave");
+        jkGuiRend_XboxFooterAddAction(&jkGuiMain_xboxReadyMenu, JKGUI_XBOX_BTN_START, 0, L"P1 Start");
         result = jkGuiRend_DisplayAndReturnClicked(&jkGuiMain_xboxReadyMenu);
         if (result == 20 && !jkGuiMain_xboxReadyStartRequested)
         {
@@ -738,9 +746,74 @@ static int jkGuiMain_XboxShowSplitReady(void)
     return result == 20 ? 1 : -1;
 }
 
+static int jkGuiMain_XboxCreateLocalMultiplayerHost(jkMultiEntry3 *entry)
+{
+    int requestedPlayers;
+    HRESULT result;
+
+    if (!entry)
+        return 0;
+
+    requestedPlayers = xboxSplitScreen_GetRequestedLocalPlayerCount();
+    if (requestedPlayers < 1)
+        return 0;
+
+    entry->maxPlayers = requestedPlayers;
+    entry->sessionFlags &= ~SESSIONFLAG_ISDEDICATED;
+#ifdef QOL_IMPROVEMENTS
+    jkGuiNetHost_bIsDedicated = 0;
+#endif
+    jkGuiNetHost_maxPlayers = requestedPlayers;
+    jkGuiNetHost_sessionFlags = entry->sessionFlags;
+    jkGuiNetHost_gameFlags = entry->multiModeFlags;
+    jkGuiNetHost_scoreLimit = entry->scoreLimit;
+    jkGuiNetHost_timeLimit = entry->timeLimit;
+
+    sithNet_scorelimit = entry->scoreLimit;
+    sithNet_multiplayer_timelimit = entry->timeLimit;
+
+    XDBGF("MPLoadTrace: split setup accepted gob='%s' jkl='%s' players=%d flags=0x%x session=0x%x score=%d time=%d tick=%d rank=%d\n",
+          entry->episodeGobName,
+          entry->mapJklFname,
+          entry->maxPlayers,
+          entry->multiModeFlags,
+          entry->sessionFlags,
+          entry->scoreLimit,
+          entry->timeLimit,
+          entry->tickRateMs,
+          entry->maxRank);
+
+    result = sithMulti_CreatePlayer(
+        entry->serverName,
+        entry->wPassword,
+        entry->episodeGobName,
+        entry->mapJklFname,
+        entry->maxPlayers,
+        entry->sessionFlags,
+        entry->multiModeFlags,
+        entry->tickRateMs,
+        entry->maxRank);
+
+    if (result == 0x88770118)
+    {
+        jkGuiDialog_ErrorDialog(jkStrings_GetUniStringWithFallback("GUINET_HOSTERROR"), jkStrings_GetUniStringWithFallback("GUINET_USERCANCEL"));
+        return 0;
+    }
+    if (result)
+    {
+        XDBGF("MPLoadTrace: split setup sithMulti_CreatePlayer failed hr=0x%x\n", result);
+        jkGuiDialog_ErrorDialog(jkStrings_GetUniStringWithFallback("GUINET_HOSTERROR"), jkStrings_GetUniStringWithFallback("GUINET_NOCONNECT"));
+        return 0;
+    }
+
+    XDBG("MPLoadTrace: split setup local host created\n");
+    return 1;
+}
+
 static int jkGuiMain_XboxStartLocalMultiplayerTest(void)
 {
     int result;
+    jkMultiEntry3 entry;
 
     XDBG("MPLoadTrace: ready screen enter\n");
     if (jkGuiMain_XboxShowSplitReady() != 1)
@@ -750,13 +823,29 @@ static int jkGuiMain_XboxStartLocalMultiplayerTest(void)
     }
 
     XDBGF("MPLoadTrace: ready accepted players=%d\n", xboxSplitScreen_GetRequestedLocalPlayerCount());
+    _memset(&entry, 0, sizeof(entry));
+    XDBG("MPLoadTrace: split setup screen enter\n");
+    if (jkGuiNetHost_ShowXboxSplitScreen(&entry) != 1)
+    {
+        XDBG("MPLoadTrace: split setup canceled\n");
+        return -1;
+    }
+
     xboxSplitScreen_Enable();
-    XDBG("MPLoadTrace: split screen enabled; calling jkMain_loadFile2 JK1MP/m10.jkl\n");
-    result = jkMain_loadFile2("JK1MP", "m10.jkl") ? 1 : -1;
+    if (!jkGuiMain_XboxCreateLocalMultiplayerHost(&entry))
+    {
+        XDBG("MPLoadTrace: disabling split screen after local host setup failure\n");
+        xboxSplitScreen_Disable();
+        return -1;
+    }
+
+    XDBGF("MPLoadTrace: split screen enabled; calling jkMain_loadFile2 %s/%s\n", entry.episodeGobName, entry.mapJklFname);
+    result = jkMain_loadFile2(entry.episodeGobName, entry.mapJklFname) ? 1 : -1;
     XDBGF("MPLoadTrace: jkMain_loadFile2 returned %d\n", result);
     if (result != 1)
     {
         XDBG("MPLoadTrace: disabling split screen after load setup failure\n");
+        stdComm_CloseConnection();
         xboxSplitScreen_Disable();
     }
     return result;

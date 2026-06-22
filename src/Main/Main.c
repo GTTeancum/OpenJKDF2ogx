@@ -282,7 +282,7 @@ int Main_Startup(const char *cmdline)
     xbox_debug_Print("Main_Startup: stdInitServices...\n");
     stdInitServices(&hs);
     xbox_debug_Print("Main_Startup: stdInitServices OK\n");
-    jkGuiNetHost_maxRank = 4;
+    jkGuiNetHost_maxRank = 8;
     jkGuiNetHost_maxPlayers = 4;
     Video_modeStruct.geoMode = 4;
     pHS = &hs;

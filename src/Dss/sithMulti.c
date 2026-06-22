@@ -178,24 +178,54 @@ HRESULT sithMulti_CreatePlayer(const wchar_t *a1, const wchar_t *a2, const char 
 
 int sithMulti_StartupServer()
 {
+#ifdef TARGET_XBOX
+    xbox_debug_Printf("MPLoadTrace: sithMulti_StartupServer enter maxPlayers=%d splitReq=%d reqLocals=%d\n",
+                      jkPlayer_maxPlayers,
+                      xboxSplitScreen_IsRequested(),
+                      xboxSplitScreen_GetRequestedLocalPlayerCount());
+#endif
     sithNet_MultiModeFlags = sithMulti_multiModeFlags;
     sithNet_scorelimit = stdComm_dword_832204;
     sithNet_multiplayer_timelimit = sithMulti_multiplayerTimelimit;
+#ifdef TARGET_XBOX
+    XDBG("MPLoadTrace: sithMulti_StartupServer before player startup loop\n");
+#endif
     for (uint32_t i = 0; i < 32; ++i )
     {
+#ifdef TARGET_XBOX
+        if ((i & 7) == 0)
+            xbox_debug_Printf("MPLoadTrace: sithMulti_StartupServer player startup idx=%u\n", i);
+#endif
         sithPlayer_sub_4C8910(i);
         sithPlayer_Startup(i);
     }
+#ifdef TARGET_XBOX
+    XDBG("MPLoadTrace: sithMulti_StartupServer after player startup loop\n");
+#endif
     sithNet_teamScore[0] = 0;
     sithNet_teamScore[1] = 0;
     sithNet_teamScore[2] = 0;
     sithNet_teamScore[3] = 0;
     sithNet_teamScore[4] = 0;
+#ifdef TARGET_XBOX
+    xbox_debug_Printf("MPLoadTrace: sithMulti_StartupServer before activate p0 thing=%p sector=%p self=%d\n",
+                      (void*)jkPlayer_playerInfos[0].playerThing,
+                      jkPlayer_playerInfos[0].playerThing ? (void*)jkPlayer_playerInfos[0].playerThing->sector : 0,
+                      stdComm_dplayIdSelf);
+#endif
     sithPlayer_sub_4C87C0(0, stdComm_dplayIdSelf);
+#ifdef TARGET_XBOX
+    XDBG("MPLoadTrace: sithMulti_StartupServer before sithPlayer_idk p0\n");
+#endif
     sithPlayer_idk(0);
+#ifdef TARGET_XBOX
+    XDBG("MPLoadTrace: sithMulti_StartupServer before reset pal effects\n");
+#endif
     sithPlayer_ResetPalEffects();
 #ifdef TARGET_XBOX
+    XDBG("MPLoadTrace: sithMulti_StartupServer before split-screen server-start\n");
     xboxSplitScreen_OnMultiplayerServerStarted();
+    XDBG("MPLoadTrace: sithMulti_StartupServer after split-screen server-start\n");
 #endif
 
     // Added: dedicated server
@@ -209,32 +239,76 @@ int sithMulti_StartupServer()
     {
         jkPlayer_playerInfos[0].teamNum = 1;
     }
-    stdComm_DoReceive();
+#ifdef TARGET_XBOX
+    if (xboxSplitScreen_IsRequested())
+    {
+        XDBG("MPLoadTrace: sithMulti_StartupServer skip initial DoReceive for local split-screen\n");
+    }
+    else
+#endif
+    {
+#ifdef TARGET_XBOX
+        XDBG("MPLoadTrace: sithMulti_StartupServer before stdComm_DoReceive\n");
+#endif
+        stdComm_DoReceive();
+#ifdef TARGET_XBOX
+        XDBG("MPLoadTrace: sithMulti_StartupServer after stdComm_DoReceive\n");
+#endif
+    }
+#ifdef TARGET_XBOX
+    XDBG("MPLoadTrace: sithMulti_StartupServer done\n");
+#endif
     return 1;
 }
 
 int sithMulti_StartupClient()
 {
+#ifdef TARGET_XBOX
+    XDBG("MPLoadTrace: sithMulti_StartupClient enter\n");
+#endif
     sithNet_isServer = 0;
     sithNet_isMulti = 1;
+#ifdef TARGET_XBOX
+    XDBG("MPLoadTrace: sithMulti_StartupClient before player startup loop\n");
+#endif
     for (uint32_t i = 0; i < 32; ++i )
     {
         sithPlayer_sub_4C8910(i);
         sithPlayer_Startup(i);
     }
+#ifdef TARGET_XBOX
+    XDBG("MPLoadTrace: sithMulti_StartupClient after player startup loop\n");
+#endif
     sithNet_teamScore[0] = 0;
     sithNet_teamScore[1] = 0;
     sithNet_teamScore[2] = 0;
     sithNet_teamScore[3] = 0;
     sithNet_teamScore[4] = 0;
+#ifdef TARGET_XBOX
+    XDBG("MPLoadTrace: sithMulti_StartupClient before stdComm_DoReceive\n");
+#endif
     stdComm_DoReceive();
+#ifdef TARGET_XBOX
+    XDBG("MPLoadTrace: sithMulti_StartupClient done\n");
+#endif
     return 1;
 }
 
 void sithMulti_RemoveAllActorsFromWorld(sithWorld *pWorld)
 {
+#ifdef TARGET_XBOX
+    xbox_debug_Printf("MPLoadTrace: RemoveAllActors enter world=%p things=%d loaded=%d flags=0x%X server=%d\n",
+                      (void*)pWorld,
+                      pWorld ? pWorld->numThings : -1,
+                      pWorld ? pWorld->numThingsLoaded : -1,
+                      sithMulti_multiModeFlags,
+                      sithNet_isServer);
+#endif
     // Added: nullptr check
     if (!pWorld) {
+#ifdef TARGET_XBOX
+        XDBG("MPLoadTrace: RemoveAllActors skipped null world\n");
+#endif
         return;
     }
 
@@ -242,9 +316,15 @@ void sithMulti_RemoveAllActorsFromWorld(sithWorld *pWorld)
 
     // Added: Co-op
     if (sithMulti_multiModeFlags & MULTIMODEFLAG_COOP) {
+#ifdef TARGET_XBOX
+        XDBG("MPLoadTrace: RemoveAllActors skipped coop\n");
+#endif
         return;
     } 
 
+#ifdef TARGET_XBOX
+    XDBG("MPLoadTrace: RemoveAllActors before loop\n");
+#endif
     for (int i = 0; i <= pWorld->numThings; i++)
     {
         sithThing* pIter = &pWorld->things[i];
@@ -257,6 +337,9 @@ void sithMulti_RemoveAllActorsFromWorld(sithWorld *pWorld)
             pIter->thingflags |= SITH_TF_INVULN;
         }
     }
+#ifdef TARGET_XBOX
+    XDBG("MPLoadTrace: RemoveAllActors done\n");
+#endif
 }
 
 int sithMulti_Startup()
@@ -266,6 +349,17 @@ int sithMulti_Startup()
     sithThing **v5; // ebp
     int v7; // ecx
 
+#ifdef TARGET_XBOX
+    xbox_debug_Printf("MPLoadTrace: sithMulti_Startup enter server=%d world=%p things=%d loaded=%d players=%d splitReq=%d reqLocals=%d\n",
+                      stdComm_bIsServer,
+                      (void*)sithWorld_pCurrentWorld,
+                      sithWorld_pCurrentWorld ? sithWorld_pCurrentWorld->numThings : -1,
+                      sithWorld_pCurrentWorld ? sithWorld_pCurrentWorld->numThingsLoaded : -1,
+                      jkPlayer_maxPlayers,
+                      xboxSplitScreen_IsRequested(),
+                      xboxSplitScreen_GetRequestedLocalPlayerCount());
+#endif
+
     g_submodeFlags |= 1u;
     sithMulti_leaveJoinType = 0;
     sithMulti_bTimelimitMet = 0;
@@ -273,20 +367,54 @@ int sithMulti_Startup()
     sithComm_bSyncMultiplayer |= 1u;
 
     // Remove all actor things from the world
+#ifdef TARGET_XBOX
+    XDBG("MPLoadTrace: sithMulti_Startup before RemoveAllActors\n");
+#endif
     sithMulti_RemoveAllActorsFromWorld(sithWorld_pCurrentWorld);
+#ifdef TARGET_XBOX
+    XDBG("MPLoadTrace: sithMulti_Startup after RemoveAllActors\n");
+#endif
 
-    sithNet_checksum = sithWorld_CalcChecksum(sithWorld_pCurrentWorld, 0/*jkGuiMultiplayer_checksumSeed*/); // Added: TODO fix the checksum seed
+#ifdef TARGET_XBOX
+    if (xboxSplitScreen_IsRequested())
+    {
+        sithNet_checksum = 0;
+        XDBG("MPLoadTrace: sithMulti_Startup skipped checksum for local split-screen\n");
+    }
+    else
+#endif
+    {
+#ifdef TARGET_XBOX
+        XDBG("MPLoadTrace: sithMulti_Startup before checksum\n");
+#endif
+        sithNet_checksum = sithWorld_CalcChecksum(sithWorld_pCurrentWorld, 0/*jkGuiMultiplayer_checksumSeed*/); // Added: TODO fix the checksum seed
+#ifdef TARGET_XBOX
+        xbox_debug_Printf("MPLoadTrace: sithMulti_Startup after checksum value=0x%08X\n", sithNet_checksum);
+#endif
+    }
     sithNet_syncIdx = 0;
     sithSurface_numSurfaces_0 = 0;
     sithSector_numSync = 0;
     sithNet_bNeedsFullThingSyncForLeaveJoin = 0;
+#ifdef TARGET_XBOX
+    XDBG("MPLoadTrace: sithMulti_Startup before ClearMsgTmpBuf\n");
+#endif
     sithComm_ClearMsgTmpBuf();
+#ifdef TARGET_XBOX
+    XDBG("MPLoadTrace: sithMulti_Startup after ClearMsgTmpBuf\n");
+#endif
     if ( stdComm_bIsServer )
     {
+#ifdef TARGET_XBOX
+        XDBG("MPLoadTrace: sithMulti_Startup dispatch server\n");
+#endif
         return sithMulti_StartupServer();
     }
     else
     {
+#ifdef TARGET_XBOX
+        XDBG("MPLoadTrace: sithMulti_Startup dispatch client\n");
+#endif
         return sithMulti_StartupClient();
     }
 }
