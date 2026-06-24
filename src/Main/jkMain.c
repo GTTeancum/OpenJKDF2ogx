@@ -3,6 +3,7 @@
 #ifdef TARGET_XBOX
 #include "xbox_debug.h"
 #include "Platform/Xbox/xbox_splitscreen.h"
+#include "Platform/Xbox/xbox_systemlink_probe.h"
 #ifdef XBOX_VERBOSE_FORMAT_LOGS
 #define JKTRACE(msg) xbox_debug_Print(msg)
 #define JKTRACEF xbox_debug_Printf
@@ -151,7 +152,7 @@ static int jkMain_ResolveVideoPath(const char *fname, char *out)
 static int jkMain_IsMultiplayerEpisodeType(jkEpisodeTypeFlags_t type)
 {
     /* Match the normal host menu's multiplayer episode load mask. */
-    return (type & (JK_EPISODE_DEATHMATCH | JK_EPISODE_4_UNK | JK_EPISODE_SPECIAL_CTF)) != 0;
+    return (type & (JK_EPISODE_DEATHMATCH | JK_EPISODE_4_UNK | JK_EPISODE_SPECIAL_CTF | JK_EPISODE_SABER)) != 0;
 }
 
 static int jkMain_MultiplayerFlagsForEpisodeType(jkEpisodeTypeFlags_t type)
@@ -950,6 +951,15 @@ LABEL_28:
         else {
             thing_six = 1;
             stdControl_ToggleCursor(0);
+#ifdef TARGET_XBOX
+            if (xboxSystemLinkProbe_IsGameplayActive())
+            {
+                XDBG("MPLoadTrace: GameplayShow client System Link bypass sync dialog\n");
+                thing_six = 0;
+                stdControl_ToggleCursor(1);
+                goto LABEL_28;
+            }
+#endif
 #if !defined(TARGET_NO_MULTIPLAYER_MENUS)
             if ( jkGuiMultiplayer_ShowSynchronizing() == 1 )
             {

@@ -287,11 +287,16 @@ static void xbox_ProbeGameRoot(void)
      */
     typedef struct { const char *path; const char *root; } NtProbe;
     static const NtProbe ntProbes[] = {
-        { "\\??\\D:\\Resource\\JK_.CD",                        "\\??\\D:" },
-        { "\\Device\\CdRom0\\Resource\\JK_.CD",                "\\Device\\CdRom0" },
-        { "\\Device\\Harddisk0\\Partition1\\Resource\\JK_.CD", "\\Device\\Harddisk0\\Partition1" },
-        { "\\Device\\Harddisk0\\Partition6\\Resource\\JK_.CD", "\\Device\\Harddisk0\\Partition6" },
-        { "\\Device\\Harddisk0\\Partition7\\Resource\\JK_.CD", "\\Device\\Harddisk0\\Partition7" },
+        { "\\??\\D:\\Resource\\Res2.gob",                         "\\??\\D:" },
+        { "\\??\\D:\\Resource\\JKMRES.GOO",                       "\\??\\D:" },
+        { "\\Device\\CdRom0\\Resource\\Res2.gob",                 "\\Device\\CdRom0" },
+        { "\\Device\\CdRom0\\Resource\\JKMRES.GOO",               "\\Device\\CdRom0" },
+        { "\\Device\\Harddisk0\\Partition1\\Resource\\Res2.gob",  "\\Device\\Harddisk0\\Partition1" },
+        { "\\Device\\Harddisk0\\Partition1\\Resource\\JKMRES.GOO","\\Device\\Harddisk0\\Partition1" },
+        { "\\Device\\Harddisk0\\Partition6\\Resource\\Res2.gob",  "\\Device\\Harddisk0\\Partition6" },
+        { "\\Device\\Harddisk0\\Partition6\\Resource\\JKMRES.GOO","\\Device\\Harddisk0\\Partition6" },
+        { "\\Device\\Harddisk0\\Partition7\\Resource\\Res2.gob",  "\\Device\\Harddisk0\\Partition7" },
+        { "\\Device\\Harddisk0\\Partition7\\Resource\\JKMRES.GOO","\\Device\\Harddisk0\\Partition7" },
         { NULL, NULL }
     };
     int i;
@@ -314,8 +319,14 @@ static void xbox_ProbeGameRoot(void)
 
     /* Fallback: try CreateFileA with drive letters */
     {
-        static const char *caProbes[] = { "D:\\Resource\\JK_.CD", "Resource\\JK_.CD", NULL };
-        static const char *caRoots[]  = { "D:",                   "",                  NULL };
+        static const char *caProbes[] = {
+            "D:\\Resource\\Res2.gob",
+            "D:\\Resource\\JKMRES.GOO",
+            "Resource\\Res2.gob",
+            "Resource\\JKMRES.GOO",
+            NULL
+        };
+        static const char *caRoots[]  = { "D:", "D:", "", "", NULL };
         for (i = 0; caProbes[i]; i++)
         {
             h = CreateFileA(caProbes[i], GENERIC_READ, FILE_SHARE_READ,

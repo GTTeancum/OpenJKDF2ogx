@@ -136,6 +136,7 @@ build/xbox/chm_text/
 build/xbox/test/
 CXBXR/
 build/fonts/
+build/generated/
 build/sft_*/
 build/test_*.bat
 build/pp_*.bat

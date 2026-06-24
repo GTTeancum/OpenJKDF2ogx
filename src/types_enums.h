@@ -182,6 +182,7 @@ enum jkEpisodeLoadType
     JK_EPISODE_DEATHMATCH = 2,
     JK_EPISODE_4_UNK = 4,
     JK_EPISODE_SPECIAL_CTF = 8,
+    JK_EPISODE_SABER = 16,
     JK_EPISODE_ALL = 0xFFFF
 };
 

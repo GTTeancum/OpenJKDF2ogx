@@ -104,6 +104,22 @@ extern uint32_t g_app_suspended;
 
 static HostServices hs;
 
+#ifdef TARGET_XBOX
+static int Main_XboxMarkerExists(const char *path)
+{
+    HANDLE h;
+
+    if (!path || !path[0])
+        return 0;
+
+    h = CreateFileA(path, GENERIC_READ, FILE_SHARE_READ, NULL, OPEN_EXISTING, FILE_ATTRIBUTE_NORMAL, NULL);
+    if (h == INVALID_HANDLE_VALUE)
+        return 0;
+    CloseHandle(h);
+    return 1;
+}
+#endif
+
 #ifdef QOL_IMPROVEMENTS
 int32_t Main_bDedicatedServer = 0;
 int32_t Main_bAutostart = 0;
@@ -116,6 +132,11 @@ int32_t Main_bEnhancedCogVerbs = 0;
 char Main_strEpisode[129];
 char Main_strMap[128+4];
 #endif
+
+int Main_ShouldUseMotsForcePowers(void)
+{
+    return Main_bMotsCompat && !sithNet_isMulti;
+}
 
 #if defined(QOL_IMPROVEMENTS) && !defined(TARGET_NO_MULTIPLAYER_MENUS)
 int Main_StartupDedicated(int bFullyDedicated)
@@ -288,6 +309,13 @@ int Main_Startup(const char *cmdline)
     pHS = &hs;
     jkPlayer_setFullSubtitles = 1; // Added: Set subtitles as default for opening cutscene
     jkPlayer_setDisableCutscenes = 0;
+#ifdef TARGET_XBOX
+    if (Main_XboxMarkerExists("D:\\XboxSystemLinkSmoke.ini") || Main_XboxMarkerExists("D:\\xbox_smoke_disable_cutscenes.txt"))
+    {
+        jkPlayer_setDisableCutscenes = 1;
+        xbox_debug_Print("Smoke: cutscenes disabled by marker\n");
+    }
+#endif
     jkPlayer_setRotateOverlayMap = 1;
     jkPlayer_setDrawStatus = 1;
 #ifdef TARGET_XBOX
@@ -298,7 +326,7 @@ int Main_Startup(const char *cmdline)
     jkPlayer_setSaberCam = 0;
     jkGuiNetHost_gameFlags = 144;
     jkGuiNetHost_scoreLimit = 100;
-    jkGuiNetHost_timeLimit = 30;
+    jkGuiNetHost_timeLimit = 0;
     jkGuiNetHost_sessionFlags = 0;
     jkGuiNetHost_tickRate = 180;
     Video_modeStruct.modeIdx = 0;

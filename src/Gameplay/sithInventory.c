@@ -37,7 +37,7 @@ void sithInventory_NewEntry(int binIdx, sithCog *cog, char *name, flex_t min, fl
 
 int sithInventory_GetNumBinsWithFlag(sithThing *thing, int binNum, int flags)
 {
-    if (flags == 8 && Main_bMotsCompat)
+    if (flags == 8 && Main_ShouldUseMotsForcePowers())
     {
         sithPlayerInfo *puVar1;
         sithPlayerInfo *puVar2;
@@ -125,7 +125,7 @@ int sithInventory_GetNumBinsWithFlag(sithThing *thing, int binNum, int flags)
 
 int sithInventory_GetNumBinsWithFlagRev(sithThing *thing, int binNumEnd, int flags)
 {
-    if (flags == 8 && Main_bMotsCompat)
+    if (flags == 8 && Main_ShouldUseMotsForcePowers())
     {
         int iVar8 = 0;
         sithPlayerInfo *puVar1;
@@ -855,7 +855,7 @@ LABEL_16:
         sithInventory_SetAvailable(player, SITHBIN_F_DEADLYSIGHT, 1);
         sithInventory_SetAvailable(player, SITHBIN_F_PROTECTION, 1);
 
-        if (Main_bMotsCompat) {
+        if (Main_ShouldUseMotsForcePowers()) {
             sithInventory_SetBinAmount(player, SITHBIN_JEDI_RANK, 8.0);
             jkPlayer_SetRank(8);
 

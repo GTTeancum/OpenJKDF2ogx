@@ -5,6 +5,9 @@
 #include "General/stdString.h"
 #include "stdPlatform.h"
 #include "jk.h"
+#ifdef TARGET_XBOX
+#include "Platform/Xbox/xbox_systemlink_probe.h"
+#endif
 
 void Hack_ResetClients()
 {
@@ -48,11 +51,19 @@ void stdComm_None_Startup()
 
 int DirectPlay_Receive(int *pIdOut, int *pMsgIdOut, int *pLenOut)
 {
+#ifdef TARGET_XBOX
+    if (xboxSystemLinkProbe_IsGameplayActive())
+        return xboxSystemLinkProbe_GameReceive(pIdOut, pMsgIdOut, pLenOut);
+#endif
     return -1;
 }
 
 BOOL DirectPlay_Send(DPID idFrom, DPID idTo, void *lpData, DWORD dwDataSize)
 {
+#ifdef TARGET_XBOX
+    if (xboxSystemLinkProbe_IsGameplayActive())
+        return xboxSystemLinkProbe_GameSend(idFrom, idTo, lpData, dwDataSize);
+#endif
     return 0;
 }
 
@@ -69,12 +80,21 @@ void stdComm_CloseConnection()
 
 int stdComm_Open(int idx, wchar_t* pwPassword)
 {
+#ifdef TARGET_XBOX
+    if (xboxSystemLinkProbe_IsGameplayActive())
+        return xboxSystemLinkProbe_GameOpenClient(idx) == 0;
+#endif
+    (void)idx;
+    (void)pwPassword;
     return 1;
 }
 
 void stdComm_Close()
 {
-
+#ifdef TARGET_XBOX
+    if (xboxSystemLinkProbe_IsGameplayActive())
+        xboxSystemLinkProbe_GameClose();
+#endif
 }
 
 int DirectPlay_SendLobbyMessage(void* pPkt, uint32_t pktLen)
@@ -120,17 +140,27 @@ int DirectPlay_EarlyInit(wchar_t* pwIdk, wchar_t* pwPlayerName)
 
 DPID DirectPlay_CreatePlayer(wchar_t* pwIdk, int idk2)
 {
+#ifdef TARGET_XBOX
+    if (xboxSystemLinkProbe_IsGameplayActive())
+        return xboxSystemLinkProbe_GameCreatePlayer(pwIdk, idk2);
+#endif
     return 1;
 }
 
 void DirectPlay_Close()
 {
-    
+#ifdef TARGET_XBOX
+    if (xboxSystemLinkProbe_IsGameplayActive())
+        xboxSystemLinkProbe_GameClose();
+#endif
 }
 
 int DirectPlay_OpenHost(jkMultiEntry* a)
 {
-    
+#ifdef TARGET_XBOX
+    if (xboxSystemLinkProbe_IsGameplayActive())
+        return xboxSystemLinkProbe_GameOpenHost(a);
+#endif
     return 0;
 }
 
@@ -146,16 +176,33 @@ int stdComm_EnumSessions(int a, void* b)
 
 void DirectPlay_EnumPlayers(int a)
 {
+#ifdef TARGET_XBOX
+    if (xboxSystemLinkProbe_IsGameplayActive())
+    {
+        xboxSystemLinkProbe_GameEnumPlayers();
+        return;
+    }
+#endif
+    (void)a;
 }
 
 int DirectPlay_StartSession(void* a, void* b)
 {
+#ifdef TARGET_XBOX
+    if (xboxSystemLinkProbe_IsGameplayActive())
+        return 1;
+#endif
+    (void)a;
+    (void)b;
     return 1;
 }
 
 void DirectPlay_Destroy()
 {
-    
+#ifdef TARGET_XBOX
+    if (xboxSystemLinkProbe_IsGameplayActive())
+        xboxSystemLinkProbe_GameClose();
+#endif
 }
 
 int DirectPlay_IdkSessionDesc(jkMultiEntry* pEntry)

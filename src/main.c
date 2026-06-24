@@ -660,10 +660,12 @@ int main(int argc, char** argv)
 
     getcwd(openjkdf2_aOrigCwd, sizeof(openjkdf2_aOrigCwd));
 
+    int bNextRunMotsCompat = 0;
     openjkdf2_bOrigWasDF2 = 1;
     for (int i = 1; i < argc; i++) {
         if (!__strcmpi(argv[i], "-motsCompat") || !__strcmpi(argv[i], "/motsCompat")) {
             openjkdf2_bOrigWasDF2 = 0; // Running MoTS.
+            bNextRunMotsCompat = 1;
         }
         else if (!__strcmpi(argv[i], "-path") || !__strcmpi(argv[i], "/path")) {
             openjkdf2_bOrigWasDF2 = 0; // Running some kind of mod.
@@ -673,6 +675,7 @@ int main(int argc, char** argv)
     while (1)
     {
         OpenJKDF2_Globals_Reset();
+        Main_bMotsCompat = bNextRunMotsCompat;
 
         // Set the mod path
         if (openjkdf2_restartMode == OPENJKDF2_RESTART_PATH) {
@@ -701,7 +704,7 @@ int main(int argc, char** argv)
             }
 
             // Scenario: User has an existing JK.EXE/JKM.EXE replacement install, and wants to run the other game.
-            // If we keep the current working directory, it will trigger the jk_.cd checks and not restart correctly.
+            // If we keep the current working directory, the required-asset checks will keep using the wrong game root.
             // So we override the cwd to the LocalData directory to prevent this.
             if ((openjkdf2_bOrigWasRunningFromExistingInstall && openjkdf2_bOrigWasDF2 && (openjkdf2_restartMode == OPENJKDF2_RESTART_MOTS))
                 || (openjkdf2_bOrigWasRunningFromExistingInstall && !openjkdf2_bOrigWasDF2 && (openjkdf2_restartMode == OPENJKDF2_RESTART_DF2))) 
@@ -715,11 +718,11 @@ int main(int argc, char** argv)
         }
 
         if (openjkdf2_restartMode == OPENJKDF2_RESTART_MOTS) {
-            Main_bMotsCompat = 1;
+            bNextRunMotsCompat = 1;
             continue;
         }
         else if (openjkdf2_restartMode == OPENJKDF2_RESTART_DF2) {
-            Main_bMotsCompat = 0;
+            bNextRunMotsCompat = 0;
             continue;
         }
         else if (openjkdf2_restartMode == OPENJKDF2_RESTART_PATH) {

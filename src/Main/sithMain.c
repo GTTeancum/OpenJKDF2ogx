@@ -608,6 +608,13 @@ void sithMain_UpdateCamera()
         {
             // Set screen aspect ratio
             flex_t aspect = sithCamera_currentCamera->rdCam.canvas->half_screen_height / sithCamera_currentCamera->rdCam.canvas->half_screen_width;
+#if defined(TARGET_XBOX)
+            {
+                flex_t splitAspect = xboxSplitScreen_GetCurrentViewportAspect();
+                if (splitAspect > 0.0)
+                    aspect = splitAspect;
+            }
+#endif
 #if defined(TARGET_TWL)
             //aspect = 192.0/256.0;
             //const flex_t canvasWidth = 256.0;

@@ -20,7 +20,6 @@ const char* aRequiredAssets[] = {
     "episode/JK1MP.gob",
     "resource/Res1hi.gob",
     "resource/Res2.gob",
-    "resource/jk_.cd",
 };
 
 const size_t aRequiredAssets_len = sizeof(aRequiredAssets) / sizeof(const char*);
@@ -32,7 +31,6 @@ const char* aRequiredAssetsMots[] = {
     "episode/JKM.goo",
     "resource/Jkmres.goo",
     "resource/JKMsndLO.goo",
-    "resource/jk_.cd",
 };
 
 const size_t aRequiredAssetsMots_len = sizeof(aRequiredAssetsMots) / sizeof(const char*);
@@ -41,6 +39,38 @@ const size_t aRequiredAssetsMots_len = sizeof(aRequiredAssetsMots) / sizeof(cons
 
 #define INSTALL_APPDATA_FOLDER_NAME (Main_bMotsCompat ? "openjkmots" : "openjkdf2")
 #define INSTALL_OVERRIDE_ENVVAR_NAME (Main_bMotsCompat ? "OPENJKMOTS_ROOT" : "OPENJKDF2_ROOT")
+
+static const char* InstallHelper_GetPrimaryAssetSentinel(void)
+{
+    return Main_bMotsCompat ? "resource/JKMRES.GOO" : "resource/Res2.gob";
+}
+
+static int InstallHelper_HasRequiredAssetsInRoot(const char* root)
+{
+    char fname[512];
+    const char** paRequiredAssets = Main_bMotsCompat ? aRequiredAssetsMots : aRequiredAssets;
+    size_t paRequiredAssets_len = Main_bMotsCompat ? aRequiredAssetsMots_len : aRequiredAssets_len;
+
+    for (size_t i = 0; i < paRequiredAssets_len; i++)
+    {
+        if (root && root[0] && strcmp(root, "."))
+        {
+            stdFnames_MakePath(fname, sizeof(fname), root, paRequiredAssets[i]);
+        }
+        else
+        {
+            strncpy(fname, paRequiredAssets[i], sizeof(fname) - 1);
+            fname[sizeof(fname) - 1] = 0;
+        }
+
+        if (!util_FileExists(fname))
+        {
+            return 0;
+        }
+    }
+
+    return 1;
+}
 
 int InstallHelper_copy(const char* in_path, const char* out_path)
 {
@@ -214,32 +244,21 @@ Summary of local data override priorities:
 
 Linux:
  - OPENJKDF2_ROOT (OPENJKMOTS_ROOT for motsCompat) trumps everything, even if files don't exist.
- - If $CWD/resource/jk_.cd exists, the cwd will be used.
-
- - if XDG_DATA_HOME is set:
-    - $XDG_DATA_HOME/openjkdf2/resource/jk_.cd (legacy)
-    - $XDG_DATA_HOME/OpenJKDF2/openjkdf2/resource/jk_.cd
-
- - ~/.local/share/openjkdf2/resource/jk_.cd (legacy)
- - ~/.local/share/OpenJKDF2/openjkdf2/resource/jk_.cd (install default)
+ - If the current working directory contains required assets, it will be used.
+ - Otherwise, prefer the legacy appdata root when it contains the primary resource asset,
+   then fall back to the newer organization structure.
 
 macOS:
  - OPENJKDF2_ROOT (OPENJKMOTS_ROOT for motsCompat) trumps everything, even if files don't exist.
- - If OpenJKDF2.app/../resource/jk_.cd exists, assets will be loaded relative to the app bundle.
-
- - if XDG_DATA_HOME is set:
-    - $XDG_DATA_HOME/openjkdf2/resource/jk_.cd (legacy)
-    - $XDG_DATA_HOME/OpenJKDF2/openjkdf2/resource/jk_.cd
-
- - ~/.local/share/openjkdf2/resource/jk_.cd (legacy)
- - ~/Library/Application Support/OpenJKDF2/openjkdf2/resource/jk_.cd (install default)
+ - If the app bundle root contains required assets, assets will be loaded relative to the app bundle.
+ - Otherwise, prefer the legacy appdata root when it contains the primary resource asset,
+   then fall back to the install default.
 
 Windows:
  - OPENJKDF2_ROOT (OPENJKMOTS_ROOT for motsCompat) trumps everything, even if files don't exist.
- - If $CWD/resource/jk_.cd exists, assets will be loaded relative to the EXE.
-
- - %APPDATA\local\openjkdf2\resource\jk_.cd (legacy)
- - %APPDATA\OpenJKDF2\openjkdf2\resource\jk_.cd (install default)
+ - If the current working directory contains required assets, assets will be loaded relative to the EXE.
+ - Otherwise, prefer the legacy appdata root when it contains the primary resource asset,
+   then fall back to the install default.
 */
 int InstallHelper_GetLocalDataDir(char* pOut, size_t pOut_sz, int bChdir)
 {
@@ -299,9 +318,8 @@ int InstallHelper_GetLocalDataDir(char* pOut, size_t pOut_sz, int bChdir)
 
         stdFnames_MakePath(fname, 256, data_home, INSTALL_APPDATA_FOLDER_NAME);
         
-        // Check if data exists here. If it does not, we want to use the newer organization structure.
-        strncpy(fname_tmp, fname, sizeof(fname_tmp)-1);
-        strncat(fname_tmp, "/resource/jk_.cd", sizeof(fname_tmp)-1);
+        // Check if data exists here. If it does not, use the newer organization structure.
+        stdFnames_MakePath(fname_tmp, sizeof(fname_tmp), fname, InstallHelper_GetPrimaryAssetSentinel());
 
         if(util_FileExists(fname_tmp)) {
             stdFileUtil_MkDir(fname);
@@ -333,9 +351,8 @@ int InstallHelper_GetLocalDataDir(char* pOut, size_t pOut_sz, int bChdir)
         if (homedir) {
             snprintf(fname, sizeof(fname), "%s/.local/share/%s", homedir, INSTALL_APPDATA_FOLDER_NAME);
 
-            // If ~/.local/share/openjkdf2/resource/jk_.cd exists, use that directory as resource root
-            strncpy(fname_tmp, fname, sizeof(fname_tmp)-1);
-            strncat(fname_tmp, "/resource/jk_.cd", sizeof(fname_tmp)-1);
+            // If the legacy root has the primary asset, use that directory as resource root.
+            stdFnames_MakePath(fname_tmp, sizeof(fname_tmp), fname, InstallHelper_GetPrimaryAssetSentinel());
             if(util_FileExists(fname_tmp)) {
                 stdFileUtil_MkDir(fname);
                 if (bChdir) {
@@ -381,10 +398,9 @@ int InstallHelper_GetLocalDataDir(char* pOut, size_t pOut_sz, int bChdir)
         strncat(fname, "\\", sizeof(fname)-1);
         strncat(fname, INSTALL_APPDATA_FOLDER_NAME, sizeof(fname)-1);
 
-        strncpy(fname_tmp, fname, sizeof(fname_tmp)-1);
-        strncat(fname_tmp, "\\resource\\jk_.cd", sizeof(fname_tmp)-1);
+        stdFnames_MakePath(fname_tmp, sizeof(fname_tmp), fname, InstallHelper_GetPrimaryAssetSentinel());
 
-        // If %appdata%/local/openjkdf2/resource/jk_.cd exists, use that directory as resource root
+        // If the legacy root has the primary asset, use that directory as resource root.
         if(util_FileExists(fname_tmp)) {
             stdFileUtil_MkDir(fname);
             if (bChdir) {
@@ -689,13 +705,6 @@ int InstallHelper_AttemptInstallFromExisting(nfdu8char_t* path)
         InstallHelper_CopyFile(path, paOptionalAssets[i]);
     }
 
-    uint32_t magic = JKRES_MAGIC_1;
-    FILE* f = fopen("resource/jk_.cd", "wb");
-    if (f) {
-        fwrite(&magic, 1, sizeof(magic), f);
-        fclose(f);
-    }
-
     NFD_Quit();
 
     return 1;
@@ -907,13 +916,6 @@ int InstallHelper_AttemptInstallFromDisk(nfdu8char_t* path)
 final_check:
     InstallHelper_CheckRequiredAssets(0);
 
-    uint32_t magic = JKRES_MAGIC_1;
-    FILE* f = fopen("resource/jk_.cd", "wb");
-    if (f) {
-        fwrite(&magic, 1, sizeof(magic), f);
-        fclose(f);
-    }
-
     NFD_Quit();
 
     return 1;
@@ -993,7 +995,7 @@ int InstallHelper_AttemptInstall()
 
     // Disk 2 has no autorun
     strncpy(checkDisk, path, sizeof(checkDisk)-1);
-    strncat(checkDisk, "/GAMEDATA/RESOURCE/JK_.CD", sizeof(checkDisk)-1);
+    strncat(checkDisk, "/GAMEDATA/RESOURCE/RES2.GOB", sizeof(checkDisk)-1);
     if (util_FileExists(checkDisk)) {
         return InstallHelper_AttemptInstallFromDisk(path);
     }
@@ -1054,9 +1056,6 @@ void InstallHelper_CheckRequiredAssets(int doInstall)
 void InstallHelper_SetCwd()
 {
 #if (defined(MACOS) || defined(LINUX) || defined(WIN32)) && defined(SDL2_RENDER) && !defined(ARCH_WASM) && !defined(TARGET_ANDROID)
-    const char *homedir;
-    char fname[256];
-
 #if defined(MACOS)
     // Default working directory to the folder the .app bundle is in
     char* base_path = SDL_GetBasePath();
@@ -1070,10 +1069,8 @@ void InstallHelper_SetCwd()
     char data_home[256];
     found_override = InstallHelper_GetLocalDataDir(data_home, sizeof(data_home), 0);
 
-    stdFnames_MakePath(fname, 256, data_home, "resource/jk_.cd");
-
-    // If ~/.local/share/openjkdf2/resource/jk_cd exists, use that directory as resource root
-    if(openjkdf2_bSkipWorkingDirData || (util_FileExists(fname) && !util_FileExists("resource/jk_.cd"))) {
+    // If the selected local data root has assets and the current directory does not, use local data.
+    if(openjkdf2_bSkipWorkingDirData || (InstallHelper_HasRequiredAssetsInRoot(data_home) && !InstallHelper_HasRequiredAssetsInRoot("."))) {
         InstallHelper_UseLocalData();
         found_override = 1;
     }
@@ -1092,24 +1089,15 @@ void InstallHelper_SetCwd()
         }
     }
 
-    // If we can tell that we're loading MoTS assets, enable Main_bMotsCompat
-    int keyval = jkRes_ReadKeyRawEarly();
-    if (JKRES_IS_MOTS_MAGIC(keyval)) {
-        Main_bMotsCompat = 1;
-        if (openjkdf2_bIsFirstLaunch) {
-            openjkdf2_bOrigWasDF2 = 0;
-        }
-    }
-
 #endif // (defined(MACOS) || defined(LINUX) || defined(WIN32)) && defined(SDL2_RENDER) && !defined(ARCH_WASM)
 
 #if defined(SDL2_RENDER) && !defined(ARCH_WASM) && !defined(TARGET_ANDROID)
-    /*if (!util_FileExists("resource/jk_.cd")) {
+    /*if (!InstallHelper_HasRequiredAssetsInRoot(".")) {
         // TODO: polyglot
-        //SDL_ShowSimpleMessageBox(SDL_MESSAGEBOX_ERROR, "Error", "OpenJKDF2 could not find any game assets (`resource/jk_.cd` is missing). Would you like to install assets now?", NULL);
+        //SDL_ShowSimpleMessageBox(SDL_MESSAGEBOX_ERROR, "Error", "OpenJKDF2 could not find any game assets. Would you like to install assets now?", NULL);
         InstallHelper_AttemptInstall();
     }*/
-    if (!util_FileExists("resource/jk_.cd")) {
+    if (!InstallHelper_HasRequiredAssetsInRoot(".")) {
         InstallHelper_CheckRequiredAssets(1);
     }
 

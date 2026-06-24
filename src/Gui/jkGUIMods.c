@@ -299,40 +299,10 @@ void jkGuiMods_AddEntry(Darray *pListDisplayed, int type, const char* paVal, con
 
 void jkGuiMods_PopulateEntries(Darray *pListDisplayed, jkGuiElement *element)
 {
-    char tmpCwd[512];
-    char tmpKeyPath[512];
-
-#ifdef TARGET_XBOX
-    tmpCwd[0] = 0;
-    tmpKeyPath[0] = 0;
-#else
-#if !defined(ARCH_WASM) && !defined(TARGET_ANDROID) && !defined(TARGET_TWL)
-    Main_bMotsCompat = !Main_bMotsCompat;
-    InstallHelper_GetLocalDataDir(tmpCwd, sizeof(tmpCwd), 0);
-    Main_bMotsCompat = !Main_bMotsCompat;
-#else
-    Main_bMotsCompat = !Main_bMotsCompat;
-    if (Main_bMotsCompat) {
-        strcpy(tmpCwd, "../mots/");
-    }
-    else {
-        strcpy(tmpCwd, "../jk1/");
-    }
-    Main_bMotsCompat = !Main_bMotsCompat;
-#endif
-
-    
-    stdFnames_MakePath(tmpKeyPath, 256, tmpCwd, "resource/jk_.cd");
-    int keyval = jkRes_ReadKeyFromFile(tmpKeyPath);
-
+#ifndef TARGET_XBOX
     if (!Main_bMotsCompat)
     {
-        if (!(!openjkdf2_bOrigWasDF2 && openjkdf2_bOrigWasRunningFromExistingInstall) && (keyval == 0 || !JKRES_IS_MOTS_MAGIC(keyval))) {
-            jkGuiMods_AddEntry(pListDisplayed, JKGUIMODS_TYPE_RESTART, "OPENJKDF2_RESTART_MOTS", "Install Mysteries of the Sith");
-        }
-        else {
-            jkGuiMods_AddEntry(pListDisplayed, JKGUIMODS_TYPE_RESTART, "OPENJKDF2_RESTART_MOTS", "Launch Mysteries of the Sith");
-        }
+        jkGuiMods_AddEntry(pListDisplayed, JKGUIMODS_TYPE_RESTART, "OPENJKDF2_RESTART_MOTS", "Launch Mysteries of the Sith");
     }
     else if (Main_bMotsCompat && Main_path[0])
     {
@@ -341,12 +311,7 @@ void jkGuiMods_PopulateEntries(Darray *pListDisplayed, jkGuiElement *element)
     
     if (Main_bMotsCompat)
     {
-        if (!(openjkdf2_bOrigWasDF2 && openjkdf2_bOrigWasRunningFromExistingInstall) && (keyval == 0 || !JKRES_IS_DF2_MAGIC(keyval))) {
-            jkGuiMods_AddEntry(pListDisplayed, JKGUIMODS_TYPE_RESTART, "OPENJKDF2_RESTART_DF2", "Install Dark Forces II");
-        }
-        else {
-            jkGuiMods_AddEntry(pListDisplayed, JKGUIMODS_TYPE_RESTART, "OPENJKDF2_RESTART_DF2", "Launch Dark Forces II");
-        }
+        jkGuiMods_AddEntry(pListDisplayed, JKGUIMODS_TYPE_RESTART, "OPENJKDF2_RESTART_DF2", "Launch Dark Forces II");
     }
     else if (!Main_bMotsCompat && Main_path[0])
     {

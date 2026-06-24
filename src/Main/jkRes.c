@@ -207,63 +207,25 @@ int jkRes_FileExists(const char *fpath, char *a2, int len)
 // Added
 int jkRes_ReadKeyFromFile(const char* fpath)
 {
-    int keyval;
-    stdFile_t fd;
-
-    // HACK
-    if (!pLowLevelHS || !pLowLevelHS->fileOpen) {
-        pLowLevelHS = (HostServices *)&lowLevelHS;
-        stdInitServices(&lowLevelHS);
-    }
-
-    fd = (stdFile_t)0;
-    if (!pHS || !(fd = pHS->fileOpen(fpath, "rb"), fd)) {
-        // Added: pLowLevelHS for DSi
-        fd = pLowLevelHS->fileOpen(fpath, "rb");
-        if (!fd) {
-            return 0;
-        }
-        keyval = 0;
-        pLowLevelHS->fileRead(fd, &keyval, 4);
-        pLowLevelHS->fileClose(fd);
-        return keyval;
-    }
-
-    keyval = 0;
-    pHS->fileRead(fd, &keyval, 4);
-    pHS->fileClose(fd);
-    return keyval;
+    (void)fpath;
+    return 0;
 }
 
 // Added
 int jkRes_ReadKeyRaw()
 {
-    return jkRes_ReadKeyFromFile("jk_.cd");
+    return 0;
 }
 
 // Added
 int jkRes_ReadKeyRawEarly()
 {
-    return jkRes_ReadKeyFromFile("resource/jk_.cd");
+    return 0;
 }
 
 int jkRes_ReadKey()
 {
-    int keyval = jkRes_ReadKeyRaw();
-
-    if (keyval == JKRES_MAGIC_0)
-    {
-        return 0;
-    }
-    else if (keyval == JKRES_MAGIC_1)
-    {
-        return 1;
-    }
-    else if (keyval == JKRES_MAGIC_2)
-    {
-        return 2;
-    }
-    return 0;
+    return 1;
 }
 
 int jkRes_LoadNew(jkResGobDirectory *resGob, char *name, int a3)
@@ -388,7 +350,6 @@ int jkRes_LoadCD(int cdNumberNeeded)
     stdGob **v21; // esi
     int v23; // [esp+10h] [ebp-18Ch]
     int v24; // [esp+14h] [ebp-188h]
-    int keyval; // [esp+18h] [ebp-184h] BYREF
     char v26[128]; // [esp+1Ch] [ebp-180h] BYREF
     char a2[128]; // [esp+9Ch] [ebp-100h] BYREF
     wchar_t v28[64]; // [esp+11Ch] [ebp-80h] BYREF
@@ -400,39 +361,13 @@ int jkRes_LoadCD(int cdNumberNeeded)
 #endif
     while ( 1 )
     {
-        v1 = pHS->fileOpen("jk_.cd", "rb");
-#ifdef TARGET_XBOX
-        { xbox_debug_Print(v1 ? "jkRes_LoadCD: file opened\n" : "jkRes_LoadCD: file FAILED\n"); }
-#endif
-        if ( v1 )
-        {
-            pHS->fileRead(v1, &keyval, 4);
-#ifdef TARGET_XBOX
-            { xbox_debug_Print("jkRes_LoadCD: read magic OK\n"); }
-#endif
-            if ( keyval == JKRES_MAGIC_0 ) {
-                v23 = 1;
-            }
-            else if ( !cdNumberNeeded )
-            {
-                if ( keyval == JKRES_MAGIC_1 || keyval == JKRES_MAGIC_2 )
-                    v23 = 1;
-            }
-            else if ( keyval == ((cdNumberNeeded << (cdNumberNeeded + 5)) | JKRES_MAGIC_3) ) {
-                v23 = 1;
-            }
-
-            pHS->fileClose(v1);
-#ifdef TARGET_XBOX
-            { xbox_debug_Printf("jkRes_LoadCD: closed, keyval=0x%08X v23=%d\n", keyval, v23); }
-#endif
-        }
+        v23 = 1;
 
 #ifdef TARGET_TWL
         v23 = 1;
 #endif
 #ifdef TARGET_XBOX
-        v23 = 1; /* Skip CD magic check on Xbox — game data is on HDD */
+        v23 = 1; /* Xbox game data is packaged with the XBE or staged on HDD. */
 #endif
         
         if ( v23 )

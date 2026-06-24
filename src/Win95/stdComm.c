@@ -4,6 +4,9 @@
 #include "General/stdString.h"
 #include "jk.h"
 
+#ifdef TARGET_XBOX
+#include "Platform/Xbox/xbox_systemlink_probe.h"
+#endif
 
 int stdComm_Startup()
 {
@@ -99,6 +102,11 @@ int stdComm_CreatePlayer(jkMultiEntry *pEntry)
         stdComm_dplayIdSelf = DirectPlay_CreatePlayer(jkPlayer_playerShortName, 0);
         if ( stdComm_dplayIdSelf )
         {
+#ifdef TARGET_XBOX
+            if (xboxSystemLinkProbe_IsGameplayActive())
+                stdComm_dplayIdSelf = xboxSystemLinkProbe_NetIdForPlayerIndex(xboxSystemLinkProbe_GetLocalFirstPlayerIndex());
+            else
+#endif
             stdComm_dplayIdSelf = 1; // HACK
             stdComm_bIsServer = 1;
             stdComm_dword_8321E0 = 1;

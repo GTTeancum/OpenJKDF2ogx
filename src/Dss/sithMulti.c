@@ -27,6 +27,7 @@
 #ifdef TARGET_XBOX
 #include "Platform/Xbox/xbox_debug.h"
 #include "Platform/Xbox/xbox_splitscreen.h"
+#include "Platform/Xbox/xbox_systemlink_probe.h"
 #endif
 
 static void sithMulti_infoPrintf(const char *fmt, ...)
@@ -64,14 +65,21 @@ static void sithMulti_XboxKeepSplitScreenSlotAlive(uint32_t idx, sithPlayerInfo 
 
     if (!xboxSplitScreen_IsEnabled())
         return;
-    if ((int)idx >= xboxSplitScreen_GetLocalPlayerCount())
+    if (xboxSystemLinkProbe_IsGameplayActive())
+    {
+        if (!xboxSystemLinkProbe_IsLocalPlayerIndex((int)idx))
+            return;
+    }
+    else if ((int)idx >= xboxSplitScreen_GetLocalPlayerCount())
+    {
         return;
+    }
     if ((playerInfo->flags & 1) == 0)
         return;
 
     if (sithTime_curMs > playerInfo->lastUpdateMs + MULTI_TIMEOUT_MS && s_loggedRefreshes < 8)
     {
-        XDBGF("SplitScreenTimeout: preserve local slot=%u net=%u flags=0x%X thing=%p last=%u now=%u\n",
+        XDBGF("SplitScreenTimeout: preserve local player=%u net=%u flags=0x%X thing=%p last=%u now=%u\n",
               idx,
               playerInfo->net_id,
               playerInfo->flags,
@@ -226,6 +234,12 @@ int sithMulti_StartupServer()
     XDBG("MPLoadTrace: sithMulti_StartupServer before split-screen server-start\n");
     xboxSplitScreen_OnMultiplayerServerStarted();
     XDBG("MPLoadTrace: sithMulti_StartupServer after split-screen server-start\n");
+    if (xboxSystemLinkProbe_IsGameplayActive())
+    {
+        XDBG("MPLoadTrace: sithMulti_StartupServer before XSL roster apply\n");
+        xboxSystemLinkProbe_ApplyRosterAfterStartup();
+        XDBG("MPLoadTrace: sithMulti_StartupServer after XSL roster apply\n");
+    }
 #endif
 
     // Added: dedicated server
@@ -285,6 +299,12 @@ int sithMulti_StartupClient()
     sithNet_teamScore[3] = 0;
     sithNet_teamScore[4] = 0;
 #ifdef TARGET_XBOX
+    if (xboxSystemLinkProbe_IsGameplayActive())
+    {
+        XDBG("MPLoadTrace: sithMulti_StartupClient before XSL roster apply\n");
+        xboxSystemLinkProbe_ApplyRosterAfterStartup();
+        XDBG("MPLoadTrace: sithMulti_StartupClient after XSL roster apply\n");
+    }
     XDBG("MPLoadTrace: sithMulti_StartupClient before stdComm_DoReceive\n");
 #endif
     stdComm_DoReceive();
@@ -978,6 +998,27 @@ int sithMulti_ServerLeft(int32_t a, sithEventInfo* b)
     }
     else if ( sithTime_curMs > jkPlayer_playerInfos[0].lastUpdateMs + MULTI_TIMEOUT_MS )
     {
+#ifdef TARGET_XBOX
+        if (xboxSystemLinkProbe_IsSmokeHarness())
+        {
+            int localFirst = xboxSystemLinkProbe_GetLocalFirstPlayerIndex();
+            int localCount = xboxSystemLinkProbe_GetLocalPlayerCount();
+            int i;
+
+            jkPlayer_playerInfos[0].lastUpdateMs = sithTime_curMs;
+            for (i = 0; i < localCount; i++)
+            {
+                int idx = localFirst + i;
+                if (idx >= 0 && idx < jkPlayer_maxPlayers)
+                    jkPlayer_playerInfos[idx].lastUpdateMs = sithTime_curMs;
+            }
+            xbox_debug_Printf("XSL SMOKE keepalive server timeout suppressed first=%d locals=%d now=%u\n",
+                              localFirst,
+                              localCount,
+                              sithTime_curMs);
+            return 1;
+        }
+#endif
         jkPlayer_playerInfos[0].lastUpdateMs = sithTime_curMs;
         v6 = sithStrTable_GetUniStringWithFallback("%s_HAS_LEFT_THE_GAME");
         jk_snwprintf(a1, 0x80u, v6, jkPlayer_playerInfos);

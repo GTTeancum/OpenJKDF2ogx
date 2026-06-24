@@ -206,16 +206,16 @@ static void jkGuiNetHost_ApplyXboxLayout(void)
     jkGuiNetHost_aElements[NETHOST_MAXPLAYERS_TEXTBOX].bIsVisible = 0;
     jkGuiNetHost_aElements[16].bIsVisible = 0;
     jkGuiNetHost_aElements[NETHOST_PASSWORD_TEXTBOX].bIsVisible = 0;
-    jkGuiNetHost_aElements[NETHOST_SCORELIMIT_LABEL].bIsVisible = !splitMode;
-    jkGuiNetHost_aElements[NETHOST_SCORELIMIT_SLIDER].bIsVisible = !splitMode;
-    jkGuiNetHost_aElements[NETHOST_TIMELIMIT_LABEL].bIsVisible = !splitMode;
-    jkGuiNetHost_aElements[NETHOST_TIMELIMIT_SLIDER].bIsVisible = !splitMode;
+    jkGuiNetHost_aElements[NETHOST_SCORELIMIT_LABEL].bIsVisible = 1;
+    jkGuiNetHost_aElements[NETHOST_SCORELIMIT_SLIDER].bIsVisible = 1;
+    jkGuiNetHost_aElements[NETHOST_TIMELIMIT_LABEL].bIsVisible = 1;
+    jkGuiNetHost_aElements[NETHOST_TIMELIMIT_SLIDER].bIsVisible = 1;
     jkGuiNetHost_aElements[NETHOST_TEAMMODE_CHECKBOX].bIsVisible = !splitMode;
     jkGuiNetHost_aElements[NETHOST_SINGLELEVEL_CHECKBOX].bIsVisible = !splitMode;
-    jkGuiNetHost_aElements[12].bIsVisible = !splitMode;
-    jkGuiNetHost_aElements[NETHOST_STARS_TEXT].bIsVisible = !splitMode;
-    jkGuiNetHost_aElements[14].bIsVisible = !splitMode;
-    jkGuiNetHost_aElements[15].bIsVisible = !splitMode;
+    jkGuiNetHost_aElements[12].bIsVisible = 1;
+    jkGuiNetHost_aElements[NETHOST_STARS_TEXT].bIsVisible = 1;
+    jkGuiNetHost_aElements[14].bIsVisible = 1;
+    jkGuiNetHost_aElements[15].bIsVisible = 1;
 #ifdef QOL_IMPROVEMENTS
     jkGuiNetHost_aElements[25].bIsVisible = 0;
     jkGuiNetHost_aElements[NETHOST_PORT_TEXTBOX].bIsVisible = 0;
@@ -223,10 +223,19 @@ static void jkGuiNetHost_ApplyXboxLayout(void)
 
     if (splitMode)
     {
-        jkGuiNetHost_SetRect(&jkGuiNetHost_aElements[18], 70, 92, 500, 24);
-        jkGuiNetHost_SetRect(&jkGuiNetHost_aElements[NETHOST_EPISODE_LISTBOX], 70, 122, 500, 95);
-        jkGuiNetHost_SetRect(&jkGuiNetHost_aElements[20], 70, 238, 500, 24);
-        jkGuiNetHost_SetRect(&jkGuiNetHost_aElements[NETHOST_LEVEL_LISTBOX], 70, 268, 500, 120);
+        jkGuiNetHost_SetRect(&jkGuiNetHost_aElements[NETHOST_SCORELIMIT_LABEL], 55, 92, 250, 24);
+        jkGuiNetHost_SetRect(&jkGuiNetHost_aElements[NETHOST_SCORELIMIT_SLIDER], 55, 117, 245, 30);
+        jkGuiNetHost_SetRect(&jkGuiNetHost_aElements[NETHOST_TIMELIMIT_LABEL], 55, 156, 250, 24);
+        jkGuiNetHost_SetRect(&jkGuiNetHost_aElements[NETHOST_TIMELIMIT_SLIDER], 55, 181, 245, 30);
+        jkGuiNetHost_SetRect(&jkGuiNetHost_aElements[12], 55, 224, 230, 28);
+        jkGuiNetHost_SetRect(&jkGuiNetHost_aElements[14], 55, 254, 30, 30);
+        jkGuiNetHost_SetRect(&jkGuiNetHost_aElements[15], 90, 254, 30, 30);
+        jkGuiNetHost_SetRect(&jkGuiNetHost_aElements[NETHOST_STARS_TEXT], 135, 256, 170, 30);
+
+        jkGuiNetHost_SetRect(&jkGuiNetHost_aElements[18], 330, 92, 250, 24);
+        jkGuiNetHost_SetRect(&jkGuiNetHost_aElements[NETHOST_EPISODE_LISTBOX], 330, 122, 270, 100);
+        jkGuiNetHost_SetRect(&jkGuiNetHost_aElements[20], 330, 244, 250, 24);
+        jkGuiNetHost_SetRect(&jkGuiNetHost_aElements[NETHOST_LEVEL_LISTBOX], 330, 274, 270, 118);
         return;
     }
 
@@ -499,7 +508,7 @@ int jkGuiNetHost_Show(jkMultiEntry3 *pMultiEntry)
     jkGuiNetHost_aElements[NETHOST_PASSWORD_TEXTBOX].selectedTextEntry = 16;
     jkGuiRend_DarrayNewStr(&jkGuiNetHost_dArray1, jkEpisode_var2 + 1, 1);
 
-    jkEpisodeTypeFlags_t loadMask = (JK_EPISODE_DEATHMATCH | JK_EPISODE_4_UNK | JK_EPISODE_SPECIAL_CTF);
+    jkEpisodeTypeFlags_t loadMask = (JK_EPISODE_DEATHMATCH | JK_EPISODE_4_UNK | JK_EPISODE_SPECIAL_CTF | JK_EPISODE_SABER);
 #ifdef QOL_IMPROVEMENTS
     if (jkGuiNetHost_bIsCoop)
         loadMask |= JK_EPISODE_SINGLEPLAYER;
@@ -518,7 +527,7 @@ int jkGuiNetHost_Show(jkMultiEntry3 *pMultiEntry)
     jkGuiNetHost_aElements[24].bIsVisible = 0;
     jkGuiNetHost_ApplyXboxLayout();
     if (jkGuiNetHost_bXboxSplitScreenMode)
-        jkGuiRend_XboxSetInitialFocus(&jkGuiNetHost_menu, &jkGuiNetHost_aElements[NETHOST_EPISODE_LISTBOX]);
+        jkGuiRend_XboxSetInitialFocus(&jkGuiNetHost_menu, &jkGuiNetHost_aElements[NETHOST_SCORELIMIT_SLIDER]);
 #endif
     
     jkGuiNetHost_aElements[NETHOST_EPISODE_LISTBOX].selectedTextEntry = 0;
@@ -617,10 +626,15 @@ int jkGuiNetHost_Show(jkMultiEntry3 *pMultiEntry)
 #ifdef TARGET_XBOX
             if (jkGuiNetHost_bXboxSplitScreenMode)
             {
-                pMultiEntry->scoreLimit = 0;
-                pMultiEntry->timeLimit = 0;
-                pMultiEntry->multiModeFlags = MULTIMODEFLAG_SINGLE_LEVEL;
+                jkEpisodeTypeFlags_t selectedEpisodeType = jkGuiSingleplayer_FUN_0041d590(pMultiEntry->episodeGobName);
+
+                pMultiEntry->multiModeFlags |= MULTIMODEFLAG_SINGLE_LEVEL;
+                if (selectedEpisodeType & JK_EPISODE_SPECIAL_CTF)
+                    pMultiEntry->multiModeFlags |= (MULTIMODEFLAG_100 | MULTIMODEFLAG_2 | MULTIMODEFLAG_TEAMS);
+                else
+                    pMultiEntry->multiModeFlags &= ~(MULTIMODEFLAG_100 | MULTIMODEFLAG_2 | MULTIMODEFLAG_TEAMS);
                 pMultiEntry->sessionFlags &= ~SESSIONFLAG_ISDEDICATED;
+                jkGuiNetHost_gameFlags = pMultiEntry->multiModeFlags;
             }
 #endif
         }
@@ -664,7 +678,7 @@ int jkGuiNetHost_Show(jkMultiEntry3 *pMultiEntry)
             jkGuiNetHost_bIsDedicated = !!jkGuiNetHost_aSettingsElements[4].selectedTextEntry;
             jkGuiNetHost_bIsCoop = !!jkGuiNetHost_aSettingsElements[5].selectedTextEntry;
 
-            jkEpisodeTypeFlags_t loadMask = (JK_EPISODE_DEATHMATCH | JK_EPISODE_4_UNK | JK_EPISODE_SPECIAL_CTF);
+            jkEpisodeTypeFlags_t loadMask = (JK_EPISODE_DEATHMATCH | JK_EPISODE_4_UNK | JK_EPISODE_SPECIAL_CTF | JK_EPISODE_SABER);
             if (jkGuiNetHost_bIsCoop)
                 loadMask |= JK_EPISODE_SINGLEPLAYER;
             jkGuiSingleplayer_EnumEpisodes(&jkGuiNetHost_dArray1, &jkGuiNetHost_aElements[NETHOST_EPISODE_LISTBOX], 0, loadMask);

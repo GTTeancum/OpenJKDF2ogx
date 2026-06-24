@@ -77,6 +77,41 @@ static int jkGuiMain_XboxReadSmokeAutostartLevel(char *out, size_t outSize)
 
     return len != 0;
 }
+
+static int jkGuiMain_XboxMarkerExists(const char *path)
+{
+    FILE *f;
+
+    if (!path || !path[0])
+        return 0;
+
+    f = fopen(path, "rb");
+    if (!f)
+        return 0;
+    fclose(f);
+    return 1;
+}
+
+static int jkGuiMain_XboxSystemLinkSmokeEnabled(void)
+{
+    return jkGuiMain_XboxMarkerExists("D:\\XboxSystemLinkSmoke.ini");
+}
+
+static int jkGuiMain_XboxSystemLinkFourPlayerStressEnabled(void)
+{
+    return jkGuiMain_XboxMarkerExists("D:\\XSL4P.TXT") || jkGuiMain_XboxMarkerExists("D:\\XboxSystemLink4PStress.ini");
+}
+
+static int jkGuiMain_XboxSystemLinkSmokeHarnessRole(void)
+{
+    if (!jkGuiMain_XboxSystemLinkSmokeEnabled())
+        return 0;
+    if (jkGuiMain_XboxMarkerExists("D:\\XboxSystemLinkSmokeHost.ini"))
+        return XBOX_SYSTEMLINK_ROLE_HOST;
+    if (jkGuiMain_XboxMarkerExists("D:\\XboxSystemLinkSmokeClient.ini"))
+        return XBOX_SYSTEMLINK_ROLE_CLIENT;
+    return 0;
+}
 #endif
 
 static int32_t jkGuiMain_listboxIdk[2] = {0xd, 0xe};
@@ -160,6 +195,11 @@ static int jkGuiMain_xboxSystemLinkLastError = -1;
 static unsigned long jkGuiMain_xboxSystemLinkLastId = 0;
 static unsigned long jkGuiMain_xboxSystemLinkLastSent = 0;
 static unsigned long jkGuiMain_xboxSystemLinkLastPeerPackets[XBOX_SYSTEMLINK_PROBE_MAX_PEERS];
+static int jkGuiMain_xboxSystemLinkAutoMapSelect = 0;
+static int jkGuiMain_xboxSystemLinkMapSelectRequested = 0;
+static int jkGuiMain_xboxSystemLinkPendingLaunch = 0;
+static int jkGuiMain_xboxSystemLinkPendingIsHost = 0;
+static jkMultiEntry3 jkGuiMain_xboxSystemLinkPendingEntry;
 
 static jkGuiElement jkGuiMain_xboxSystemLinkElements[15] = {
     {ELEMENT_TEXT, 0, 5, L"System Link Test", 3, {0, 36, 640, 52}, 1, 0, 0, 0, 0, 0, {0}, 0},
@@ -641,6 +681,8 @@ static int jkGuiMain_XboxShowSplitReady(void)
     int result;
     int numChars;
     int menuModePushed = 0;
+    int systemLinkSmoke = jkGuiMain_XboxSystemLinkSmokeEnabled();
+    int smokeAutoCount = 0;
 
     stdBitmap_EnsureData(jkGui_stdBitmaps[JKGUI_BM_BK_ESC]);
     jkGui_SetModeMenu(jkGui_stdBitmaps[JKGUI_BM_BK_ESC]->palette);
@@ -681,31 +723,56 @@ static int jkGuiMain_XboxShowSplitReady(void)
     jkGuiRend_MenuSetReturnKeyShortcutElement(&jkGuiMain_xboxReadyMenu, 0);
     jkGuiRend_MenuSetEscapeKeyShortcutElement(&jkGuiMain_xboxReadyMenu, 0);
     jkGuiMain_xboxReadyMenu.idkFunc = jkGuiMain_XboxReadyTick;
-    jkGuiRend_xboxSuppressControllerConfirm = 1;
-    do
+    if (systemLinkSmoke)
     {
-        jkGuiRend_XboxFooterBegin(&jkGuiMain_xboxReadyMenu);
-        jkGuiRend_XboxFooterAddAction(&jkGuiMain_xboxReadyMenu, JKGUI_XBOX_BTN_A, 0, L"Join");
-        jkGuiRend_XboxFooterAddAction(&jkGuiMain_xboxReadyMenu, JKGUI_XBOX_BTN_B, 0, L"Back/Leave");
-        jkGuiRend_XboxFooterAddAction(&jkGuiMain_xboxReadyMenu, JKGUI_XBOX_BTN_START, 0, L"P1 Start");
-        result = jkGuiRend_DisplayAndReturnClicked(&jkGuiMain_xboxReadyMenu);
-        if (result == 20 && !jkGuiMain_xboxReadyStartRequested)
+        int autoCount = jkGuiMain_XboxSystemLinkFourPlayerStressEnabled() ? XBOX_SPLITSCREEN_MAX_LOCAL_PLAYERS : 1;
+        if (autoCount < 1)
+            autoCount = 1;
+        if (autoCount > XBOX_SPLITSCREEN_MAX_LOCAL_PLAYERS)
+            autoCount = XBOX_SPLITSCREEN_MAX_LOCAL_PLAYERS;
+        smokeAutoCount = autoCount;
+        for (i = 0; i < autoCount; i++)
         {
-            XDBG("SplitReady: ignoring stray GUI Start result without Start button edge\n");
-            result = 0;
+            jkGuiMain_xboxReadyElements[jkGuiMain_xboxReadyLists[i]].selectedTextEntry = i % numChars;
+            jkGuiMain_XboxReadySetJoined(0, i, 1);
         }
-        else if (result == 20 && jkGuiMain_XboxReadyCount() < 1)
+        jkGuiMain_XboxReadySetStatus(0);
+        jkGuiMain_xboxReadyStartRequested = 1;
+        result = 20;
+        if (autoCount == XBOX_SPLITSCREEN_MAX_LOCAL_PLAYERS)
+            XDBG("Smoke: XSL ready auto localPlayers=4\n");
+        else
+            XDBG("Smoke: XSL ready auto localPlayers=1\n");
+        XDBGF("Smoke: XSL ready auto localPlayers=%d numChars=%d\n", autoCount, numChars);
+    }
+    else
+    {
+        jkGuiRend_xboxSuppressControllerConfirm = 1;
+        do
         {
-            XDBG("SplitReady: ignoring Start edge with no joined players\n");
-            result = 0;
-        }
-    } while (result == 0);
-    jkGuiRend_xboxSuppressControllerConfirm = 0;
+            jkGuiRend_XboxFooterBegin(&jkGuiMain_xboxReadyMenu);
+            jkGuiRend_XboxFooterAddAction(&jkGuiMain_xboxReadyMenu, JKGUI_XBOX_BTN_A, 0, L"Join");
+            jkGuiRend_XboxFooterAddAction(&jkGuiMain_xboxReadyMenu, JKGUI_XBOX_BTN_B, 0, L"Back/Leave");
+            jkGuiRend_XboxFooterAddAction(&jkGuiMain_xboxReadyMenu, JKGUI_XBOX_BTN_START, 0, L"P1 Start");
+            result = jkGuiRend_DisplayAndReturnClicked(&jkGuiMain_xboxReadyMenu);
+            if (result == 20 && !jkGuiMain_xboxReadyStartRequested)
+            {
+                XDBG("SplitReady: ignoring stray GUI Start result without Start button edge\n");
+                result = 0;
+            }
+            else if (result == 20 && jkGuiMain_XboxReadyCount() < 1)
+            {
+                XDBG("SplitReady: ignoring Start edge with no joined players\n");
+                result = 0;
+            }
+        } while (result == 0);
+        jkGuiRend_xboxSuppressControllerConfirm = 0;
+    }
 
     if (result == 20)
     {
         int outSlot = 0;
-        int readyCount = jkGuiMain_XboxReadyCount();
+        int readyCount = (systemLinkSmoke && smokeAutoCount > 0) ? smokeAutoCount : jkGuiMain_XboxReadyCount();
         xboxSplitScreen_SetRequestedLocalPlayerCount(readyCount);
         for (i = 0; i < XBOX_SPLITSCREEN_MAX_LOCAL_PLAYERS; i++)
         {
@@ -713,8 +780,12 @@ static int jkGuiMain_XboxShowSplitReady(void)
             wchar_t *name = 0;
             char nameA[32];
 
-            if (!jkGuiMain_xboxReadyJoined[i])
+            if (!systemLinkSmoke && !jkGuiMain_xboxReadyJoined[i])
                 continue;
+            if (systemLinkSmoke && outSlot >= readyCount)
+                continue;
+            if (systemLinkSmoke)
+                selected = outSlot % numChars;
             if (selected >= 0 && selected < numChars)
                 name = jkGuiRend_GetString(&jkGuiMain_xboxReadyCharacters, selected);
             xboxSplitScreen_SetPendingController(outSlot, i);
@@ -731,6 +802,10 @@ static int jkGuiMain_XboxShowSplitReady(void)
             XDBGF("SplitReady: controller=%d slot=%d selected=%d name='%s'\n", i, outSlot, selected, nameA);
             outSlot++;
         }
+        if (systemLinkSmoke && readyCount == XBOX_SPLITSCREEN_MAX_LOCAL_PLAYERS)
+            XDBG("Smoke: XSL ready pending localPlayers=4\n");
+        else if (systemLinkSmoke)
+            XDBG("Smoke: XSL ready pending localPlayers=1\n");
         while (outSlot < XBOX_SPLITSCREEN_MAX_LOCAL_PLAYERS)
         {
             xboxSplitScreen_SetPendingMpc(outSlot, 0);
@@ -746,6 +821,28 @@ static int jkGuiMain_XboxShowSplitReady(void)
     return result == 20 ? 1 : -1;
 }
 
+static void jkGuiMain_XboxFillSystemLinkSmokeEntry(jkMultiEntry3 *entry)
+{
+    if (!entry)
+        return;
+
+    _memset(entry, 0, sizeof(*entry));
+    jk_snwprintf(entry->serverName, 0x20, L"OpenJKDF2 XSL");
+    stdString_SafeStrCopy(entry->episodeGobName, "JK1MP", sizeof(entry->episodeGobName));
+    stdString_SafeStrCopy(entry->mapJklFname, "m2.jkl", sizeof(entry->mapJklFname));
+    entry->maxPlayers = xboxSystemLinkProbe_GetRosterMaxPlayers();
+    if (entry->maxPlayers < xboxSplitScreen_GetRequestedLocalPlayerCount())
+        entry->maxPlayers = xboxSplitScreen_GetRequestedLocalPlayerCount();
+    if (entry->maxPlayers < 1)
+        entry->maxPlayers = 1;
+    entry->sessionFlags = 0;
+    entry->multiModeFlags = MULTIMODEFLAG_SINGLE_LEVEL;
+    entry->maxRank = 8;
+    entry->timeLimit = 0;
+    entry->scoreLimit = 0;
+    entry->tickRateMs = jkGuiNetHost_tickRate ? jkGuiNetHost_tickRate : 180;
+}
+
 static int jkGuiMain_XboxCreateLocalMultiplayerHost(jkMultiEntry3 *entry)
 {
     int requestedPlayers;
@@ -754,7 +851,10 @@ static int jkGuiMain_XboxCreateLocalMultiplayerHost(jkMultiEntry3 *entry)
     if (!entry)
         return 0;
 
-    requestedPlayers = xboxSplitScreen_GetRequestedLocalPlayerCount();
+    if (xboxSystemLinkProbe_IsGameplayActive())
+        requestedPlayers = xboxSystemLinkProbe_GetRosterMaxPlayers();
+    else
+        requestedPlayers = xboxSplitScreen_GetRequestedLocalPlayerCount();
     if (requestedPlayers < 1)
         return 0;
 
@@ -875,31 +975,63 @@ static void jkGuiMain_XboxSystemLinkResetUi(void)
 static int jkGuiMain_XboxSystemLinkFormatUi(void)
 {
     XboxSystemLinkProbeStatus status;
-    int dirty;
     int i;
+    const wchar_t *roleText;
+    const wchar_t *phaseText;
 
     xboxSystemLinkProbe_GetStatus(&status);
-    dirty = 0;
+
+    roleText = L"Seeking";
+    if (status.role == XBOX_SYSTEMLINK_ROLE_HOST)
+        roleText = L"Host";
+    else if (status.role == XBOX_SYSTEMLINK_ROLE_CLIENT)
+        roleText = L"Client";
+
+    phaseText = L"Discovery";
+    if (status.phase == XBOX_SYSTEMLINK_PHASE_READY)
+        phaseText = L"Ready";
+    else if (status.phase == XBOX_SYSTEMLINK_PHASE_MAP_SELECT)
+        phaseText = L"Level";
+    else if (status.phase == XBOX_SYSTEMLINK_PHASE_LAUNCHING)
+        phaseText = L"Launch";
+    else if (status.phase == XBOX_SYSTEMLINK_PHASE_IN_GAME)
+        phaseText = L"In Game";
 
     if (status.started)
-        jk_snwprintf(jkGuiMain_xboxSystemLinkStatus, 96, L"LOCAL ID  %08X    PORT %d", status.localId, status.localPort);
+        jk_snwprintf(jkGuiMain_xboxSystemLinkStatus, 96, L"%s  %s  ID %08X  LOBBY %d  GAME %d",
+                     roleText,
+                     phaseText,
+                     status.localId,
+                     status.localPort,
+                     status.localGamePort);
     else
         jk_snwprintf(jkGuiMain_xboxSystemLinkStatus, 96, L"NOT STARTED    ERROR %d", status.lastError);
 
-    jk_snwprintf(jkGuiMain_xboxSystemLinkPeerCount, 64, L"PEERS FOUND  %d", status.peerCount);
+    jk_snwprintf(jkGuiMain_xboxSystemLinkPeerCount, 64, L"MACHINES %d   CONFIRMED %d   LOCAL %d   FIRST P%d",
+                 status.groupMachineCount,
+                 status.allConfirmed,
+                 status.localPlayerCount,
+                 status.localFirstPlayerIndex + 1);
 
     if (status.peerCount == 0)
-        jk_snwprintf(jkGuiMain_xboxSystemLinkHint, 96, L"OPEN THIS SCREEN ON BOTH INSTANCES");
-    else
-        jkGuiMain_xboxSystemLinkHint[0] = 0;
-
-    if (status.started != jkGuiMain_xboxSystemLinkLastStarted
-        || status.localPort != jkGuiMain_xboxSystemLinkLastPort
-        || status.localId != jkGuiMain_xboxSystemLinkLastId
-        || status.lastError != jkGuiMain_xboxSystemLinkLastError
-        || status.sent != jkGuiMain_xboxSystemLinkLastSent)
     {
-        dirty = 1;
+        jk_snwprintf(jkGuiMain_xboxSystemLinkHint, 96, L"WAITING FOR ANOTHER XBOX");
+    }
+    else if (status.role == XBOX_SYSTEMLINK_ROLE_HOST && status.allConfirmed && jkGuiMain_xboxSystemLinkAutoMapSelect)
+    {
+        jk_snwprintf(jkGuiMain_xboxSystemLinkHint, 96, L"OPENING LEVEL SELECT");
+    }
+    else if (status.role == XBOX_SYSTEMLINK_ROLE_HOST)
+    {
+        jk_snwprintf(jkGuiMain_xboxSystemLinkHint, 96, L"WAITING FOR READY CONSOLES");
+    }
+    else if (status.phase == XBOX_SYSTEMLINK_PHASE_LAUNCHING)
+    {
+        jk_snwprintf(jkGuiMain_xboxSystemLinkHint, 96, L"LAUNCH RECEIVED");
+    }
+    else
+    {
+        jk_snwprintf(jkGuiMain_xboxSystemLinkHint, 96, L"WAITING FOR HOST");
     }
 
     jkGuiMain_xboxSystemLinkLastStarted = status.started;
@@ -916,37 +1048,54 @@ static int jkGuiMain_XboxSystemLinkFormatUi(void)
         {
             char addr[32];
             xboxSystemLinkProbe_FormatAddress(status.peers[i].address, addr, sizeof(addr));
-            jk_snwprintf(jkGuiMain_xboxSystemLinkPeers[i], 96, L"%08X    %S:%d    PACKETS %lu",
+            jk_snwprintf(jkGuiMain_xboxSystemLinkPeers[i], 96, L"%08X  %S:%d  P%d-%d  R%d C%d  PKT %lu",
                          status.peers[i].id,
                          addr,
                          status.peers[i].port,
+                         status.peers[i].firstPlayerIndex + 1,
+                         status.peers[i].firstPlayerIndex + status.peers[i].localPlayerCount,
+                         status.peers[i].role,
+                         status.peers[i].confirmed,
                          status.peers[i].packets);
-            if (!jkGuiMain_xboxSystemLinkElements[elemIdx].bIsVisible
-                || jkGuiMain_xboxSystemLinkLastPeerPackets[i] != status.peers[i].packets)
-            {
-                dirty = 1;
-            }
             jkGuiMain_xboxSystemLinkElements[elemIdx].bIsVisible = 1;
             jkGuiMain_xboxSystemLinkLastPeerPackets[i] = status.peers[i].packets;
         }
         else
         {
-            if (jkGuiMain_xboxSystemLinkElements[elemIdx].bIsVisible)
-                dirty = 1;
             jkGuiMain_xboxSystemLinkElements[elemIdx].bIsVisible = 0;
             jkGuiMain_xboxSystemLinkPeers[i][0] = 0;
             jkGuiMain_xboxSystemLinkLastPeerPackets[i] = 0xFFFFFFFF;
         }
     }
 
-    return dirty;
+    return 1;
 }
 
 static void jkGuiMain_XboxSystemLinkTick(jkGuiMenu *menu)
 {
     int i;
+    jkMultiEntry3 launchEntry;
+    int launchIsHost;
+    XboxSystemLinkProbeStatus status;
 
-    xboxSystemLinkProbe_Tick();
+    if (xboxSystemLinkProbe_PollLaunch(&launchEntry, &launchIsHost))
+    {
+        memcpy(&jkGuiMain_xboxSystemLinkPendingEntry, &launchEntry, sizeof(jkGuiMain_xboxSystemLinkPendingEntry));
+        jkGuiMain_xboxSystemLinkPendingIsHost = launchIsHost;
+        jkGuiMain_xboxSystemLinkPendingLaunch = 1;
+        menu->lastClicked = 20;
+    }
+
+    xboxSystemLinkProbe_GetStatus(&status);
+    if (!jkGuiMain_xboxSystemLinkPendingLaunch
+        && jkGuiMain_xboxSystemLinkAutoMapSelect
+        && status.role == XBOX_SYSTEMLINK_ROLE_HOST
+        && status.allConfirmed)
+    {
+        jkGuiMain_xboxSystemLinkMapSelectRequested = 1;
+        menu->lastClicked = 20;
+    }
+
     if (!jkGuiMain_XboxSystemLinkFormatUi())
         return;
 
@@ -957,24 +1106,236 @@ static void jkGuiMain_XboxSystemLinkTick(jkGuiMenu *menu)
     jkGuiRend_UpdateAndDrawClickable(&jkGuiMain_xboxSystemLinkElements[JKGUI_XBOX_XSL_HINT], menu, 1);
 }
 
-static void jkGuiMain_XboxShowSystemLinkProbe(void)
+static int jkGuiMain_XboxShowSystemLinkLobby(int autoMapSelect)
 {
+    int result;
+
     XDBG("XSL probe screen enter\n");
     stdBitmap_EnsureData(jkGui_stdBitmaps[JKGUI_BM_BK_MULTI]);
     jkGui_SetModeMenu(jkGui_stdBitmaps[JKGUI_BM_BK_MULTI]->palette);
     jkGuiMain_XboxSystemLinkResetUi();
     jkGuiMain_XboxSystemLinkFormatUi();
+    jkGuiMain_xboxSystemLinkAutoMapSelect = autoMapSelect;
+    jkGuiMain_xboxSystemLinkMapSelectRequested = 0;
     jkGuiMain_xboxSystemLinkMenu.idkFunc = jkGuiMain_XboxSystemLinkTick;
     jkGuiRend_MenuSetReturnKeyShortcutElement(&jkGuiMain_xboxSystemLinkMenu, &jkGuiMain_xboxSystemLinkElements[JKGUI_XBOX_XSL_BACK]);
     jkGuiRend_MenuSetEscapeKeyShortcutElement(&jkGuiMain_xboxSystemLinkMenu, &jkGuiMain_xboxSystemLinkElements[JKGUI_XBOX_XSL_BACK]);
     jkGuiMain_xboxSystemLinkElements[JKGUI_XBOX_XSL_BACK].bIsVisible = 0;
     jkGuiRend_XboxFooterBegin(&jkGuiMain_xboxSystemLinkMenu);
     jkGuiRend_XboxFooterAddAction(&jkGuiMain_xboxSystemLinkMenu, JKGUI_XBOX_BTN_B, -1, L"Back");
-    xboxSystemLinkProbe_Start();
-    jkGuiRend_DisplayAndReturnClicked(&jkGuiMain_xboxSystemLinkMenu);
-    xboxSystemLinkProbe_Stop();
+    result = jkGuiRend_DisplayAndReturnClicked(&jkGuiMain_xboxSystemLinkMenu);
     jkGuiMain_xboxSystemLinkMenu.idkFunc = 0;
+    jkGuiMain_xboxSystemLinkAutoMapSelect = 0;
     XDBG("XSL probe screen leave\n");
+
+    if (jkGuiMain_xboxSystemLinkPendingLaunch || jkGuiMain_xboxSystemLinkMapSelectRequested)
+        return 1;
+    return result == -1 ? 0 : 0;
+}
+
+static int jkGuiMain_XboxPrimeSystemLinkClient(const jkMultiEntry3 *entry)
+{
+    int rosterMax;
+
+    if (!entry)
+        return 0;
+
+    if (xboxSystemLinkProbe_GameOpenClient(0) != 0)
+        return 0;
+
+    rosterMax = xboxSystemLinkProbe_GetRosterMaxPlayers();
+    if (rosterMax < 1)
+        rosterMax = xboxSystemLinkProbe_GetLocalPlayerCount();
+    if (rosterMax < 1)
+        rosterMax = 1;
+    if (rosterMax > JKPLAYER_NUM_INFOS)
+        rosterMax = JKPLAYER_NUM_INFOS;
+
+    sithMulti_InitTick(entry->tickRateMs);
+    jkPlayer_maxPlayers = rosterMax;
+    idx_13b4_related = rosterMax;
+    stdComm_dword_8321DC = 1;
+    stdComm_dword_8321E0 = 1;
+    stdComm_bIsServer = 0;
+    stdComm_dplayIdSelf = xboxSystemLinkProbe_NetIdForPlayerIndex(xboxSystemLinkProbe_GetLocalFirstPlayerIndex());
+    sithNet_dword_83262C = stdComm_dplayIdSelf;
+    sithNet_serverNetId = 1;
+    sithNet_isServer = 0;
+    sithNet_isMulti = 1;
+    sithNet_MultiModeFlags = entry->multiModeFlags;
+    sithMulti_multiModeFlags = entry->multiModeFlags;
+    sithNet_scorelimit = entry->scoreLimit;
+    stdComm_dword_832204 = entry->scoreLimit;
+    sithNet_multiplayer_timelimit = entry->timeLimit;
+    sithMulti_multiplayerTimelimit = entry->timeLimit;
+    sithNet_tickrate = entry->tickRateMs;
+
+    XDBGF("XSL client primed gob='%s' jkl='%s' self=%d localFirst=%d locals=%d roster=%d flags=0x%X score=%d time=%d tick=%d\n",
+          entry->episodeGobName,
+          entry->mapJklFname,
+          stdComm_dplayIdSelf,
+          xboxSystemLinkProbe_GetLocalFirstPlayerIndex(),
+          xboxSystemLinkProbe_GetLocalPlayerCount(),
+          rosterMax,
+          entry->multiModeFlags,
+          entry->scoreLimit,
+          entry->timeLimit,
+          entry->tickRateMs);
+    return 1;
+}
+
+static int jkGuiMain_XboxStartSystemLink(void)
+{
+    int result;
+    int isHost;
+    int smokeHarnessRole;
+    jkMultiEntry3 entry;
+
+    XDBG("XSL flow ready screen enter\n");
+    smokeHarnessRole = jkGuiMain_XboxSystemLinkSmokeHarnessRole();
+    if (jkGuiMain_XboxSystemLinkSmokeEnabled())
+    {
+        wchar_t smokeProfileName[8];
+        _wcsncpy(smokeProfileName, L"Xbox", sizeof(smokeProfileName) / sizeof(smokeProfileName[0]));
+        smokeProfileName[(sizeof(smokeProfileName) / sizeof(smokeProfileName[0])) - 1] = 0;
+
+        if (jkPlayer_ReadConf(smokeProfileName))
+            XDBG("Smoke: XSL selected player profile Xbox\n");
+        else
+            XDBG("Smoke: XSL could not read player profile Xbox\n");
+    }
+    if (jkGuiMain_XboxShowSplitReady() != 1)
+    {
+        XDBG("XSL flow ready screen canceled\n");
+        return -1;
+    }
+
+    jkGuiMain_xboxSystemLinkPendingLaunch = 0;
+    jkGuiMain_xboxSystemLinkPendingIsHost = 0;
+    memset(&jkGuiMain_xboxSystemLinkPendingEntry, 0, sizeof(jkGuiMain_xboxSystemLinkPendingEntry));
+
+    xboxSystemLinkProbe_SetLocalReady(xboxSplitScreen_GetRequestedLocalPlayerCount());
+    xboxSystemLinkProbe_SetLocalConfirmed(1);
+
+    if (!xboxSystemLinkProbe_Start())
+    {
+        jkGuiDialog_ErrorDialog(L"System Link", L"Could not start Xbox networking.");
+        return -1;
+    }
+
+    if (smokeHarnessRole == XBOX_SYSTEMLINK_ROLE_HOST || smokeHarnessRole == XBOX_SYSTEMLINK_ROLE_CLIENT)
+    {
+        int remoteLocalPlayers = jkGuiMain_XboxSystemLinkFourPlayerStressEnabled() ? XBOX_SPLITSCREEN_MAX_LOCAL_PLAYERS : 1;
+
+        _memset(&entry, 0, sizeof(entry));
+        jkGuiMain_XboxFillSystemLinkSmokeEntry(&entry);
+        if (entry.maxPlayers < XBOX_SYSTEMLINK_PLAYER_STRIDE * 2)
+            entry.maxPlayers = XBOX_SYSTEMLINK_PLAYER_STRIDE * 2;
+        XDBGF("Smoke: XSL harness role=%d gob='%s' jkl='%s' roster=%d locals=%d remoteLocals=%d\n",
+              smokeHarnessRole,
+              entry.episodeGobName,
+              entry.mapJklFname,
+              entry.maxPlayers,
+              xboxSplitScreen_GetRequestedLocalPlayerCount(),
+              remoteLocalPlayers);
+        if (!xboxSystemLinkProbe_SmokeHarnessBegin(&entry,
+                                                   smokeHarnessRole == XBOX_SYSTEMLINK_ROLE_HOST,
+                                                   remoteLocalPlayers))
+        {
+            jkGuiDialog_ErrorDialog(L"System Link", L"Could not start the System Link smoke harness.");
+            xboxSystemLinkProbe_Stop();
+            return -1;
+        }
+        memcpy(&jkGuiMain_xboxSystemLinkPendingEntry, &entry, sizeof(jkGuiMain_xboxSystemLinkPendingEntry));
+        jkGuiMain_xboxSystemLinkPendingIsHost = smokeHarnessRole == XBOX_SYSTEMLINK_ROLE_HOST;
+        jkGuiMain_xboxSystemLinkPendingLaunch = 1;
+    }
+    else
+    {
+        if (!jkGuiMain_XboxShowSystemLinkLobby(1))
+        {
+            xboxSystemLinkProbe_Stop();
+            return -1;
+        }
+    }
+
+    if (!jkGuiMain_xboxSystemLinkPendingLaunch)
+    {
+        if (!xboxSystemLinkProbe_IsHost() || !jkGuiMain_xboxSystemLinkMapSelectRequested)
+        {
+            xboxSystemLinkProbe_Stop();
+            return -1;
+        }
+
+        _memset(&entry, 0, sizeof(entry));
+        if (jkGuiMain_XboxSystemLinkSmokeEnabled())
+        {
+            jkGuiMain_XboxFillSystemLinkSmokeEntry(&entry);
+            XDBGF("Smoke: XSL host auto map gob='%s' jkl='%s' roster=%d locals=%d\n",
+                  entry.episodeGobName,
+                  entry.mapJklFname,
+                  entry.maxPlayers,
+                  xboxSplitScreen_GetRequestedLocalPlayerCount());
+        }
+        else if (jkGuiNetHost_ShowXboxSplitScreen(&entry) != 1)
+        {
+            xboxSystemLinkProbe_Stop();
+            return -1;
+        }
+
+        if (!xboxSystemLinkProbe_ScheduleHostLaunch(&entry))
+        {
+            jkGuiDialog_ErrorDialog(L"System Link", L"Could not schedule the System Link launch.");
+            xboxSystemLinkProbe_Stop();
+            return -1;
+        }
+
+        if (!jkGuiMain_XboxShowSystemLinkLobby(0) || !jkGuiMain_xboxSystemLinkPendingLaunch)
+        {
+            xboxSystemLinkProbe_Stop();
+            return -1;
+        }
+    }
+
+    memcpy(&entry, &jkGuiMain_xboxSystemLinkPendingEntry, sizeof(entry));
+    isHost = jkGuiMain_xboxSystemLinkPendingIsHost;
+    if (!xboxSystemLinkProbe_BeginGameplay(&entry, isHost))
+    {
+        jkGuiDialog_ErrorDialog(L"System Link", L"Could not enter System Link gameplay.");
+        xboxSystemLinkProbe_Stop();
+        return -1;
+    }
+
+    xboxSplitScreen_Enable();
+    if (isHost)
+    {
+        if (!jkGuiMain_XboxCreateLocalMultiplayerHost(&entry))
+        {
+            xboxSystemLinkProbe_Stop();
+            xboxSplitScreen_Disable();
+            return -1;
+        }
+    }
+    else
+    {
+        if (!jkGuiMain_XboxPrimeSystemLinkClient(&entry))
+        {
+            xboxSystemLinkProbe_Stop();
+            xboxSplitScreen_Disable();
+            return -1;
+        }
+    }
+
+    XDBGF("XSL flow loading host=%d gob='%s' jkl='%s'\n", isHost, entry.episodeGobName, entry.mapJklFname);
+    result = jkMain_loadFile2(entry.episodeGobName, entry.mapJklFname) ? 1 : -1;
+    XDBGF("XSL flow load returned %d\n", result);
+    if (result != 1)
+    {
+        stdComm_CloseConnection();
+        xboxSystemLinkProbe_Stop();
+        xboxSplitScreen_Disable();
+    }
+    return result;
 }
 
 static int jkGuiMain_XboxShowMultiplayer(void)
@@ -1007,10 +1368,11 @@ static int jkGuiMain_XboxShowMultiplayer(void)
         }
         else if (result == 22)
         {
-            jkGuiMain_XboxShowSystemLinkProbe();
+            result = jkGuiMain_XboxStartSystemLink();
             stdBitmap_EnsureData(jkGui_stdBitmaps[JKGUI_BM_BK_MULTI]);
             jkGui_SetModeMenu(jkGui_stdBitmaps[JKGUI_BM_BK_MULTI]->palette);
-            result = -2;
+            if (result != 1)
+                result = -2;
         }
     } while (result == -2);
 
@@ -1105,7 +1467,17 @@ void jkGuiMain_Show()
 #ifdef TARGET_XBOX
     {
         char smokeLevel[128];
-        if (jkGuiMain_XboxReadSmokeAutostartLevel(smokeLevel, sizeof(smokeLevel)))
+        if (jkGuiMain_XboxSystemLinkSmokeEnabled())
+        {
+            XDBG("Smoke: XSL autostart from main menu\n");
+            if (jkGuiMain_XboxStartSystemLink() == 1)
+            {
+                jkGui_SetModeGame();
+                return;
+            }
+            XDBG("Smoke: XSL autostart failed, falling through to menu\n");
+        }
+        else if (jkGuiMain_XboxReadSmokeAutostartLevel(smokeLevel, sizeof(smokeLevel)))
         {
             XDBGF("jkGuiMain_Show: smoke autostart level '%s'\n", smokeLevel);
             if (jkMain_LoadLevelSingleplayer("JK1", smokeLevel))

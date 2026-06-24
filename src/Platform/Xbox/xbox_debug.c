@@ -25,8 +25,51 @@ extern long __stdcall NtWriteFile(HANDLE, HANDLE, void*, void*, XDB_IOSB*,
     void*, unsigned long, LARGE_INTEGER*);
 
 #define XDBG_BUF_SIZE 512
+#define XDBG_MIRROR_SIZE 65536
+#define XDBG_MIRROR_MAGIC0 0x4A4B4446u /* JKDF */
+#define XDBG_MIRROR_MAGIC1 0x52414D4Cu /* RAML */
+
+volatile unsigned int g_XboxDebugMirrorMagic0 = XDBG_MIRROR_MAGIC0;
+volatile unsigned int g_XboxBootPhase = 0;
+volatile unsigned int g_XboxLogWriteCount = 0;
+volatile unsigned int g_XboxHeartbeatCount = 0;
+volatile unsigned int g_XboxLastLogTick = 0;
+volatile unsigned int g_XboxLogMirrorWriteOffset = 0;
+volatile unsigned int g_XboxLogMirrorWrapped = 0;
+volatile unsigned int g_XboxDebugMirrorMagic1 = XDBG_MIRROR_MAGIC1;
+volatile char g_XboxLogMirror[XDBG_MIRROR_SIZE];
+
 static HANDLE g_hLogFile = INVALID_HANDLE_VALUE;
 static int g_logIsNtHandle = 0;  /* track which API created the handle */
+
+static void xbox_debug_MirrorWrite(const char *msg)
+{
+    unsigned int offset;
+    unsigned int i;
+
+    if (!msg)
+        return;
+
+    offset = g_XboxLogMirrorWriteOffset;
+    for (i = 0; msg[i]; i++)
+    {
+        g_XboxLogMirror[offset] = msg[i];
+        offset++;
+        if (offset >= XDBG_MIRROR_SIZE)
+        {
+            offset = 0;
+            g_XboxLogMirrorWrapped = 1;
+        }
+    }
+
+    g_XboxLogMirror[offset] = 0;
+    g_XboxLogMirrorWriteOffset = offset;
+    g_XboxLogWriteCount++;
+    g_XboxHeartbeatCount++;
+    g_XboxLastLogTick = GetTickCount();
+    g_XboxDebugMirrorMagic0 = XDBG_MIRROR_MAGIC0;
+    g_XboxDebugMirrorMagic1 = XDBG_MIRROR_MAGIC1;
+}
 
 static int xbox_debug_ShouldLogText(const char *msg)
 {
@@ -41,6 +84,8 @@ static int xbox_debug_ShouldLogText(const char *msg)
     if (!strncmp(msg, "PerfPhase:", 10)) return 1;
     if (!strncmp(msg, "===", 3)) return 1;
     if (!strncmp(msg, "Smoke:", 6)) return 1;
+    if (!strncmp(msg, "XSL", 3)) return 1;
+    if (!strncmp(msg, "SplitScreen", 11)) return 1;
     if (!strncmp(msg, "main:", 5)) return 1;
     if (!strncmp(msg, "Main_Startup:", 13)) return 1;
     if (!strncmp(msg, "TitleShowLoading:", 17)) return 1;
@@ -78,6 +123,14 @@ void xbox_debug_Startup(void)
     int i;
     long status;
 
+    g_XboxBootPhase = 1;
+    memset((void*)g_XboxLogMirror, 0, sizeof(g_XboxLogMirror));
+    g_XboxLogMirrorWriteOffset = 0;
+    g_XboxLogMirrorWrapped = 0;
+    g_XboxLogWriteCount = 0;
+    g_XboxHeartbeatCount = 0;
+    g_XboxLastLogTick = GetTickCount();
+
     /* Prefer D:\, the mounted title directory. This matches retail Xbox
      * source patterns such as Unreal Tournament's D:\System\ appBaseDir and
      * makes CXBX-R logs land beside the loaded XBE. */
@@ -94,6 +147,7 @@ void xbox_debug_Startup(void)
                 NULL, CREATE_ALWAYS, FILE_ATTRIBUTE_NORMAL | FILE_FLAG_WRITE_THROUGH, NULL);
             if (g_hLogFile != INVALID_HANDLE_VALUE) {
                 g_logIsNtHandle = 0;
+                g_XboxBootPhase = 2;
                 xbox_debug_Print("=== OpenJKDF2 Xbox debug log ===\n");
                 return;
             }
@@ -112,6 +166,7 @@ void xbox_debug_Startup(void)
             status = xdbg_NtCreate(ntPaths[i], &g_hLogFile);
             if (status >= 0) {
                 g_logIsNtHandle = 1;
+                g_XboxBootPhase = 2;
                 xbox_debug_Print("=== OpenJKDF2 Xbox debug log ===\n");
                 return;
             }
@@ -119,6 +174,7 @@ void xbox_debug_Startup(void)
     }
 
     g_hLogFile = INVALID_HANDLE_VALUE;
+    g_XboxBootPhase = 3;
     OutputDebugStringA("xbox_debug: all log paths failed\n");
 }
 
@@ -139,6 +195,7 @@ void xbox_debug_Print(const char *msg)
     DWORD len;
     if (!msg) return;
     if (!xbox_debug_ShouldLogText(msg)) return;
+    xbox_debug_MirrorWrite(msg);
     OutputDebugStringA(msg);
     if (g_hLogFile != INVALID_HANDLE_VALUE) {
         len = (DWORD)strlen(msg);
@@ -161,6 +218,8 @@ void xbox_debug_Print(const char *msg)
             !strncmp(msg, "PerfDRL:", 8) ||
             !strncmp(msg, "PerfPhase:", 10) ||
             !strncmp(msg, "Smoke:", 6) ||
+            !strncmp(msg, "XSL", 3) ||
+            !strncmp(msg, "SplitScreen", 11) ||
             !strncmp(msg, "main:", 5) || !strncmp(msg, "Main_Startup:", 13) ||
             !strncmp(msg, "TitleLoad:", 10) ||
             strstr(msg, "FATAL") ||

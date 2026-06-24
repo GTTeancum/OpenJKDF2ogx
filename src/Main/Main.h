@@ -18,6 +18,8 @@ extern int32_t Main_bDwCompat;
 extern int32_t Main_bEnhancedCogVerbs;
 #endif
 
+int Main_ShouldUseMotsForcePowers(void);
+
 int Main_Startup(const char *cmdline);
 void Main_Shutdown();
 void Main_ParseCmdLine(char *cmdline);

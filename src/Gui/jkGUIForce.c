@@ -15,6 +15,7 @@
 #include "Gameplay/sithPlayer.h"
 #include "Win95/stdDisplay.h"
 #include "Win95/Windows.h"
+#include "Main/Main.h"
 #include "Main/jkStrings.h"
 #include "World/jkPlayer.h"
 
@@ -60,19 +61,21 @@ static const char* jkGuiForce_bitmapsMots[19] = {
     "foStars.bm",
 };
 
-#define IDX_FOSTARS (Main_bMotsCompat ? 18 : 14)
+static int jkGuiForce_ShouldUseMotsForcePowers(void);
+
+#define IDX_FOSTARS (jkGuiForce_ShouldUseMotsForcePowers() ? 18 : 14)
 
 #define EIDX_NAMETEXT (1)
 #define EIDX_FLAVORTEXT (2)
 #define EIDX_START_FP (3)
-#define EIDX_END_FP_CLICKABLE (Main_bMotsCompat ? 20 : 15)
-#define EIDX_END_FP (Main_bMotsCompat ? 20+1 : 16+1)
+#define EIDX_END_FP_CLICKABLE (jkGuiForce_ShouldUseMotsForcePowers() ? 20 : 15)
+#define EIDX_END_FP (jkGuiForce_ShouldUseMotsForcePowers() ? 20+1 : 16+1)
 #define EIDX_MOTS_DEFENSE (20)
-#define EIDX_RESET (Main_bMotsCompat ? 26 : 18)
-#define EIDX_QUIT (Main_bMotsCompat ? 27 : 19)
-#define EIDX_ALIGN_SLIDER (Main_bMotsCompat ? 30 : 23)
+#define EIDX_RESET (jkGuiForce_ShouldUseMotsForcePowers() ? 26 : 18)
+#define EIDX_QUIT (jkGuiForce_ShouldUseMotsForcePowers() ? 27 : 19)
+#define EIDX_ALIGN_SLIDER (jkGuiForce_ShouldUseMotsForcePowers() ? 30 : 23)
 
-#define EIDX_OK_BUTTON (Main_bMotsCompat ? EIDX_END_FP +  4 : EIDX_END_FP)
+#define EIDX_OK_BUTTON (jkGuiForce_ShouldUseMotsForcePowers() ? EIDX_END_FP +  4 : EIDX_END_FP)
 #define EIDX_RESET_BUTTON (EIDX_OK_BUTTON + 1)
 #define EIDX_QUIT_BUTTON (EIDX_RESET_BUTTON + 1)
 
@@ -225,6 +228,58 @@ static jkGuiMenu jkGuiForce_menuMots =
 
 static jkGuiElement* jkGuiForce_pElements = jkGuiForce_buttons;
 static jkGuiMenu* jkGuiForce_pMenu = &jkGuiForce_menu;
+static int jkGuiForce_loadedMotsBitmaps = -1;
+
+static int jkGuiForce_ShouldUseMotsForcePowers(void)
+{
+    return Main_bMotsCompat && !jkGuiForce_isMulti;
+}
+
+static int jkGuiForce_GetBitmapCount(int useMotsForce)
+{
+    return useMotsForce ? 19 : 17;
+}
+
+static void jkGuiForce_FreeLoadedBitmaps(void)
+{
+    for (int i = 0; i < 19; i++)
+    {
+        if ( jkGuiForce_aBitmaps[i] )
+        {
+            stdBitmap_Free(jkGuiForce_aBitmaps[i]);
+            jkGuiForce_aBitmaps[i] = NULL;
+        }
+    }
+
+    jkGuiForce_loadedMotsBitmaps = -1;
+}
+
+static void jkGuiForce_SelectMode(int useMotsForce)
+{
+    char tmp[128];
+    const char** bitmapNames = useMotsForce ? jkGuiForce_bitmapsMots : jkGuiForce_bitmaps;
+    int bitmapCount = jkGuiForce_GetBitmapCount(useMotsForce);
+
+    jkGuiForce_pMenu = useMotsForce ? &jkGuiForce_menuMots : &jkGuiForce_menu;
+    jkGuiForce_pElements = useMotsForce ? jkGuiForce_buttonsMots : jkGuiForce_buttons;
+
+    if (jkGuiForce_loadedMotsBitmaps != (useMotsForce ? 1 : 0))
+    {
+        jkGuiForce_FreeLoadedBitmaps();
+
+        for (int i = 0; i < bitmapCount; i++)
+        {
+            stdString_snprintf(tmp, sizeof(tmp), "ui\\bm\\%s", bitmapNames[i]);
+            jkGuiForce_aBitmaps[i] = stdBitmap_Load(tmp, 1, 0);
+            if (jkGuiForce_aBitmaps[i] == NULL)
+                Windows_GameErrorMsgbox("ERR_CANNOT_LOAD_FILE %s", tmp);
+        }
+
+        jkGuiForce_loadedMotsBitmaps = useMotsForce ? 1 : 0;
+    }
+
+    jkGui_InitMenu(jkGuiForce_pMenu, jkGui_stdBitmaps[JKGUI_BM_BK_FORCE]);
+}
 
 void jkGuiForce_ChoiceRemoveStar(jkGuiMenu *menu, int fpIdx, int amount)
 {
@@ -308,7 +363,7 @@ void jkGuiForce_ForceStarsDraw(jkGuiElement *element, jkGuiMenu *menu, stdVBuffe
     }
     else
     {
-        stdVBuffer* bitmap = jkGuiForce_aBitmaps[IDX_FOSTARS]->mipSurfaces[Main_bMotsCompat ? 10 : 0];
+        stdVBuffer* bitmap = jkGuiForce_aBitmaps[IDX_FOSTARS]->mipSurfaces[jkGuiForce_ShouldUseMotsForcePowers() ? 10 : 0];
 
         // MOTS added
         int spendStarsVisualMax = element->rect.width / bitmap->format.width;
@@ -322,10 +377,10 @@ void jkGuiForce_ForceStarsDraw(jkGuiElement *element, jkGuiMenu *menu, stdVBuffe
         }
     }
     
-    for (int i = EIDX_START_FP; i < (Main_bMotsCompat ? EIDX_END_FP : EIDX_END_FP_CLICKABLE); i++)
+    for (int i = EIDX_START_FP; i < (jkGuiForce_ShouldUseMotsForcePowers() ? EIDX_END_FP : EIDX_END_FP_CLICKABLE); i++)
     {
         // MOTS added: different rendering
-        if (Main_bMotsCompat) {
+        if (jkGuiForce_ShouldUseMotsForcePowers()) {
             jkGuiElement* pFpElement = &jkGuiForce_pElements[i];
 
             int id = pFpElement->hoverId;
@@ -419,9 +474,9 @@ int jkGuiForce_ButtonClick(jkGuiElement *element, jkGuiMenu *menu, int32_t a, in
     int spendStars = (int)sithPlayer_GetBinAmt(SITHBIN_SPEND_STARS);
     int curLevel = (int)sithPlayer_GetBinAmt(binIdx);
 
-    int bIsDefense = Main_bMotsCompat ? (!!(element == &jkGuiForce_pElements[EIDX_MOTS_DEFENSE]) + 1) : 0;
+    int bIsDefense = jkGuiForce_ShouldUseMotsForcePowers() ? (!!(element == &jkGuiForce_pElements[EIDX_MOTS_DEFENSE]) + 1) : 0;
 
-    if (Main_bMotsCompat) {
+    if (jkGuiForce_ShouldUseMotsForcePowers()) {
         int pvVar1;
         if ((element == &jkGuiForce_pElements[EIDX_MOTS_DEFENSE]) && (-1 < jkPlayer_aMotsFpBins[curLevel + 0x44])) {
             int iVar3 = 0;
@@ -502,19 +557,19 @@ int jkGuiForce_ResetClick(jkGuiElement *element, jkGuiMenu *menu, int32_t mouseX
         return 0;
 
     sithPlayer_SetBinAmt(SITHBIN_SPEND_STARS, (flex_d_t)jkGuiForce_numSpendStars);
-    for (int i = EIDX_START_FP; i < (Main_bMotsCompat ? EIDX_END_FP : EIDX_END_FP_CLICKABLE); i++)
+    for (int i = EIDX_START_FP; i < (jkGuiForce_ShouldUseMotsForcePowers() ? EIDX_END_FP : EIDX_END_FP_CLICKABLE); i++)
     {
         flex_t initialForcePoints = (flex_t)jkGuiForce_pElements[i].oldForcePoints; // FLEXTODO
         sithPlayer_SetBinAmt(jkGuiForce_pElements[i].hoverId, initialForcePoints);
     }
 
     // MOTS added: no condition
-    if (Main_bMotsCompat || jkGuiForce_isMulti)
+    if (jkGuiForce_ShouldUseMotsForcePowers() || jkGuiForce_isMulti)
     {
         jkGuiForce_UpdateViewForRank();
     }
 
-    if (!Main_bMotsCompat)
+    if (!jkGuiForce_ShouldUseMotsForcePowers())
         jkGuiForce_pElements[EIDX_ALIGN_SLIDER].selectedTextEntry = 100 - (uint64_t)(int)jkPlayer_CalcAlignment(jkGuiForce_isMulti);
     jkGuiRend_Paint(menu);
     return 0;
@@ -532,6 +587,7 @@ int jkGuiForce_Show(int bCanSpendStars, int isMulti, int a4, wchar_t* a5, int *p
 
     // Added
     stdBitmap_EnsureData(jkGui_stdBitmaps[JKGUI_BM_BK_FORCE]);
+    jkGuiForce_SelectMode(jkGuiForce_ShouldUseMotsForcePowers());
 
     jkGui_SetModeMenu(jkGui_stdBitmaps[JKGUI_BM_BK_FORCE]->palette);
     
@@ -549,7 +605,7 @@ int jkGuiForce_Show(int bCanSpendStars, int isMulti, int a4, wchar_t* a5, int *p
 #endif // QOL_IMPROVEMENTS
 
     flex_t darklight_float = jkPlayer_CalcAlignment(jkGuiForce_isMulti);
-    if (Main_bMotsCompat) {
+    if (jkGuiForce_ShouldUseMotsForcePowers()) {
         if (!isMulti || jkPlayer_personality == 1) {
             stdString_snprintf(std_genBuffer, 1024, "RANK_%d_%c",jkPlayer_GetJediRank(),'L');
         }
@@ -562,7 +618,7 @@ int jkGuiForce_Show(int bCanSpendStars, int isMulti, int a4, wchar_t* a5, int *p
     }
 
     jkGuiForce_pElements[EIDX_FLAVORTEXT].wstr = jkStrings_GetUniStringWithFallback(std_genBuffer);
-    if ( Main_bMotsCompat || (!Main_bMotsCompat && a4 == 0) )
+    if ( jkGuiForce_ShouldUseMotsForcePowers() || (!jkGuiForce_ShouldUseMotsForcePowers() && a4 == 0) )
     {
         newStars = (int)sithPlayer_GetBinAmt(SITHBIN_NEW_STARS);
         spendStars = (int)sithPlayer_GetBinAmt(SITHBIN_SPEND_STARS);
@@ -570,7 +626,7 @@ int jkGuiForce_Show(int bCanSpendStars, int isMulti, int a4, wchar_t* a5, int *p
         sithPlayer_SetBinAmt(SITHBIN_SPEND_STARS, (flex_t)(newStars + spendStars)); // FLEXTODO
     }
 
-    if (!Main_bMotsCompat)
+    if (!jkGuiForce_ShouldUseMotsForcePowers())
     {
         jkGuiForce_numSpendStars = (int)sithPlayer_GetBinAmt(SITHBIN_SPEND_STARS);
         jkGuiForce_pElements[EIDX_ALIGN_SLIDER].bIsVisible = 1;
@@ -674,50 +730,15 @@ int jkGuiForce_Show(int bCanSpendStars, int isMulti, int a4, wchar_t* a5, int *p
 
 void jkGuiForce_Startup()
 {
-    char tmp[128];
-
-    if (Main_bMotsCompat) {
-        jkGuiForce_pMenu = &jkGuiForce_menuMots;
-        jkGuiForce_pElements = jkGuiForce_buttonsMots;
-    }
-    else {
-        jkGuiForce_pMenu = &jkGuiForce_menu;
-        jkGuiForce_pElements = jkGuiForce_buttons;
-    }
-
-    jkGui_InitMenu(jkGuiForce_pMenu, jkGui_stdBitmaps[JKGUI_BM_BK_FORCE]);
-    if (Main_bMotsCompat) {
-        for (int i = 0; i < 19; i++)
-        {
-            stdString_snprintf(tmp, sizeof(tmp), "ui\\bm\\%s", jkGuiForce_bitmapsMots[i]);
-            jkGuiForce_aBitmaps[i] = stdBitmap_Load(tmp, 1, 0);
-            if (jkGuiForce_aBitmaps[i] == NULL)
-                Windows_GameErrorMsgbox("ERR_CANNOT_LOAD_FILE %s", tmp);
-        }
-    }
-    else {
-        for (int i = 0; i < 17; i++)
-        {
-            stdString_snprintf(tmp, sizeof(tmp), "ui\\bm\\%s", jkGuiForce_bitmaps[i]);
-            jkGuiForce_aBitmaps[i] = stdBitmap_Load(tmp, 1, 0);
-            if (jkGuiForce_aBitmaps[i] == NULL)
-                Windows_GameErrorMsgbox("ERR_CANNOT_LOAD_FILE %s", tmp);
-        }
-    }
+    jkGuiForce_isMulti = 0;
+    jkGuiForce_SelectMode(jkGuiForce_ShouldUseMotsForcePowers());
 }
 
 void jkGuiForce_Shutdown()
 {
     stdPlatform_Printf("OpenJKDF2: %s\n", __func__); // Added
     
-    for (int i = 0; i < (Main_bMotsCompat ? 19 : 17); i++)
-    {
-        if ( jkGuiForce_aBitmaps[i] )
-        {
-            stdBitmap_Free(jkGuiForce_aBitmaps[i]);
-            jkGuiForce_aBitmaps[i] = NULL;
-        }
-    }
+    jkGuiForce_FreeLoadedBitmaps();
 
     // Added: Clean restart
     jkGuiForce_alignment = 0;
@@ -805,7 +826,7 @@ void jkGuiForce_UpdateViewForRankMots(void)
 
 void jkGuiForce_UpdateViewForRank()
 {
-    if (Main_bMotsCompat) {
+    if (jkGuiForce_ShouldUseMotsForcePowers()) {
         jkGuiForce_UpdateViewForRankMots();
         return;
     }
