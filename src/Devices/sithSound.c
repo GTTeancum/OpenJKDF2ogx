@@ -242,7 +242,6 @@ int sithSound_LoadFileData(sithSound *sound)
     if ( dsoundBuf )
     {
         sound->dsoundBuffer2 = dsoundBuf;
-        sithSound_curDataLoaded += sound->bufferBytes;
         
         // inlined
         int v5 = 0;
@@ -274,6 +273,7 @@ LABEL_11:
                 if ( stdSound_BufferUnlock(sound->dsoundBuffer2, buf, numRead) )
                 {
                     sound->isLoaded |= 1u;
+                    sithSound_curDataLoaded += sound->bufferBytes;
                     pSithHS->fileClose(fd);
                     return 1;
                 }
