@@ -170,6 +170,8 @@ static HostServices *pGobHS;
 static int stdGob_bInit;
 static char stdGob_fpath_buf[128];
 
+void stdGob_FreeEntry(stdGob *gob);
+
 int stdGob_Startup(HostServices *pHS_in)
 {
     _memcpy(&gobHS, pHS_in, sizeof(gobHS));
@@ -191,6 +193,7 @@ stdGob *stdGob_Load(char *fpath, int a2, int a3)
     if (!gob) return 0;
     _memset(gob, 0, sizeof(stdGob));
     if (!stdGob_LoadEntry(gob, fpath, a2, a3)) {
+        stdGob_FreeEntry(gob);
         std_pHS->free(gob);
         return 0;
     }
@@ -212,12 +215,12 @@ int stdGob_LoadEntry(stdGob *gob, char *fname, int a3, int a4)
     gob->fhand = pGobHS->fileOpen(gob->fpath, "rb");
     if (!gob->fhand) {
         XDBGF("stdGob: failed to open '%s'\n", gob->fpath);
-        return 0;
+        goto fail;
     }
     XDBGF("stdGob: opened '%s'\n", gob->fpath);
 
     gob->openedFile = (stdGobFile*)std_pHS->alloc(sizeof(stdGobFile) * gob->numFilesOpen);
-    if (!gob->openedFile) { XDBG("stdGob: alloc openedFile failed\n"); return 0; }
+    if (!gob->openedFile) { XDBG("stdGob: alloc openedFile failed\n"); goto fail; }
     _memset(gob->openedFile, 0, sizeof(stdGobFile) * gob->numFilesOpen);
     XDBG("stdGob: openedFile alloc ok\n");
 
@@ -227,11 +230,11 @@ int stdGob_LoadEntry(stdGob *gob, char *fname, int a3, int a4)
           header.version, (unsigned)header.entryTable_offs);
     if (_memcmp((const char*)&header, "GOB ", 4u)) {
         XDBG("stdGob: bad GOB magic\n");
-        return 0;
+        goto fail;
     }
     if (header.version != GOB_VERSION_LATEST) {
         XDBGF("stdGob: bad GOB version %u\n", header.version);
-        return 0;
+        goto fail;
     }
 
     pGobHS->fseek(gob->fhand, header.entryTable_offs, 0);
@@ -239,7 +242,7 @@ int stdGob_LoadEntry(stdGob *gob, char *fname, int a3, int a4)
     XDBGF("stdGob: numFiles=%u\n", (unsigned)gob->numFiles);
 
     gob->entries = (stdGobEntry*)std_pHS->alloc(sizeof(stdGobEntry) * gob->numFiles);
-    if (!gob->entries) { XDBG("stdGob: alloc entries failed\n"); return 0; }
+    if (!gob->entries) { XDBG("stdGob: alloc entries failed\n"); goto fail; }
     _memset(gob->entries, 0, sizeof(stdGobEntry) * gob->numFiles);
     XDBG("stdGob: entries alloc+memset ok\n");
 
@@ -247,6 +250,7 @@ int stdGob_LoadEntry(stdGob *gob, char *fname, int a3, int a4)
     gob->entriesHashtable = stdHashTable_New(1024);
     XDBGF("stdGob: hashtable=%p sizeof(stdGobEntry)=%u\n",
           (void*)gob->entriesHashtable, (unsigned)sizeof(stdGobEntry));
+    if (!gob->entriesHashtable) { XDBG("stdGob: alloc hashtable failed\n"); goto fail; }
 
     XDBG("stdGob: entry loop about to start\n");
     for (v4 = 0; v4 < gob->numFiles; v4++) {
@@ -273,6 +277,10 @@ int stdGob_LoadEntry(stdGob *gob, char *fname, int a3, int a4)
 
     XDBGF("stdGob: loaded '%s' (%u files)\n", fname, gob->numFiles);
     return 1;
+
+fail:
+    stdGob_FreeEntry(gob);
+    return 0;
 }
 
 void stdGob_FreeEntry(stdGob *gob)
