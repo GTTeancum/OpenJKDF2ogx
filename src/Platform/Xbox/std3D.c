@@ -1850,6 +1850,17 @@ static void std3D_XboxClearSurface(rdDDrawSurface *texture)
     texture->pDataDepthConverted = 0;
 }
 
+static void std3D_XboxDeleteTextureId(unsigned int id)
+{
+    GLuint glId;
+
+    if (!id || !g_pfnDeleteTextures)
+        return;
+
+    glId = (GLuint)id;
+    g_pfnDeleteTextures(1, &glId);
+}
+
 int std3D_AddToTextureCache(stdVBuffer *vbuf, rdDDrawSurface *texture,
                              int is_alpha_tex, int no_mip)
 {
@@ -3434,18 +3445,25 @@ void std3D_AddTextureToCacheList(rdDDrawSurface *p)
 void std3D_PurgeTextureEntry(int i)
 {
     rdDDrawSurface *surface;
+    unsigned int id;
 
     if (i < 0 || i >= STD3D_MAX_TEXTURES)
         return;
 
     surface = g_loadedSurfaces[i];
+    id = g_loadedTextureIds[i];
+    if (!id && surface && surface->texture_id > 0)
+        id = (unsigned int)surface->texture_id;
+
+    std3D_XboxDeleteTextureId(id);
+
     if (surface)
         std3D_XboxClearSurface(surface);
 
     g_loadedSurfaces[i] = 0;
-    if (g_loadedTextureIds[i] < STD3D_MAX_TEXTURES) {
-        g_textureSamplerValid[g_loadedTextureIds[i]] = 0;
-        g_textureSamplerFlags[g_loadedTextureIds[i]] = 0;
+    if (id < STD3D_MAX_TEXTURES) {
+        g_textureSamplerValid[id] = 0;
+        g_textureSamplerFlags[id] = 0;
     }
     g_loadedTextureIds[i] = 0;
     if (i == g_loadedTextureSlots - 1) {
