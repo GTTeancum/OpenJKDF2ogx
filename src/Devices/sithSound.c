@@ -428,7 +428,11 @@ stdSound_buffer_t* sithSound_InitFromPath(char *path)
             {
                 void* data = stdSound_BufferSetData(createdBuf, bufferLen, &bufferMaxSize);
                 if ( !data )
+                {
+                    pSithHS->fileClose(fd);
+                    stdSound_BufferRelease(dsoundBuf);
                     return NULL;
+                }
                 size_t amtRead = pSithHS->fileRead(fd, (void *)data, bufferMaxSize);
                 if ( stdSound_BufferUnlock(dsoundBuf, data, amtRead) )
                 {
