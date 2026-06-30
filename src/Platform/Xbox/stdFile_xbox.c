@@ -887,7 +887,7 @@ int stdFileUtil_FindNext(stdFileSearch *s, stdFileSearchResult *result)
     WIN32_FIND_DATAA fd;
     BOOL ok;
 
-    if (!s) return 0;
+    if (!s || !result) return 0;
 
     memset(result, 0, sizeof(stdFileSearchResult));
 
@@ -904,9 +904,17 @@ int stdFileUtil_FindNext(stdFileSearch *s, stdFileSearchResult *result)
     }
     else
     {
+        if (s->field_88 == -1 ||
+            (HANDLE)(intptr_t)s->field_88 == INVALID_HANDLE_VALUE)
+            return 0;
+
         ok = FindNextFileA((HANDLE)(intptr_t)s->field_88, &fd);
         if (!ok)
+        {
+            FindClose((HANDLE)(intptr_t)s->field_88);
+            s->field_88 = -1;
             return 0;
+        }
     }
 
     strncpy(result->fpath, fd.cFileName, sizeof(result->fpath) - 1);
