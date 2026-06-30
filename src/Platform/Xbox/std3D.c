@@ -50,6 +50,7 @@ typedef int          GLsizeiptr_int; /* placeholder, unused */
 
 void * __stdcall wglCreateContext(void *hdc);
 int    __stdcall wglMakeCurrent(void *hdc, void *hglrc);
+int    __stdcall wglDeleteContext(void *hglrc);
 void             FakeSwapBuffers(void);
 
 void __stdcall glClear        (GLbitfield mask);
@@ -340,6 +341,7 @@ typedef struct stdVBuffer_tag
  * ---------------------------------------------------------------------- */
 static int  g_initialized = 0;
 static int  g_sceneOpen   = 0;
+static void *g_hglrc      = 0;
 
 /* glBindTexture proc cache — resolved once at Startup via
  * wglGetProcAddress("glBindTextureEXT") since FakeGL doesn't expose
@@ -415,6 +417,7 @@ int std3D_Startup(void)
             return 1;
         }
         wglMakeCurrent((void*)0, ctx);
+        g_hglrc = ctx;
         XDBG("std3D_Startup: wglMakeCurrent done\n");
     }
 
@@ -534,9 +537,16 @@ int std3D_Startup(void)
 void std3D_Shutdown(void)
 {
     XDBG("std3D_Shutdown: enter\n");
-    /* FakeGL has no explicit teardown call; wglDeleteContext is the
-     * conventional one but nothing in xquake's Xbox path actually
-     * shuts down (game just exits).  Mirror that behaviour. */
+    if (g_hglrc)
+    {
+        XDBGF("std3D_Shutdown: deleting FakeGL context %p\n", g_hglrc);
+        wglMakeCurrent((void*)0, (void*)0);
+        wglDeleteContext(g_hglrc);
+        g_hglrc = 0;
+    }
+    g_pfnBindTexture = 0;
+    g_pfnDeleteTextures = 0;
+    g_sceneOpen = 0;
     g_initialized = 0;
 }
 
