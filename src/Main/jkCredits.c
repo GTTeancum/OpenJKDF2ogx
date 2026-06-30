@@ -643,7 +643,7 @@ int jkCredits_Skip()
         stdDisplay_VBufferFree(jkCredits_pVbuffer);
     jkCredits_pVbuffer = 0;
     if ( jkCredits_pVbuffer2 )
-        pHS->free(jkCredits_pVbuffer2);
+        stdDisplay_VBufferFree(jkCredits_pVbuffer2);
     jkCredits_pVbuffer2 = 0;
     if ( jkCredits_aIdk )
         pHS->free(jkCredits_aIdk);
