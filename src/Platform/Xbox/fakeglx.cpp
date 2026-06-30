@@ -153,6 +153,12 @@ public:
 		BindTexture(0);
 	}
 	~TextureTable(){
+		ReleaseAll();
+
+		delete [] m_textures;
+	}
+
+	void ReleaseAll() {
 		DWORD i;
 		for(i = 0; i < m_count; i++) {
 			m_textures[i].Release();
@@ -160,8 +166,9 @@ public:
 		for(i = 0; i < TASIZE; i++) {
 			m_textureArray[i].Release();
 		}
-
-		delete [] m_textures;
+		m_currentTexture = 0;
+		m_currentID = 0;
+		m_count = 0;
 	}
 
 	void BindTexture(GLuint id){
@@ -693,12 +700,18 @@ public:
 	}
 
 	~OGLPrimitiveVertexBuffer(){
+		Release();
+	}
+
+	void Release() {
 		RELEASENULL(m_indexBuffer);
 #ifdef USE_DRAWINDEXEDPRIMITIVEVB
 			RELEASENULL(m_buffer);
 #else
 		delete[] m_buffer;
+		m_buffer = 0;
 #endif
+		m_pD3DDev = 0;
 	}
 
 	HRESULT Initialize(LPDIRECT3DDEVICE pD3DDev, DX_DIRECT3D* pD3D, bool hardwareTandL, DWORD typeDesc){
@@ -1122,7 +1135,13 @@ public:
 	}
 
 	~OGLPrimitiveVertexBuffer(){
+		Release();
+	}
+
+	void Release() {
 		delete [] m_OGLPrimitiveVertexBuffer;
+		m_OGLPrimitiveVertexBuffer = 0;
+		m_pD3DDev = 0;
 	}
 
 	HRESULT Initialize(LPDIRECT3DDEVICE pD3DDev, DX_DIRECT3D* pD3D, bool hardwareTandL, DWORD typeDesc){
@@ -1403,6 +1422,11 @@ public:
 	~OGLPrimitiveVertexBuffer(){
 	}
 
+	void Release() {
+		m_pD3DDev = 0;
+		m_needEnd = false;
+	}
+
 	HRESULT Initialize(LPDIRECT3DDEVICE pD3DDev, DX_DIRECT3D* pD3D, bool hardwareTandL, DWORD typeDesc){
 		m_pD3DDev = pD3DDev;
         m_vertexTypeDesc = typeDesc;
@@ -1563,6 +1587,8 @@ private:
 
 	HRESULT ReleaseD3DX()
 	{
+		RELEASENULL(m_pD3DDev);
+		RELEASENULL(m_pD3D);
 		m_bD3DXReady = FALSE;
 		return S_OK;
 	}
@@ -1916,11 +1942,13 @@ public:
 
 	~FakeGL(){
 		ReleaseMovieTexture();
+		m_OGLPrimitiveVertexBuffer.Release();
+		m_textures.ReleaseAll();
 		delete [] m_stickyAlloc;
-		ReleaseD3DX();
 		RELEASENULL(m_modelViewMatrixStack);
 		RELEASENULL(m_projectionMatrixStack);
 		RELEASENULL(m_textureMatrixStack);
+		ReleaseD3DX();
 	}
 
 	void glAlphaFunc (GLenum func, GLclampf ref){

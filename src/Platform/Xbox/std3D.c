@@ -98,6 +98,8 @@ void * __stdcall wglGetProcAddress(const char *s);
 void FakeGL_DrawLinearRGBAFullscreen(const unsigned char *rgba, unsigned int width,
                                      unsigned int height, unsigned int pitch);
 void FakeGL_ReleaseMovieTexture(void);
+void std3D_PurgeEntireTextureCache(void);
+void std3D_XboxReleaseMenuTextures(void);
 
 #ifdef __cplusplus
 } /* extern "C" */
@@ -539,6 +541,8 @@ void std3D_Shutdown(void)
     XDBG("std3D_Shutdown: enter\n");
     if (g_hglrc)
     {
+        std3D_XboxReleaseMenuTextures();
+        std3D_PurgeEntireTextureCache();
         XDBGF("std3D_Shutdown: deleting FakeGL context %p\n", g_hglrc);
         wglMakeCurrent((void*)0, (void*)0);
         wglDeleteContext(g_hglrc);
