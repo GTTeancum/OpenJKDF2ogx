@@ -967,6 +967,51 @@ static rdVector3 jkGuiBuildMulti_lightPos;
 static uint32_t jkGuiBuildMulti_lastModelDrawMs;
 static int32_t jkGuiBuildMulti_savedAcceleration;
 static int32_t jkGuiBuildMulti_renderOpen;
+
+static void jkGuiBuildMulti_FreeLoadedCharacterLists(void)
+{
+    int32_t i;
+    int32_t saberCount;
+
+    saberCount = jkGuiBuildMulti_numSabers;
+
+    if (jkGuiBuildMulti_aModels)
+    {
+        pHS->free(jkGuiBuildMulti_aModels);
+        jkGuiBuildMulti_aModels = NULL;
+    }
+    if (jkGame_aSabers)
+    {
+        pHS->free(jkGame_aSabers);
+        jkGame_aSabers = NULL;
+    }
+    if (jkGuiBuildMulti_apSaberBitmaps)
+    {
+        for (i = 0; i < saberCount; ++i)
+        {
+            if (jkGuiBuildMulti_apSaberBitmaps[i])
+            {
+                stdBitmap_Free(jkGuiBuildMulti_apSaberBitmaps[i]);
+                jkGuiBuildMulti_apSaberBitmaps[i] = NULL;
+            }
+        }
+        pHS->free(jkGuiBuildMulti_apSaberBitmaps);
+        jkGuiBuildMulti_apSaberBitmaps = NULL;
+    }
+
+    jkGuiBuildMulti_numModels = 0;
+    jkGuiBuildMulti_numSabers = 0;
+    jkGuiBuildMulti_bSabersLoaded = 0;
+    jkGuiBuildMulti_bEditShowing = 0;
+}
+
+static int jkGuiBuildMulti_FailEditCharacterStartup(void)
+{
+    jkGuiBuildMulti_FreeLoadedCharacterLists();
+    jkGui_SetModeGame();
+    stdBitmap_UnloadData(jkGui_stdBitmaps[JKGUI_BM_BK_BUILD_MULTI]);
+    return 0;
+}
 #ifdef TARGET_XBOX
 static unsigned int jkGuiBuildMulti_xboxPostDrawCalls;
 static unsigned int jkGuiBuildMulti_xboxModelDrawerCalls;
@@ -1225,22 +1270,41 @@ rdModel3* jkGuiBuildMulti_ModelLoader(const char *pCharFpath, int unused)
 
     __snprintf(fpath, 128, "%s%c%s", "3do", '\\', pCharFpath); // ADDED: sprintf -> snprintf
     pModel = (rdModel3 *)pHS->alloc(sizeof(rdModel3));
+    if (!pModel)
+        return NULL;
     memset(pModel, 0, sizeof(rdModel3));
-    return rdModel3_Load(fpath, pModel) != 0 ? pModel : NULL;
+    if (rdModel3_Load(fpath, pModel) != 0)
+        return pModel;
+
+    rdModel3_FreeEntry(pModel);
+    pHS->free(pModel);
+    return NULL;
 }
 
 rdMaterial* jkGuiBuildMulti_MatLoader(const char *pMatFname, int a, int b)
 {
     rdMaterial *pMaterial; // esi
     char mat_fpath[128]; // [esp+8h] [ebp-80h] BYREF
+    int loaded;
 
     pMaterial = (rdMaterial *)pHS->alloc(sizeof(rdMaterial));
+    if (!pMaterial)
+        return NULL;
     memset(pMaterial, 0, sizeof(rdMaterial));
     _sprintf(mat_fpath, "3do%cmat%c%s", '\\', '\\', pMatFname);
-    if ( !rdMaterial_LoadEntry(mat_fpath, pMaterial, 0, 0) )
+    loaded = rdMaterial_LoadEntry(mat_fpath, pMaterial, 0, 0);
+    if ( !loaded )
     {
+        rdMaterial_FreeEntry(pMaterial);
+        memset(pMaterial, 0, sizeof(rdMaterial));
         _sprintf(mat_fpath, "mat%c%s", '\\', pMatFname);
-        rdMaterial_LoadEntry(mat_fpath, pMaterial, 0, 0);
+        loaded = rdMaterial_LoadEntry(mat_fpath, pMaterial, 0, 0);
+    }
+    if (!loaded)
+    {
+        rdMaterial_FreeEntry(pMaterial);
+        pHS->free(pMaterial);
+        return NULL;
     }
     rdMaterial_EnsureData(pMaterial); // Added: TWL
     return pMaterial;
@@ -1252,9 +1316,16 @@ rdKeyframe* jkGuiBuildMulti_KeyframeLoader(const char *pKeyframeFname)
     char key_fpath[128]; // [esp+4h] [ebp-80h] BYREF
 
     pKeyframe = (rdKeyframe *)pHS->alloc(sizeof(rdKeyframe));
+    if (!pKeyframe)
+        return NULL;
     memset(pKeyframe, 0, sizeof(rdKeyframe));
     _sprintf(key_fpath, "3do%ckey%c%s", '\\', '\\', pKeyframeFname);
-    rdKeyframe_LoadEntry(key_fpath, pKeyframe);
+    if (!rdKeyframe_LoadEntry(key_fpath, pKeyframe))
+    {
+        rdKeyframe_FreeEntry(pKeyframe);
+        pHS->free(pKeyframe);
+        return NULL;
+    }
     return pKeyframe;
 }
 
@@ -1466,7 +1537,6 @@ int jkGuiBuildMulti_ShowEditCharacter(BOOL bIdk)
     int32_t v16; // esi
     int32_t v17; // eax
     int32_t v18; // edi
-    int32_t i; // esi
     int32_t previewStarted; // Added
     wchar_t *v21; // [esp-4h] [ebp-190h]
     int32_t idx; // [esp+10h] [ebp-17Ch] BYREF
@@ -1526,15 +1596,26 @@ int jkGuiBuildMulti_ShowEditCharacter(BOOL bIdk)
     if ( stdConffile_OpenRead("misc\\sabers.dat") )
     {
         stdConffile_ReadLine();
-        if ( _sscanf(stdConffile_aLine, "numsabers: %d", &jkGuiBuildMulti_numSabers) == 1 )
+        if ( _sscanf(stdConffile_aLine, "numsabers: %d", &jkGuiBuildMulti_numSabers) == 1
+            && jkGuiBuildMulti_numSabers > 0 )
         {
             jkGame_aSabers = (jkSaberInfo *)pHS->alloc(sizeof(jkSaberInfo) * jkGuiBuildMulti_numSabers);
-            memset(jkGame_aSabers, 0, sizeof(jkSaberInfo) * jkGuiBuildMulti_numSabers);
-            for ( jkGuiBuildMulti_apSaberBitmaps = (stdBitmap **)pHS->alloc(sizeof(stdBitmap*) * jkGuiBuildMulti_numSabers);
-                  stdConffile_ReadLine();
-                  jkGuiBuildMulti_apSaberBitmaps[idx] = v7 )
+            jkGuiBuildMulti_apSaberBitmaps = (stdBitmap **)pHS->alloc(sizeof(stdBitmap*) * jkGuiBuildMulti_numSabers);
+            if (!jkGame_aSabers || !jkGuiBuildMulti_apSaberBitmaps)
             {
-                _sscanf(stdConffile_aLine, "%d: %s %s %s", &idx, tmp3, tmp2, tmp1);
+                stdConffile_Close();
+                return jkGuiBuildMulti_FailEditCharacterStartup();
+            }
+            memset(jkGame_aSabers, 0, sizeof(jkSaberInfo) * jkGuiBuildMulti_numSabers);
+            memset(jkGuiBuildMulti_apSaberBitmaps, 0, sizeof(stdBitmap*) * jkGuiBuildMulti_numSabers);
+            while ( stdConffile_ReadLine() )
+            {
+                if (_sscanf(stdConffile_aLine, "%d: %s %s %s", &idx, tmp3, tmp2, tmp1) != 4
+                    || idx < 0
+                    || idx >= jkGuiBuildMulti_numSabers)
+                {
+                    continue;
+                }
                 _strncpy(jkGame_aSabers[idx].BM, tmp3, 0x1Fu);
                 v5 = jkGame_aSabers;
                 jkGame_aSabers[idx].BM[31] = 0;
@@ -1545,12 +1626,17 @@ int jkGuiBuildMulti_ShowEditCharacter(BOOL bIdk)
                 jkGame_aSabers[idx].tipMat[31] = 0;
                 stdString_snprintf(FileName, 128, "ui\\bm\\%s", tmp3);
                 v7 = stdBitmap_Load(FileName, 1, 0);
+                jkGuiBuildMulti_apSaberBitmaps[idx] = v7;
             }
         }
         stdConffile_Close();
     }
     else {
-        return 0; // Added: MoTS demo has no MP assets
+        return jkGuiBuildMulti_FailEditCharacterStartup(); // Added: MoTS demo has no MP assets
+    }
+    if (!jkGame_aSabers || !jkGuiBuildMulti_apSaberBitmaps || jkGuiBuildMulti_numSabers <= 0)
+    {
+        return jkGuiBuildMulti_FailEditCharacterStartup();
     }
 
     if ( v4 )
@@ -1586,13 +1672,21 @@ LABEL_16:
     if ( stdConffile_OpenRead("misc\\models.dat") )
     {
         stdConffile_ReadLine();
-        if ( _sscanf(stdConffile_aLine, "nummodels: %d", &jkGuiBuildMulti_numModels) == 1 )
+        if ( _sscanf(stdConffile_aLine, "nummodels: %d", &jkGuiBuildMulti_numModels) == 1
+            && jkGuiBuildMulti_numModels > 0 )
         {
             jkGuiBuildMulti_aModels = (jkMultiModelInfo *)pHS->alloc(jkGuiBuildMulti_numModels * sizeof(jkMultiModelInfo));
+            if (!jkGuiBuildMulti_aModels)
+            {
+                stdConffile_Close();
+                return jkGuiBuildMulti_FailEditCharacterStartup();
+            }
             memset(jkGuiBuildMulti_aModels, 0, jkGuiBuildMulti_numModels * sizeof(jkMultiModelInfo));
             while ( stdConffile_ReadLine() )
             {
-                if ( _sscanf(stdConffile_aLine, "%d: %s %s", &idx, tmp1, tmp2) == 3 )
+                if ( _sscanf(stdConffile_aLine, "%d: %s %s", &idx, tmp1, tmp2) == 3
+                    && idx >= 0
+                    && idx < jkGuiBuildMulti_numModels )
                 {
                     _strncpy(jkGuiBuildMulti_aModels[idx].modelFpath, tmp1, 0x1Fu);
                     v10 = jkGuiBuildMulti_aModels;
@@ -1603,6 +1697,10 @@ LABEL_16:
             }
         }
         stdConffile_Close();
+    }
+    if (!jkGuiBuildMulti_aModels || jkGuiBuildMulti_numModels <= 0)
+    {
+        return jkGuiBuildMulti_FailEditCharacterStartup();
     }
     if ( v4 )
     {
@@ -1702,20 +1800,8 @@ LABEL_32:
     if (previewStarted)
         jkGuiBuildMulti_ThingCleanup();
     jkGuiBuildMulti_CloseRender();
-    jkGuiBuildMulti_bSabersLoaded = 0;
-    if ( jkGuiBuildMulti_aModels )
-        pHS->free(jkGuiBuildMulti_aModels);
     jkGuiBuildMulti_bEditShowing = 0;
-    if ( jkGame_aSabers )
-        pHS->free(jkGame_aSabers);
-    for ( i = 0; i < jkGuiBuildMulti_numSabers; ++i ) {
-        stdBitmap_Free(jkGuiBuildMulti_apSaberBitmaps[i]);
-        jkGuiBuildMulti_apSaberBitmaps[i] = NULL; // Added
-    }
-    if ( jkGuiBuildMulti_apSaberBitmaps ) {
-        pHS->free(jkGuiBuildMulti_apSaberBitmaps);
-        jkGuiBuildMulti_apSaberBitmaps = NULL; // Added
-    }
+    jkGuiBuildMulti_FreeLoadedCharacterLists();
     jkGui_SetModeGame();
 
     // Added
