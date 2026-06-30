@@ -1764,7 +1764,11 @@ typedef struct rdColor24_local {
     unsigned char r, g, b;
 } rdColor24_local;
 
+#define XBOX_TEXTURE_ID_FREE_MAX 4096
+
 static unsigned int    g_nextTexId      = 2;   /* id 1 = diag checkerboard */
+static unsigned int    g_freeTextureIds[XBOX_TEXTURE_ID_FREE_MAX];
+static unsigned int    g_freeTextureIdCount = 0;
 static unsigned int    g_texUploaded    = 0;
 static unsigned int    g_texFailed      = 0;
 static rdColor24_local *g_pCurrentPalette = 0;
@@ -1827,6 +1831,23 @@ static int std3D_XboxTrackTexture(rdDDrawSurface *texture, unsigned int id)
     return 0;
 }
 
+static unsigned int std3D_XboxAllocTextureId(void)
+{
+    if (g_freeTextureIdCount > 0)
+        return g_freeTextureIds[--g_freeTextureIdCount];
+
+    return g_nextTexId++;
+}
+
+static void std3D_XboxRecycleTextureId(unsigned int id)
+{
+    if (id <= 1)
+        return;
+
+    if (g_freeTextureIdCount < XBOX_TEXTURE_ID_FREE_MAX)
+        g_freeTextureIds[g_freeTextureIdCount++] = id;
+}
+
 static void std3D_XboxClearSurface(rdDDrawSurface *texture)
 {
     if (!texture)
@@ -1859,6 +1880,7 @@ static void std3D_XboxDeleteTextureId(unsigned int id)
 
     glId = (GLuint)id;
     g_pfnDeleteTextures(1, &glId);
+    std3D_XboxRecycleTextureId(id);
 }
 
 int std3D_AddToTextureCache(stdVBuffer *vbuf, rdDDrawSurface *texture,
@@ -2043,16 +2065,7 @@ int std3D_AddToTextureCache(stdVBuffer *vbuf, rdDDrawSurface *texture,
 std3D_atc_do_upload:
     /* Allocate an id and upload.  glBindTexture before glTexImage2D so
      * FakeGL's TextureTable creates the entry under our chosen id. */
-    id = g_nextTexId++;
-    if (g_pfnBindTexture) {
-        g_pfnBindTexture(GL_TEXTURE_2D, id);
-        glTexParameterf(GL_TEXTURE_2D, GL_TEXTURE_MIN_FILTER, (GLfloat)GL_LINEAR);
-        glTexParameterf(GL_TEXTURE_2D, GL_TEXTURE_MAG_FILTER, (GLfloat)GL_LINEAR);
-        glTexParameterf(GL_TEXTURE_2D, GL_TEXTURE_WRAP_S,    (GLfloat)GL_REPEAT);
-        glTexParameterf(GL_TEXTURE_2D, GL_TEXTURE_WRAP_T,    (GLfloat)GL_REPEAT);
-        glTexImage2D(GL_TEXTURE_2D, 0, 4, (GLsizei)w, (GLsizei)h, 0,
-                     GL_RGBA, GL_UNSIGNED_BYTE, g_texScratch);
-    } else {
+    if (!g_pfnBindTexture) {
         if (fail_logN < 6) {
             XDBG("ATC fail nobind: g_pfnBindTexture is NULL\n");
             fail_logN++;
@@ -2061,6 +2074,14 @@ std3D_atc_do_upload:
         std3D_DebugLineKV(0, "TFAIL", g_texFailed);
         return 0;
     }
+    id = std3D_XboxAllocTextureId();
+    g_pfnBindTexture(GL_TEXTURE_2D, id);
+    glTexParameterf(GL_TEXTURE_2D, GL_TEXTURE_MIN_FILTER, (GLfloat)GL_LINEAR);
+    glTexParameterf(GL_TEXTURE_2D, GL_TEXTURE_MAG_FILTER, (GLfloat)GL_LINEAR);
+    glTexParameterf(GL_TEXTURE_2D, GL_TEXTURE_WRAP_S,    (GLfloat)GL_REPEAT);
+    glTexParameterf(GL_TEXTURE_2D, GL_TEXTURE_WRAP_T,    (GLfloat)GL_REPEAT);
+    glTexImage2D(GL_TEXTURE_2D, 0, 4, (GLsizei)w, (GLsizei)h, 0,
+                 GL_RGBA, GL_UNSIGNED_BYTE, g_texScratch);
 
     if (!std3D_XboxTrackTexture(texture, id)) {
         std3D_XboxDeleteTextureId(id);
@@ -2210,8 +2231,7 @@ static unsigned int std3D_XboxReleaseLargeUIBitmapTextures(const char *reason)
             continue;
 
         id = ref->id;
-        if (g_pfnDeleteTextures)
-            g_pfnDeleteTextures(1, &id);
+        std3D_XboxDeleteTextureId(id);
 
         if (bm->aTextureIds && ref->mipIdx >= 0 && ref->mipIdx < bm->numMips)
             bm->aTextureIds[ref->mipIdx] = 0;
@@ -2424,7 +2444,7 @@ static int xbox_upload_bitmap_mip(stdBitmap_local *bm, int mipIdx, int is_alpha_
     }
 
     if (!g_pfnBindTexture) return 0;
-    id = g_nextTexId++;
+    id = std3D_XboxAllocTextureId();
     g_pfnBindTexture(GL_TEXTURE_2D, id);
     /* UI textures: NEAREST + CLAMP_TO_EDGE.  Mirror upstream
      * `_ORIGINAL_READ_ONLY/.../Platform/GL/std3D.c:3106-3115,3124-3125`.
@@ -2493,8 +2513,11 @@ void std3D_PurgeBitmapRefs(void *pBmp)
         bm->abLoadedToGPU[i] = 0;
     }
 
-    if (count && g_pfnDeleteTextures)
-        g_pfnDeleteTextures((GLsizei)count, ids);
+    if (count) {
+        unsigned int deleteIdx;
+        for (deleteIdx = 0; deleteIdx < count; ++deleteIdx)
+            std3D_XboxDeleteTextureId(ids[deleteIdx]);
+    }
 
     std3D_XboxUntrackUIBitmap(bm);
 
@@ -2634,8 +2657,11 @@ void std3D_XboxReleaseCutsceneTextures(void)
             ids[count++] = tileTexIds[i];
     }
 
-    if (count && g_pfnDeleteTextures)
-        g_pfnDeleteTextures((GLsizei)count, ids);
+    if (count) {
+        unsigned int deleteIdx;
+        for (deleteIdx = 0; deleteIdx < count; ++deleteIdx)
+            std3D_XboxDeleteTextureId(ids[deleteIdx]);
+    }
 
     memset(tileTexIds, 0, sizeof(tileTexIds));
     memset(tileTexReady, 0, sizeof(tileTexReady));
@@ -2656,8 +2682,7 @@ void std3D_XboxReleaseMenuTextures(void)
     std3D_XboxReleaseCutsceneTextures();
     largeUiCount = std3D_XboxReleaseLargeUIBitmapTextures("menu-release");
 
-    if (texId && g_pfnDeleteTextures)
-        g_pfnDeleteTextures(1, &texId);
+    std3D_XboxDeleteTextureId(texId);
 
     menuTexId = 0;
     menuTexPadW = 0;
@@ -2917,7 +2942,7 @@ static void std3D_DrawMenuVBuffer8Tiled(stdVBuffer *vbuf, const rdColor24_local 
             }
 
             if (!tileTexIds[tileIdx])
-                tileTexIds[tileIdx] = g_nextTexId++;
+                tileTexIds[tileIdx] = std3D_XboxAllocTextureId();
 
             g_pfnBindTexture(GL_TEXTURE_2D, tileTexIds[tileIdx]);
             if (!tileTexReady[tileIdx])
@@ -3110,7 +3135,7 @@ void std3D_DrawMenuVBuffer8(stdVBuffer *vbuf, const rdColor24_local *pal)
         return;
 
     if (!menuTexId)
-        menuTexId = g_nextTexId++;
+        menuTexId = std3D_XboxAllocTextureId();
     texId = menuTexId;
     g_pfnBindTexture(GL_TEXTURE_2D, texId);
     if (menuTexPadW != padW || menuTexPadH != padH)
