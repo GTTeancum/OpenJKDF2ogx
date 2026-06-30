@@ -23,6 +23,7 @@ stdBitmap* stdBitmap_LoadCommon(char *fpath, int bCreateDDrawSurface, int gpuMem
         stdPrintf(std_pHS->errorPrint, ".\\General\\stdBitmap.c", 68, "Error: Unable to allocate memory for bitmap '%s'\n", fpath);
         return NULL;
     }
+    _memset(outAlloc, 0, sizeof(stdBitmap));
 
     v6 = stdBitmap_LoadEntry(fpath, outAlloc, bCreateDDrawSurface, gpuMem, bPartial);
     
@@ -32,6 +33,7 @@ stdBitmap* stdBitmap_LoadCommon(char *fpath, int bCreateDDrawSurface, int gpuMem
     }
     else
     {
+        stdBitmap_FreeEntry(outAlloc);
         std_pHS->free(outAlloc);
         result = 0;
     }
@@ -84,6 +86,7 @@ stdBitmap* stdBitmap_LoadFromFile(stdFile_t fd, int bCreateDDrawSurface, int gpu
         stdPrintf(std_pHS->errorPrint, ".\\General\\stdBitmap.c", 103, "Error: Unable to allocate memory for bitmap.\n", 0, 0, 0, 0);
         return NULL;
     }
+    _memset(outAlloc, 0, sizeof(stdBitmap));
 
     if (stdBitmap_LoadEntryFromFile(fd, outAlloc, bCreateDDrawSurface, gpuMem, 0))
     {
@@ -238,6 +241,7 @@ int stdBitmap_LoadEntryFromFile(intptr_t fp, stdBitmap *out, int bCreateDDrawSur
         {
 LABEL_17:
             stdPrintf(std_pHS->errorPrint, ".\\General\\stdBitmap.c", 297, "Error: Out of memory trying to load bitmap.\n", 0, 0, 0, 0);
+            stdBitmap_FreeEntry(out);
             return 0;
         }
         std_pHS->fileRead(fp, palette_map, 0x300);
@@ -247,6 +251,10 @@ LABEL_17:
     out->aTextureIds = (uint32_t*)std_pHS->alloc(out->numMips * sizeof(uint32_t));
     out->abLoadedToGPU = (int*)std_pHS->alloc(out->numMips * sizeof(int));
     out->paDataDepthConverted = (void**)std_pHS->alloc(out->numMips * sizeof(void*));
+    if (!out->aTextureIds || !out->abLoadedToGPU || !out->paDataDepthConverted)
+    {
+        goto LABEL_17;
+    }
 
     memset(out->aTextureIds, 0, (out->numMips * sizeof(uint32_t)));
     memset(out->abLoadedToGPU, 0, (out->numMips * sizeof(int)));
