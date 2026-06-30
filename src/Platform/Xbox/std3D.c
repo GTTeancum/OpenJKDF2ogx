@@ -2063,6 +2063,7 @@ std3D_atc_do_upload:
     }
 
     if (!std3D_XboxTrackTexture(texture, id)) {
+        std3D_XboxDeleteTextureId(id);
         fail_nobind++; g_texFailed++;
         std3D_DebugLineKV(0, "TFAIL", g_texFailed);
         return 0;
