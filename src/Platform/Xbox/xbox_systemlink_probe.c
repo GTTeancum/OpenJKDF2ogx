@@ -70,6 +70,8 @@ typedef struct XboxSystemLinkProbeState
     int initialized;
     int started;
     int socketsReady;
+    int xnetStartupOwned;
+    int wsaStartupOwned;
     SOCKET lobbySocket;
     SOCKET gameSocket;
     int localPort;
@@ -404,9 +406,11 @@ static int xboxSystemLinkProbe_InitSockets(void)
     params.cfgSecRegMax = 32;
 
     xnetResult = XNetStartup(&params);
+    g_xsl.xnetStartupOwned = (xnetResult == 0);
     linkStatus = XNetGetEthernetLinkStatus();
     memset(&wsaData, 0, sizeof(wsaData));
     wsaResult = WSAStartup(MAKEWORD(2, 2), &wsaData);
+    g_xsl.wsaStartupOwned = (wsaResult == 0);
 
     g_xsl.socketsReady = ((xnetResult == 0 || xnetResult == WSAEALREADY) && wsaResult == 0);
     g_xsl.lastError = g_xsl.socketsReady ? 0 : (wsaResult ? wsaResult : xnetResult);
@@ -416,7 +420,51 @@ static int xboxSystemLinkProbe_InitSockets(void)
                       g_xsl.socketsReady,
                       linkStatus,
                       (linkStatus & XNET_ETHERNET_LINK_ACTIVE) ? 1 : 0);
+    if (!g_xsl.socketsReady)
+    {
+        if (g_xsl.wsaStartupOwned)
+        {
+            WSACleanup();
+            g_xsl.wsaStartupOwned = 0;
+        }
+        if (g_xsl.xnetStartupOwned)
+        {
+            XNetCleanup();
+            g_xsl.xnetStartupOwned = 0;
+        }
+    }
     return g_xsl.socketsReady;
+}
+
+static void xboxSystemLinkProbe_CleanupSockets(const char *reason)
+{
+    int cleanedWsa;
+    int cleanedXnet;
+
+    cleanedWsa = g_xsl.wsaStartupOwned;
+    cleanedXnet = g_xsl.xnetStartupOwned;
+
+    if (!g_xsl.socketsReady && !cleanedWsa && !cleanedXnet)
+        return;
+
+    if (g_xsl.wsaStartupOwned)
+    {
+        WSACleanup();
+        g_xsl.wsaStartupOwned = 0;
+    }
+    if (g_xsl.xnetStartupOwned)
+    {
+        XNetCleanup();
+        g_xsl.xnetStartupOwned = 0;
+    }
+
+    g_xsl.socketsReady = 0;
+    g_xsl.hasLocalXnAddr = 0;
+    g_xsl.localXnAddrStatus = 0;
+    xbox_debug_Printf("XSL net cleanup reason=%s wsa=%d xnet=%d\n",
+                      reason ? reason : "unknown",
+                      cleanedWsa,
+                      cleanedXnet);
 }
 
 static void xboxSystemLinkProbe_UnregisterSession(const char *reason)
@@ -1142,6 +1190,7 @@ void xboxSystemLinkProbe_Stop(void)
     xboxSystemLinkProbe_CloseLobbySocket();
     xboxSystemLinkProbe_CloseGameSocket();
     xboxSystemLinkProbe_UnregisterSession("stop");
+    xboxSystemLinkProbe_CleanupSockets("stop");
     g_xsl.started = 0;
     g_xsl.gameplayActive = 0;
     g_xsl.phase = XBOX_SYSTEMLINK_PHASE_DISCOVERY;
@@ -2043,6 +2092,9 @@ void xboxSystemLinkProbe_GameClose(void)
     g_xsl.gameplayIsHost = 0;
     g_xsl.smokeHarness = 0;
     xboxSystemLinkProbe_CloseGameSocket();
+    xboxSystemLinkProbe_UnregisterSession("game close");
+    if (!g_xsl.started)
+        xboxSystemLinkProbe_CleanupSockets("game close");
 }
 
 void xboxSystemLinkProbe_GameEnumPlayers(void)
