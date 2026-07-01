@@ -3,7 +3,8 @@ param(
     [int]$WatchdogSeconds = 240,
     [string]$AutostartArgs = '-autostart -sp -episode JK1 -map 01narshadda.jkl',
     [switch]$BuildSmokeXbe,
-    [switch]$SkipBuildSmokeXbe
+    [switch]$SkipBuildSmokeXbe,
+    [switch]$NoRestoreNormalXbe
 )
 
 $ErrorActionPreference = 'Continue'
@@ -19,6 +20,8 @@ $outRoot = Join-Path $repo "build\xbox\smoke_logs\fps_smoke_$stamp"
 
 New-Item -ItemType Directory -Force -Path $outRoot | Out-Null
 
+$builtSmokeXbe = $false
+
 if ($BuildSmokeXbe -or -not $SkipBuildSmokeXbe) {
     $buildLog = Join-Path $outRoot 'build_xbox_perf_smoke.log'
     $oldSmoke = $env:XBOX_PERF_SMOKE
@@ -29,6 +32,7 @@ if ($BuildSmokeXbe -or -not $SkipBuildSmokeXbe) {
             Get-Content $buildLog -Tail 120
             throw "build_xbox.bat failed with exit code $LASTEXITCODE"
         }
+        $builtSmokeXbe = $true
     } finally {
         if ($null -eq $oldSmoke) {
             Remove-Item Env:\XBOX_PERF_SMOKE -ErrorAction SilentlyContinue
@@ -170,6 +174,26 @@ for ($i = 1; $i -le $Iterations; $i++) {
     ) | Set-Content -Path $summary
 
     Get-Content $summary
+}
+
+if ($builtSmokeXbe -and -not $NoRestoreNormalXbe) {
+    $restoreLog = Join-Path $outRoot 'build_xbox_restore_normal.log'
+    $oldSmoke = $env:XBOX_PERF_SMOKE
+    try {
+        Remove-Item Env:\XBOX_PERF_SMOKE -ErrorAction SilentlyContinue
+        & cmd /c build_xbox.bat > $restoreLog 2>&1
+        if ($LASTEXITCODE -ne 0) {
+            Get-Content $restoreLog -Tail 120
+            throw "normal build restore failed with exit code $LASTEXITCODE"
+        }
+    } finally {
+        if ($null -eq $oldSmoke) {
+            Remove-Item Env:\XBOX_PERF_SMOKE -ErrorAction SilentlyContinue
+        } else {
+            $env:XBOX_PERF_SMOKE = $oldSmoke
+        }
+    }
+    "restoredNormalXbe=true"
 }
 
 "smokeLogRoot=$outRoot"
