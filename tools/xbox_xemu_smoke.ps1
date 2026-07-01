@@ -32,6 +32,7 @@ $ConfigPath = Join-Path $InstanceDir "xemu.toml"
 $EepromPath = Join-Path $InstanceDir "EEPROM\eeprom_smoke.bin"
 $ScreenshotDir = Join-Path $RunDir "screenshots"
 $PollScript = Join-Path $RepoRoot "scripts\xbox\poll_xemu_ram_log.py"
+$NativeScreenshotScript = Join-Path $RepoRoot "scripts\xbox\xemu_native_screenshot.py"
 $XbePath = Join-Path $ReleaseRoot "default.xbe"
 $MapPath = Join-Path $ReleaseRoot "openjkdf2_xbox.exe.map"
 $XemuExeSource = Join-Path $XemuRoot "xemu.exe"
@@ -129,6 +130,75 @@ function Invoke-HmpCommand([int]$Port, [string]$Command, [int]$TimeoutMs = 2500)
     finally {
         $client.Close()
     }
+}
+
+function Wait-ForNonEmptyFile([string]$Path, [int]$TimeoutMs = 3000) {
+    $deadline = (Get-Date).AddMilliseconds($TimeoutMs)
+    while ((Get-Date) -lt $deadline) {
+        if ((Test-Path -LiteralPath $Path) -and ((Get-Item -LiteralPath $Path).Length -gt 0)) {
+            return $true
+        }
+        Start-Sleep -Milliseconds 100
+    }
+    return $false
+}
+
+function Invoke-XemuScreendump([int]$Port, [string]$OutPath, [string]$WorkingDir) {
+    $outFull = Get-FullPath $OutPath
+    $outSlash = $outFull -replace '\\', '/'
+    $localName = [System.IO.Path]::GetFileName($outFull)
+    $localPath = Join-Path $WorkingDir $localName
+    $attempts = @(
+        @{ Command = "screendump `"$outSlash`""; Source = $outFull },
+        @{ Command = "screendump $outSlash"; Source = $outFull },
+        @{ Command = "screendump `"$localName`""; Source = $localPath },
+        @{ Command = "screendump $localName"; Source = $localPath }
+    )
+    $replies = New-Object System.Collections.Generic.List[string]
+
+    foreach ($attempt in $attempts) {
+        $source = [string]$attempt.Source
+        Remove-Item -LiteralPath $outFull -Force -ErrorAction SilentlyContinue
+        if (![string]::Equals($source, $outFull, [System.StringComparison]::OrdinalIgnoreCase)) {
+            Remove-Item -LiteralPath $source -Force -ErrorAction SilentlyContinue
+        }
+
+        $reply = Invoke-HmpCommand $Port ([string]$attempt.Command) 2500
+        $replyOneLine = (($reply -replace "`r", "") -replace "`n", "\n")
+        if ($replyOneLine.Length -gt 180) {
+            $replyOneLine = $replyOneLine.Substring(0, 180)
+        }
+        $replies.Add("$($attempt.Command) => $replyOneLine")
+
+        if (Wait-ForNonEmptyFile $source 3000) {
+            if (![string]::Equals($source, $outFull, [System.StringComparison]::OrdinalIgnoreCase)) {
+                Copy-Item -LiteralPath $source -Destination $outFull -Force
+                Remove-Item -LiteralPath $source -Force -ErrorAction SilentlyContinue
+            }
+            if (Wait-ForNonEmptyFile $outFull 1000) {
+                return "captured $outFull via $($attempt.Command)"
+            }
+        }
+    }
+
+    throw "screendump did not create an image: $($replies -join ' | ')"
+}
+
+function Invoke-XemuNativeScreenshot([int]$ProcessId, [string]$XemuExePath, [string]$OutDir, [string]$StablePath) {
+    Require-Path $NativeScreenshotScript "XEMU native screenshot helper"
+    $nativeOut = & python $NativeScreenshotScript --pid ([string]$ProcessId) --xemu-exe $XemuExePath --screenshot-dir $OutDir --timeout 5 2>&1
+    $nativeText = ($nativeOut | Out-String).Trim()
+    if ($LASTEXITCODE -ne 0) {
+        throw "native screenshot failed: $nativeText"
+    }
+
+    $nativeJson = $nativeText | ConvertFrom-Json
+    if (!$nativeJson.ok -or !$nativeJson.path -or !(Test-Path -LiteralPath $nativeJson.path)) {
+        throw "native screenshot returned no image: $nativeText"
+    }
+
+    Copy-Item -LiteralPath $nativeJson.path -Destination $StablePath -Force
+    return "captured $StablePath via native XEMU screenshot ($($nativeJson.detail))"
 }
 
 function New-Stage {
@@ -326,12 +396,20 @@ try {
         }
 
         if ((Get-Date) -ge $nextScreenshot) {
-            $shot = Join-Path $ScreenshotDir ("shot_{0:D4}s.ppm" -f $elapsed)
+            $shot = Join-Path $ScreenshotDir ("shot_{0:D4}s.png" -f $elapsed)
             try {
-                [void](Invoke-HmpCommand $MonitorPort ("screendump " + ($shot -replace '\\', '/')))
+                $shotDetail = Invoke-XemuNativeScreenshot $proc.Id $XemuExe $ScreenshotDir $shot
+                Set-Content -LiteralPath (Join-Path $RunDir ("screenshot_{0:D4}s.txt" -f $elapsed)) -Value $shotDetail -Encoding ASCII
             }
             catch {
-                Set-Content -LiteralPath (Join-Path $RunDir ("screenshot_{0:D4}s.err.txt" -f $elapsed)) -Value $_.Exception.Message -Encoding ASCII
+                $fallbackShot = Join-Path $ScreenshotDir ("shot_{0:D4}s.ppm" -f $elapsed)
+                try {
+                    $shotDetail = Invoke-XemuScreendump $MonitorPort $fallbackShot $InstanceDir
+                    Set-Content -LiteralPath (Join-Path $RunDir ("screenshot_{0:D4}s.txt" -f $elapsed)) -Value $shotDetail -Encoding ASCII
+                }
+                catch {
+                    Set-Content -LiteralPath (Join-Path $RunDir ("screenshot_{0:D4}s.err.txt" -f $elapsed)) -Value $_.Exception.Message -Encoding ASCII
+                }
             }
             $nextScreenshot = (Get-Date).AddSeconds($ScreenshotEverySeconds)
         }
@@ -373,7 +451,9 @@ $fatalPatterns = @(
 )
 $fatalCount = Count-Matches $ramLogs $fatalPatterns
 $reached = Get-ReachedStates $ramLogs
-$screenshotCount = @(Get-ChildItem -LiteralPath $ScreenshotDir -Filter "*.ppm" -File -ErrorAction SilentlyContinue).Count
+$screenshotCount = @(
+    Get-ChildItem -LiteralPath $ScreenshotDir -Include "*.png", "*.ppm" -File -ErrorAction SilentlyContinue
+).Count
 
 $summary = @(
     "runLabel=$RunLabel",
