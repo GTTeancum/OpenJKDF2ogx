@@ -99,6 +99,7 @@ void FakeGL_DrawLinearRGBAFullscreen(const unsigned char *rgba, unsigned int wid
                                      unsigned int height, unsigned int pitch);
 void FakeGL_ReleaseMovieTexture(void);
 void std3D_PurgeEntireTextureCache(void);
+void std3D_XboxReleaseMovieTextures(void);
 void std3D_XboxReleaseMenuTextures(void);
 
 #ifdef __cplusplus
@@ -2688,14 +2689,11 @@ void std3D_XboxReleaseCutsceneTextures(void)
 #ifdef __cplusplus
 extern "C"
 #endif
-void std3D_XboxReleaseMenuTextures(void)
+void std3D_XboxReleaseMovieTextures(void)
 {
     unsigned int texId = menuTexId;
-    unsigned int largeUiCount;
 
     std3D_XboxReleaseCutsceneTextures();
-    largeUiCount = std3D_XboxReleaseLargeUIBitmapTextures("menu-release");
-
     std3D_XboxDeleteTextureId(texId);
 
     menuTexId = 0;
@@ -2703,8 +2701,22 @@ void std3D_XboxReleaseMenuTextures(void)
     menuTexPadH = 0;
     FakeGL_ReleaseMovieTexture();
 
-    XDBGF("CutsceneTrace: released menu texture tex=%u largeUi=%u deleteProc=%p\n",
-          texId, largeUiCount, (void*)g_pfnDeleteTextures);
+    XDBGF("CutsceneTrace: released movie/cutscene textures menuTex=%u deleteProc=%p\n",
+          texId, (void*)g_pfnDeleteTextures);
+}
+
+#ifdef __cplusplus
+extern "C"
+#endif
+void std3D_XboxReleaseMenuTextures(void)
+{
+    unsigned int largeUiCount;
+
+    std3D_XboxReleaseMovieTextures();
+    largeUiCount = std3D_XboxReleaseLargeUIBitmapTextures("menu-release");
+
+    XDBGF("CutsceneTrace: released menu-owned UI textures largeUi=%u deleteProc=%p\n",
+          largeUiCount, (void*)g_pfnDeleteTextures);
 }
 
 static void std3D_DrawMenuVBuffer8Tiled(stdVBuffer *vbuf, const rdColor24_local *pal)

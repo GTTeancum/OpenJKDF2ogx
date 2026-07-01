@@ -130,7 +130,13 @@ build_openjkdf2_venv/*
 .vs/
 build/xbox/debug/
 build/xbox/release/
+build/xbox/smoke_logs/
 build/xbox/smoke_runs/
+build/xbox/xemu_ram_logs/
+build/xbox/xemu_smoke_runs/
+build/xbox/xemu_syslink_screenshots/
+build/xbox/*xemu*.iso
+build/xbox/xemu_*stage*/
 build/xbox/chm_extract/
 build/xbox/chm_text/
 build/xbox/test/

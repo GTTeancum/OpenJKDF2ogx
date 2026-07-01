@@ -53,6 +53,10 @@ int stdControl_XboxMovieSkipRequested(int *outPort, const char **outReason);
 #ifdef __cplusplus
 extern "C"
 #endif
+void std3D_XboxReleaseMovieTextures(void);
+#ifdef __cplusplus
+extern "C"
+#endif
 void std3D_XboxReleaseMenuTextures(void);
 #ifdef __cplusplus
 extern "C"
@@ -442,7 +446,7 @@ void jkCutscene_CleanReset()
     }
 #ifdef TARGET_XBOX
     stdSound_XboxStreamClose();
-    std3D_XboxReleaseMenuTextures();
+    std3D_XboxReleaseMovieTextures();
 #endif
 #endif
 
@@ -606,11 +610,11 @@ int jkCutscene_sub_421310(char* fpath)
 #ifdef TARGET_XBOX
     if (xboxXmv_PlayForSmkPath(tmp))
     {
-        stdPlatform_Printf("CutsceneTrace: XMV finished, releasing cutscene/menu state before level load\n");
+        stdPlatform_Printf("CutsceneTrace: XMV finished, releasing movie state only\n");
         jkCutscene_xboxXmvFinished = 0;
         jkCutscene_isRendering = 0;
         stdSound_XboxStreamClose();
-        std3D_XboxReleaseMenuTextures();
+        std3D_XboxReleaseMovieTextures();
         jkGui_SetModeGame();
         jk_ShowCursor(1);
         return 1;
