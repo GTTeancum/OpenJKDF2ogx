@@ -557,7 +557,7 @@ int jkEpisode_UpdateExtra(sithThing *pPlayerThing)
 {
     // HACK: Sometimes when the player is killed, the blade isn't restored?
     if (sithInventory_GetCurWeapon(pPlayerThing) == SITHBIN_LIGHTSABER && !(pPlayerThing->jkFlags & JKFLAG_SABERON)) {
-        pPlayerThing->jkFlags |= JKFLAG_SABERON;
+        pPlayerThing->jkFlags |= JKFLAG_SABERON | JKFLAG_SABERFORCEON;
     }
 
     // Removed: I want more logic in jkSaber_UpdateLength
