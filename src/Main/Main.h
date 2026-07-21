@@ -16,6 +16,8 @@ extern int32_t Main_bVerboseNetworking;
 extern int32_t Main_bMotsCompat;
 extern int32_t Main_bDwCompat;
 extern int32_t Main_bEnhancedCogVerbs;
+extern int32_t Main_numBots;
+extern int32_t Main_botMatchSeconds;
 #endif
 
 int Main_ShouldUseMotsForcePowers(void);

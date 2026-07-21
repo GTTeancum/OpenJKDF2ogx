@@ -37,9 +37,6 @@ const unsigned int embeddedResource_aFiles_num = 0;
    The C++ globals above intentionally use C++ mangling.
    ================================================================ */
 /* All globals and stubs — C++ linkage to match callers */
-HostServices* std_pHS = 0;
-HostServices* pHS = 0;
-
 /* ================================================================
    MSVC RUNTIME HELPERS - not in XDK CRT, need manual provision
    ================================================================ */

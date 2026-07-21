@@ -7,6 +7,9 @@ param(
     [string]$OutRoot = "C:\Programming\GitHub\OpenJKDF2ogx\build\xbox\smoke_runs",
     [int]$FmvLimitSeconds = 0,
     [string]$AutoStartLevel = "",
+    [string]$AutoStartArgs = "",
+    [int]$BotCount = 0,
+    [int]$BotMatchSeconds = 0,
     [switch]$DisableMusic
 )
 
@@ -30,6 +33,7 @@ $copiedCxbxDebugLog = Join-Path $runDir "CxbxDebug.txt"
 $copiedKrnlDebugLog = Join-Path $runDir "KrnlDebug.txt"
 $fmvLimitPath = Join-Path $AppDir "xbox_smoke_fmv_seconds.txt"
 $autoStartPath = Join-Path $AppDir "xbox_smoke_autostart_level.txt"
+$autoStartArgsPath = Join-Path $AppDir "xbox_smoke_autostart_args.txt"
 $disableMusicPath = Join-Path $AppDir "xbox_smoke_disable_music.txt"
 
 function Get-CxbxProcesses {
@@ -103,6 +107,8 @@ function Get-ReachedStates($Path) {
     if (Test-LogPattern $Path "GameplayShow: done") { $states.Add("gameplay-show-done") }
     if (Test-LogPattern $Path "GameplayTick: enter|sithTick: enter") { $states.Add("first-tick") }
     if (Test-LogPattern $Path "XboxFrame: begin n=") { $states.Add("xbox-frame") }
+    if (Test-LogPattern $Path "BotNav: generated") { $states.Add("botnav") }
+    if (Test-LogPattern $Path "BotMatch: scoreboard reason=timed-final") { $states.Add("botmatch-final") }
     if ($states.Count -eq 0) { return "none" }
     return ($states -join ",")
 }
@@ -129,12 +135,22 @@ Remove-Item -LiteralPath $krnlDebugLog -Force -ErrorAction SilentlyContinue
 Remove-Item -LiteralPath $fallbackGameLog -Force -ErrorAction SilentlyContinue
 Remove-Item -LiteralPath $fmvLimitPath -Force -ErrorAction SilentlyContinue
 Remove-Item -LiteralPath $autoStartPath -Force -ErrorAction SilentlyContinue
+Remove-Item -LiteralPath $autoStartArgsPath -Force -ErrorAction SilentlyContinue
 Remove-Item -LiteralPath $disableMusicPath -Force -ErrorAction SilentlyContinue
 if ($FmvLimitSeconds -gt 0) {
     Set-Content -LiteralPath $fmvLimitPath -Value ([string]$FmvLimitSeconds) -Encoding ASCII
 }
 if ($AutoStartLevel.Length -gt 0) {
     Set-Content -LiteralPath $autoStartPath -Value $AutoStartLevel -Encoding ASCII
+}
+if ($AutoStartArgs.Length -eq 0 -and $BotCount -gt 0) {
+    $AutoStartArgs = "-autostart -mp -episode JK1MP -map m2.jkl -bots $BotCount"
+    if ($BotMatchSeconds -gt 0) {
+        $AutoStartArgs += " -botmatch-seconds $BotMatchSeconds"
+    }
+}
+if ($AutoStartArgs.Length -gt 0) {
+    Set-Content -LiteralPath $autoStartArgsPath -Value $AutoStartArgs -Encoding ASCII -NoNewline
 }
 if ($DisableMusic) {
     Set-Content -LiteralPath $disableMusicPath -Value "1" -Encoding ASCII
@@ -177,6 +193,7 @@ Stop-CxbxProcesses
 Start-Sleep -Seconds 1
 Remove-Item -LiteralPath $fmvLimitPath -Force -ErrorAction SilentlyContinue
 Remove-Item -LiteralPath $autoStartPath -Force -ErrorAction SilentlyContinue
+Remove-Item -LiteralPath $autoStartArgsPath -Force -ErrorAction SilentlyContinue
 Remove-Item -LiteralPath $disableMusicPath -Force -ErrorAction SilentlyContinue
 
 $activeLogAfter = if (Test-Path -LiteralPath $gameLog) { $gameLog } elseif (Test-Path -LiteralPath $fallbackGameLog) { $fallbackGameLog } else { $null }
@@ -236,6 +253,9 @@ $summary.Add("durationSeconds=$duration")
 $summary.Add("watchdogSeconds=$WatchdogSeconds")
 $summary.Add("fmvLimitSeconds=$FmvLimitSeconds")
 $summary.Add("autoStartLevel=$AutoStartLevel")
+$summary.Add("autoStartArgs=$AutoStartArgs")
+$summary.Add("botCount=$BotCount")
+$summary.Add("botMatchSeconds=$BotMatchSeconds")
 $summary.Add("disableMusic=$([bool]$DisableMusic)")
 $summary.Add("loader=$loader")
 $summary.Add("managedProcessNames=cxbx-project1.exe,cxbxr-ldr-project1.exe")
@@ -266,6 +286,8 @@ if (Test-Path -LiteralPath $parsePath) {
         "stdMci:",
         "stdSound_XboxCreateBuffer:",
         "GameplayShow:",
+        "BotNav:",
+        "BotMatch:",
         "CutsceneTrace:",
         "XmvDbg"
     )

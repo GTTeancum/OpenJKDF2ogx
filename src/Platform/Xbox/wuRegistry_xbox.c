@@ -8,9 +8,6 @@
 #include "jk.h"
 #include <wchar.h>
 
-int  wuRegistry_bInitted   = 0;
-const char *wuRegistry_lpSubKey = "";
-
 LSTATUS wuRegistry_Startup(void *hKey, const char *lpSubKey, unsigned char *lpData)
 {
     (void)hKey; (void)lpSubKey; (void)lpData;

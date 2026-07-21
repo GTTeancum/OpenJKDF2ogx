@@ -129,6 +129,8 @@ int32_t Main_bVerboseNetworking = 0;
 int32_t Main_bMotsCompat = 0;
 int32_t Main_bDwCompat = 0;
 int32_t Main_bEnhancedCogVerbs = 0;
+int32_t Main_numBots = 0;
+int32_t Main_botMatchSeconds = 0;
 char Main_strEpisode[129];
 char Main_strMap[128+4];
 #endif
@@ -189,6 +191,20 @@ int Main_StartupDedicated(int bFullyDedicated)
 
     jkGuiNetHost_SaveSettings();
     jkGuiNetHost_LoadSettings();
+
+    if (Main_numBots > 0) {
+        int desiredMaxPlayers = Main_numBots + 1;
+        if (desiredMaxPlayers > JKPLAYER_NUM_INFOS)
+            desiredMaxPlayers = JKPLAYER_NUM_INFOS;
+        if (jkGuiNetHost_maxPlayers < desiredMaxPlayers)
+            jkGuiNetHost_maxPlayers = desiredMaxPlayers;
+        jkGuiNetHost_gameFlags |= MULTIMODEFLAG_SINGLE_LEVEL;
+        jkGuiNetHost_gameFlags &= ~(MULTIMODEFLAG_SCORELIMIT | MULTIMODEFLAG_TIMELIMIT);
+        jkGuiNetHost_scoreLimit = 0;
+        jkGuiNetHost_timeLimit = 0;
+        if (jkGuiNetHost_tickRate <= 0)
+            jkGuiNetHost_tickRate = 180;
+    }
 
     // Fake player
     stdString_SafeWStrCopy(jkGuiMultiplayer_mpcInfo.name, L"", 32);
@@ -647,6 +663,8 @@ void Main_Shutdown()
     Main_bVerboseNetworking = 0;
     Main_bDwCompat = 0;
     Main_bEnhancedCogVerbs = 0;
+    Main_numBots = 0;
+    Main_botMatchSeconds = 0;
     memset(Main_strEpisode, 0, sizeof(Main_strEpisode));
     memset(Main_strMap, 0, sizeof(Main_strMap));
 
@@ -793,6 +811,22 @@ void Main_ParseCmdLine(char *cmdline)
         {
             char* pArgNext = _strtok(0, " \t");
             stdString_SafeStrCopy(Main_strMap, pArgNext, 0x80);
+        }
+        else if (!__strcmpi(pArgTok, "-bots") || !__strcmpi(pArgTok, "/bots") )
+        {
+            char* pArgNext = _strtok(0, " \t");
+            Main_numBots = pArgNext ? _atoi(pArgNext) : 0;
+            if (Main_numBots < 0)
+                Main_numBots = 0;
+            if (Main_numBots > JKPLAYER_NUM_INFOS - 1)
+                Main_numBots = JKPLAYER_NUM_INFOS - 1;
+        }
+        else if (!__strcmpi(pArgTok, "-botmatch-seconds") || !__strcmpi(pArgTok, "/botmatch-seconds") )
+        {
+            char* pArgNext = _strtok(0, " \t");
+            Main_botMatchSeconds = pArgNext ? _atoi(pArgNext) : 0;
+            if (Main_botMatchSeconds < 0)
+                Main_botMatchSeconds = 0;
         }
         else if (!__strcmpi(pArgTok, "-headless") || !__strcmpi(pArgTok, "/headless") )
         {

@@ -19,6 +19,7 @@
 #include "AI/sithAI.h"
 #include "AI/sithAIClass.h"
 #include "AI/sithAIAwareness.h"
+#include "AI/sithBot.h"
 #include "Gameplay/sithEvent.h"
 #include "Engine/sithRender.h"
 #include "Engine/sithCamera.h"
@@ -496,6 +497,8 @@ int sithMain_Tick()
 #endif
                     sithAI_TickAll();
                 }
+                if (sithNet_isMulti && sithNet_isServer)
+                    sithBot_TickAll(sithTime_deltaSeconds, sithTime_deltaMs);
 
 #ifdef TARGET_XBOX
 #endif
@@ -537,6 +540,9 @@ int sithMain_Tick()
 
             if ( (g_debugmodeFlags & DEBUGFLAG_NO_AIEVENTS) == 0 && (!sithNet_isMulti || sithNet_isMulti && sithNet_isServer))
                 sithAI_TickAll();
+
+            if (sithNet_isMulti && sithNet_isServer)
+                sithBot_TickAll(sithTime_deltaSeconds, sithTime_deltaMs);
 
             sithSurface_Tick(sithTime_deltaSeconds);
             if ( g_sithMode != 2 )

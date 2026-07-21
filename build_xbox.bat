@@ -207,6 +207,7 @@ for %%F in (
     src\AI\sithAIAwareness.c
     src\AI\sithAICmd.c
     src\AI\sithAIClass.c
+    src\AI\sithBot.c
     src\Devices\sithConsole.c
     src\Devices\sithControl.c
     src\Devices\sithSound.c
