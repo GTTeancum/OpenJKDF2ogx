@@ -103,3 +103,19 @@ build/xbox/smoke_runs/20260726_115616-q3dm5-splitscreen2-sixbot-300-97-weighted-
 
 The Xbox build completed with `audit_xbox.py: OK`, no bot compiler warnings,
 and no build errors.
+
+## Repeatable Quality Gate
+
+Saved smoke runs can be checked without relaunching the emulator:
+
+```powershell
+powershell -NoProfile -ExecutionPolicy Bypass -File `
+  .\tools\xbox_bot_quality_report.ps1 -RunDir <smoke-run-directory>
+```
+
+The default q3dm5 gate requires a complete muted match, no game or emulator
+fatals, no suicides, no firing without line of sight, no failed jump-pad
+transits, Bryar loadouts and distinct models for every bot, multiple ranged
+weapons, successful pickups and Force use, and no more than 0.90 recovered
+route stalls per bot-minute. Thresholds can be overridden when qualifying maps
+with materially different geometry.
