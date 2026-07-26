@@ -70,6 +70,7 @@ void sithExplosion_UpdateForce(sithThing *explosion)
 {
     sithCollisionSearchEntry *i; // ebp
     sithThing **debrisTemplates; // edi
+    sithThing *debrisOwner;
     rdVector3 a2; // [esp+24h] [ebp-3Ch] BYREF
     rdMatrix34 a3; // [esp+30h] [ebp-30h] BYREF
 
@@ -112,6 +113,9 @@ void sithExplosion_UpdateForce(sithThing *explosion)
         sithCollision_SearchClose();
     }
     
+    debrisOwner = sithThing_GetParent(explosion);
+    if (debrisOwner == explosion)
+        debrisOwner = 0;
     debrisTemplates = explosion->explosionParams.debrisTemplates;
     for (int i = 0; i < 4; i++)
     {
@@ -121,7 +125,7 @@ void sithExplosion_UpdateForce(sithThing *explosion)
             a2.y = _frand() * 360.0;
             a2.z = _frand() * 360.0;
             rdMatrix_BuildRotate34(&a3, &a2);
-            sithThing_Create(*debrisTemplates, &explosion->position, &a3, explosion->sector, 0);
+            sithThing_Create(*debrisTemplates, &explosion->position, &a3, explosion->sector, debrisOwner);
         }
         ++debrisTemplates;
     }

@@ -140,6 +140,7 @@ int sithMulti_ProcessJoinRequest(sithCogMsg *msg);
 void sithMulti_HandleTimeLimit(int deltaMs);
 uint32_t sithMulti_IterPlayersnothingidk(int net_id);
 int sithMulti_SendPing(int sendtoId);
+void sithMulti_CompleteLocalJoinForAutostart(void);
 
 //static void (*sithMulti_Startup)() = (void*)sithMulti_Startup_ADDR;
 //static void (*sithMulti_FreeThing)(int a1) = (void*)sithMulti_FreeThing_ADDR;

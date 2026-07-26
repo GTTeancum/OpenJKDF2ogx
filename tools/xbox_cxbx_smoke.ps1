@@ -10,7 +10,8 @@ param(
     [string]$AutoStartArgs = "",
     [int]$BotCount = 0,
     [int]$BotMatchSeconds = 0,
-    [switch]$DisableMusic
+    [switch]$DisableMusic,
+    [switch]$MuteAudio
 )
 
 $ErrorActionPreference = "Stop"
@@ -35,6 +36,7 @@ $fmvLimitPath = Join-Path $AppDir "xbox_smoke_fmv_seconds.txt"
 $autoStartPath = Join-Path $AppDir "xbox_smoke_autostart_level.txt"
 $autoStartArgsPath = Join-Path $AppDir "xbox_smoke_autostart_args.txt"
 $disableMusicPath = Join-Path $AppDir "xbox_smoke_disable_music.txt"
+$muteAudioPath = Join-Path $AppDir "xbox_smoke_mute_audio.txt"
 
 function Get-CxbxProcesses {
     $root = try { (Resolve-Path -LiteralPath $CxbxRoot -ErrorAction Stop).Path } catch { $CxbxRoot }
@@ -107,7 +109,7 @@ function Get-ReachedStates($Path) {
     if (Test-LogPattern $Path "GameplayShow: done") { $states.Add("gameplay-show-done") }
     if (Test-LogPattern $Path "GameplayTick: enter|sithTick: enter") { $states.Add("first-tick") }
     if (Test-LogPattern $Path "XboxFrame: begin n=") { $states.Add("xbox-frame") }
-    if (Test-LogPattern $Path "BotNav: generated") { $states.Add("botnav") }
+    if (Test-LogPattern $Path "BotNav: (generated|cache-load|ready)") { $states.Add("botnav") }
     if (Test-LogPattern $Path "BotMatch: scoreboard reason=timed-final") { $states.Add("botmatch-final") }
     if ($states.Count -eq 0) { return "none" }
     return ($states -join ",")
@@ -137,6 +139,7 @@ Remove-Item -LiteralPath $fmvLimitPath -Force -ErrorAction SilentlyContinue
 Remove-Item -LiteralPath $autoStartPath -Force -ErrorAction SilentlyContinue
 Remove-Item -LiteralPath $autoStartArgsPath -Force -ErrorAction SilentlyContinue
 Remove-Item -LiteralPath $disableMusicPath -Force -ErrorAction SilentlyContinue
+Remove-Item -LiteralPath $muteAudioPath -Force -ErrorAction SilentlyContinue
 if ($FmvLimitSeconds -gt 0) {
     Set-Content -LiteralPath $fmvLimitPath -Value ([string]$FmvLimitSeconds) -Encoding ASCII
 }
@@ -154,6 +157,9 @@ if ($AutoStartArgs.Length -gt 0) {
 }
 if ($DisableMusic) {
     Set-Content -LiteralPath $disableMusicPath -Value "1" -Encoding ASCII
+}
+if ($MuteAudio) {
+    Set-Content -LiteralPath $muteAudioPath -Value "1" -Encoding ASCII
 }
 
 $start = Get-Date
@@ -195,6 +201,7 @@ Remove-Item -LiteralPath $fmvLimitPath -Force -ErrorAction SilentlyContinue
 Remove-Item -LiteralPath $autoStartPath -Force -ErrorAction SilentlyContinue
 Remove-Item -LiteralPath $autoStartArgsPath -Force -ErrorAction SilentlyContinue
 Remove-Item -LiteralPath $disableMusicPath -Force -ErrorAction SilentlyContinue
+Remove-Item -LiteralPath $muteAudioPath -Force -ErrorAction SilentlyContinue
 
 $activeLogAfter = if (Test-Path -LiteralPath $gameLog) { $gameLog } elseif (Test-Path -LiteralPath $fallbackGameLog) { $fallbackGameLog } else { $null }
 if ($activeLogAfter) {
@@ -257,6 +264,7 @@ $summary.Add("autoStartArgs=$AutoStartArgs")
 $summary.Add("botCount=$BotCount")
 $summary.Add("botMatchSeconds=$BotMatchSeconds")
 $summary.Add("disableMusic=$([bool]$DisableMusic)")
+$summary.Add("muteAudio=$([bool]$MuteAudio)")
 $summary.Add("loader=$loader")
 $summary.Add("managedProcessNames=cxbx-project1.exe,cxbxr-ldr-project1.exe")
 $summary.Add("xbeSource=$xbeSrc")

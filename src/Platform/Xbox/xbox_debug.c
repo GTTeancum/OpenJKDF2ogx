@@ -86,6 +86,8 @@ static int xbox_debug_ShouldLogText(const char *msg)
     if (!strncmp(msg, "Smoke:", 6)) return 1;
     if (!strncmp(msg, "XSL", 3)) return 1;
     if (!strncmp(msg, "SplitScreen", 11)) return 1;
+    if (!strncmp(msg, "BotNav:", 7)) return 1;
+    if (!strncmp(msg, "BotMatch:", 9)) return 1;
     if (!strncmp(msg, "main:", 5)) return 1;
     if (!strncmp(msg, "Main_Startup:", 13)) return 1;
     if (!strncmp(msg, "TitleShowLoading:", 17)) return 1;

@@ -11,6 +11,7 @@
 #include "World/sithThing.h"
 #include "World/sithSector.h"
 #include "World/sithTemplate.h"
+#include "AI/sithBot.h"
 #include "AI/sithAI.h"
 #include "AI/sithAIAwareness.h"
 #include "AI/sithAIClass.h"
@@ -145,6 +146,10 @@ flex_t sithActor_Hit(sithThing *sender, sithThing *receiver, flex_t amount, int 
             return 0.0;
     }
 
+    if (sithBot_ShouldSuppressDamage(sender, receiver, amount, flags))
+        return 0.0;
+
+    sithBot_LogDamageEvent(sender, receiver, amount, flags);
     sender->actorParams.health -= amount;
     if ( sender == sithPlayer_pLocalPlayerThing )
     {

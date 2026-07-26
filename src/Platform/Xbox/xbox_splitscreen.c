@@ -2,6 +2,7 @@
 
 #include "xbox_debug.h"
 #include "xbox_systemlink_probe.h"
+#include "AI/sithBot.h"
 #include "Cog/sithCog.h"
 #include "Devices/sithControl.h"
 #include "Dss/sithMulti.h"
@@ -243,6 +244,7 @@ static void xboxSplitScreen_ClearLocalInvulnerability(void)
         if (jkPlayer_playerInfos[playerIdx].playerThing)
             jkPlayer_playerInfos[playerIdx].playerThing->thingflags &= ~SITH_TF_INVULN;
     }
+    sithBot_ClearActiveBotInvulnerability();
 }
 
 static void xboxSplitScreen_RestoreLocalName(int slot)

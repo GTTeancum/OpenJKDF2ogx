@@ -37,6 +37,7 @@ typedef struct
 static XboxDSEntry  g_dsTable[MAX_DS_BUFFERS];
 static int          g_dsCount = 0;
 static IDirectSound *g_pDS    = NULL;
+static int          g_smokeMuteAudio = 0;
 
 float stdSound_fMenuVolume = 1.0f;
 
@@ -67,6 +68,11 @@ typedef struct XboxPCMStream
 } XboxPCMStream;
 
 static XboxPCMStream g_pcmStream;
+
+static float xbox_EffectiveVolume(float volume)
+{
+    return g_smokeMuteAudio ? 0.0f : volume;
+}
 
 IDirectSound *stdSound_XboxGetDirectSound(void)
 {
@@ -391,7 +397,8 @@ int stdSound_XboxStreamOpen(int bStereo, unsigned int sampleRate,
 
     xbox_StreamWriteSilence(0, bufferBytes);
     IDirectSoundBuffer_SetCurrentPosition(g_pcmStream.pDS, 0);
-    IDirectSoundBuffer_SetVolume(g_pcmStream.pDS, xbox_VolToDS(volume * stdSound_fMenuVolume));
+    IDirectSoundBuffer_SetVolume(g_pcmStream.pDS,
+                                 xbox_VolToDS(xbox_EffectiveVolume(volume * stdSound_fMenuVolume)));
     XDBGF("stdSound_XboxStreamOpen[v8-audiobuffer]: ch=%u rate=%u bits=%u buf=%lu prefill=%lu\n",
           (unsigned)wfx.nChannels, sampleRate, (unsigned)bitsPerSample,
           (unsigned long)bufferBytes, (unsigned long)g_pcmStream.prefillBytes);
@@ -473,7 +480,8 @@ int stdSound_XboxStreamWrite(const void *data, unsigned int bytes)
     if (!g_pcmStream.started && g_pcmStream.queuedBytes >= g_pcmStream.prefillBytes)
     {
         IDirectSoundBuffer_SetCurrentPosition(g_pcmStream.pDS, 0);
-        IDirectSoundBuffer_SetVolume(g_pcmStream.pDS, xbox_VolToDS(g_pcmStream.volume * stdSound_fMenuVolume));
+        IDirectSoundBuffer_SetVolume(g_pcmStream.pDS,
+                                     xbox_VolToDS(xbox_EffectiveVolume(g_pcmStream.volume * stdSound_fMenuVolume)));
         g_pcmStream.started = SUCCEEDED(IDirectSoundBuffer_Play(g_pcmStream.pDS, 0, 0, DSBPLAY_LOOPING)) ? 1 : 0;
         g_pcmStream.lastPlayPos = 0;
         g_pcmStream.playPosValid = g_pcmStream.started;
@@ -665,7 +673,13 @@ static void xbox_DS3DToXbox(float *x, float *y, float *z, const rdVector3 *in)
 
 int stdSound_Startup(void)
 {
+    HANDLE muteMarker = CreateFileA("D:\\xbox_smoke_mute_audio.txt", GENERIC_READ, FILE_SHARE_READ,
+                                    NULL, OPEN_EXISTING, FILE_ATTRIBUTE_NORMAL, NULL);
     HRESULT hr = DirectSoundCreate(NULL, &g_pDS, NULL);
+
+    g_smokeMuteAudio = muteMarker != INVALID_HANDLE_VALUE;
+    if (muteMarker != INVALID_HANDLE_VALUE)
+        CloseHandle(muteMarker);
     if (FAILED(hr)) { XDBGF("stdSound_Startup: failed 0x%X\n", hr); return 0; }
     jkGuiSound_b3DSound_3 = 1;
     jkGuiSound_b3DSound = 1;
@@ -673,7 +687,7 @@ int stdSound_Startup(void)
     IDirectSound_SetDistanceFactor(g_pDS, 1.0f, DS3D_IMMEDIATE);
     IDirectSound_SetRolloffFactor(g_pDS, 1.0f, DS3D_IMMEDIATE);
     IDirectSound_SetDopplerFactor(g_pDS, 1.0f, DS3D_IMMEDIATE);
-    XDBG("stdSound_Startup: DirectSound ready\n");
+    XDBGF("stdSound_Startup: DirectSound ready muted=%d\n", g_smokeMuteAudio);
     return 1;
 }
 
@@ -751,7 +765,8 @@ int stdSound_BufferPlay(stdSound_buffer_t *buf, int loop)
     e = xbox_DSFind(buf);
     if (!e || !e->pDS) return 0;
     IDirectSoundBuffer_SetCurrentPosition(e->pDS, 0);
-    IDirectSoundBuffer_SetVolume(e->pDS, xbox_VolToDS(buf->vol * stdSound_fMenuVolume));
+    IDirectSoundBuffer_SetVolume(e->pDS,
+                                 xbox_VolToDS(xbox_EffectiveVolume(buf->vol * stdSound_fMenuVolume)));
     e->bLooping = loop;
     e->bPlaying = SUCCEEDED(IDirectSoundBuffer_Play(e->pDS, 0, 0, loop ? DSBPLAY_LOOPING : 0)) ? 1 : 0;
     return e->bPlaying;
@@ -819,7 +834,9 @@ void stdSound_BufferSetVolume(stdSound_buffer_t *a1, float a2)
     if (!a1) return;
     a1->vol = a2;
     e = xbox_DSFind(a1);
-    if (e && e->pDS) IDirectSoundBuffer_SetVolume(e->pDS, xbox_VolToDS(a2 * stdSound_fMenuVolume));
+    if (e && e->pDS)
+        IDirectSoundBuffer_SetVolume(e->pDS,
+                                     xbox_VolToDS(xbox_EffectiveVolume(a2 * stdSound_fMenuVolume)));
 }
 
 void stdSound_BufferSetPan(stdSound_buffer_t *a1, float a2) { (void)a1; (void)a2; }

@@ -196,6 +196,13 @@ static int jkMain_CreateLocalMultiplayerHost(const char *pGobPath, const char *p
           sithNet_isMulti,
           sithNet_isServer,
           jkPlayer_maxPlayers);
+#ifdef TARGET_XBOX
+    if (Main_bAutostart)
+    {
+        g_submodeFlags |= 8u;
+        XDBG("BotMatch: local multiplayer host created; submode gameplay flag set\n");
+    }
+#endif
     return 1;
 }
 #endif
@@ -1027,9 +1034,22 @@ LABEL_28:
 #endif
         JKTRACE("GameplayShow: thing_eight=1\n");
         thing_eight = 1;
+#ifdef TARGET_XBOX
+        if (Main_bAutostart)
+        {
+            sithMulti_CompleteLocalJoinForAutostart();
+            XDBG("BotMatch: autostart gameplay active\n");
+        }
+#endif
         JKTRACE("GameplayShow: done\n");
 #ifdef TARGET_XBOX
         XDBG("MPLoadTrace: GameplayShow done\n");
+        XDBGF("BotMatch: gameplay-state ready suspended=%d state=%d stopTick=%d thingEight=%d thingSix=%d\n",
+              g_app_suspended,
+              jkSmack_currentGuiState,
+              jkSmack_stopTick,
+              thing_eight,
+              thing_six);
         jkMain_XboxLogTransitionResources("gameplay-show-ready");
 #endif
     }

@@ -2,6 +2,7 @@
 
 #ifdef TARGET_XBOX
 #include "xbox_debug.h"
+#include "Platform/Xbox/xbox_splitscreen.h"
 extern uint32_t g_app_suspended;
 #else
 #define xbox_debug_Print(msg) ((void)0)
@@ -131,6 +132,8 @@ int32_t Main_bDwCompat = 0;
 int32_t Main_bEnhancedCogVerbs = 0;
 int32_t Main_numBots = 0;
 int32_t Main_botMatchSeconds = 0;
+int32_t Main_botCamPlayer = 0;
+int32_t Main_localPlayers = 1;
 char Main_strEpisode[129];
 char Main_strMap[128+4];
 #endif
@@ -192,8 +195,16 @@ int Main_StartupDedicated(int bFullyDedicated)
     jkGuiNetHost_SaveSettings();
     jkGuiNetHost_LoadSettings();
 
+#ifdef TARGET_XBOX
+    if (!bFullyDedicated && Main_localPlayers > 1)
+    {
+        xboxSplitScreen_SetRequestedLocalPlayerCount(Main_localPlayers);
+        xboxSplitScreen_Enable();
+    }
+#endif
+
     if (Main_numBots > 0) {
-        int desiredMaxPlayers = Main_numBots + 1;
+        int desiredMaxPlayers = Main_numBots + Main_localPlayers;
         if (desiredMaxPlayers > JKPLAYER_NUM_INFOS)
             desiredMaxPlayers = JKPLAYER_NUM_INFOS;
         if (jkGuiNetHost_maxPlayers < desiredMaxPlayers)
@@ -371,6 +382,22 @@ int Main_Startup(const char *cmdline)
     xbox_debug_Print("Main_Startup: globals set, parsing cmdline...\n");
     Main_ParseCmdLine((char *)cmdline);
     xbox_debug_Print("Main_Startup: cmdline parsed\n");
+#ifdef TARGET_XBOX
+    {
+        char botArgsDbg[256];
+        _snprintf(botArgsDbg, sizeof(botArgsDbg),
+                  "Smoke: parsed autostart=%d mp=%d episode='%s' map='%s' bots=%d seconds=%d botcam=%d locals=%d\n",
+                  Main_bAutostart,
+                  !Main_bAutostartSp,
+                  Main_strEpisode,
+                  Main_strMap,
+                  Main_numBots,
+                  Main_botMatchSeconds,
+                  Main_botCamPlayer,
+                  Main_localPlayers);
+        xbox_debug_Print(botArgsDbg);
+    }
+#endif
 #ifdef TARGET_TWL
     Main_bNoHUD = 1;
 #endif
@@ -665,6 +692,8 @@ void Main_Shutdown()
     Main_bEnhancedCogVerbs = 0;
     Main_numBots = 0;
     Main_botMatchSeconds = 0;
+    Main_botCamPlayer = 0;
+    Main_localPlayers = 1;
     memset(Main_strEpisode, 0, sizeof(Main_strEpisode));
     memset(Main_strMap, 0, sizeof(Main_strMap));
 
@@ -827,6 +856,24 @@ void Main_ParseCmdLine(char *cmdline)
             Main_botMatchSeconds = pArgNext ? _atoi(pArgNext) : 0;
             if (Main_botMatchSeconds < 0)
                 Main_botMatchSeconds = 0;
+        }
+        else if (!__strcmpi(pArgTok, "-botcam") || !__strcmpi(pArgTok, "/botcam") )
+        {
+            char* pArgNext = _strtok(0, " \t");
+            Main_botCamPlayer = pArgNext ? _atoi(pArgNext) : 1;
+            if (Main_botCamPlayer < 1)
+                Main_botCamPlayer = 1;
+            if (Main_botCamPlayer >= JKPLAYER_NUM_INFOS)
+                Main_botCamPlayer = JKPLAYER_NUM_INFOS - 1;
+        }
+        else if (!__strcmpi(pArgTok, "-localplayers") || !__strcmpi(pArgTok, "/localplayers") )
+        {
+            char* pArgNext = _strtok(0, " \t");
+            Main_localPlayers = pArgNext ? _atoi(pArgNext) : 1;
+            if (Main_localPlayers < 1)
+                Main_localPlayers = 1;
+            if (Main_localPlayers > 4)
+                Main_localPlayers = 4;
         }
         else if (!__strcmpi(pArgTok, "-headless") || !__strcmpi(pArgTok, "/headless") )
         {

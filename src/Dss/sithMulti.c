@@ -1,5 +1,6 @@
 #include "sithMulti.h"
 
+#include "AI/sithBot.h"
 #include "Win95/stdComm.h"
 #include "Gameplay/sithEvent.h"
 #include "World/sithWorld.h"
@@ -569,6 +570,7 @@ void sithMulti_HandleDeath(sithPlayerInfo *pPlayerInfo, sithThing *pKilledThing,
     wchar_t a1a[128]; // [esp+Ch] [ebp-100h] BYREF
 
     ++pPlayerInfo->numKilled;
+    sithBot_LogDeathEvent(pPlayerInfo, pKilledThing, pKilledByThing);
     if ( !pKilledByThing || pKilledByThing->type != SITH_THING_PLAYER )
     {
         v6 = sithStrTable_GetUniStringWithFallback("%s_DIED");
@@ -840,6 +842,37 @@ int sithMulti_ProcessJoinLeave(sithCogMsg *msg)
     sithEvent_RegisterFunc(2, sithMulti_ServerLeft, sithNet_tickrate, 1);
     sithComm_SetNeedsSync();
     return 1;
+}
+
+void sithMulti_CompleteLocalJoinForAutostart(void)
+{
+    int localIdx;
+
+    if ((g_submodeFlags & 8) == 0)
+        return;
+    if (!sithNet_isMulti || !sithNet_isServer || jkPlayer_maxPlayers <= 0)
+        return;
+
+    localIdx = playerThingIdx;
+    if (localIdx < 0 || localIdx >= jkPlayer_maxPlayers)
+        localIdx = 0;
+
+    NETMSG_START;
+    NETMSG_PUSHS32(localIdx);
+    NETMSG_PUSHS32(stdComm_dplayIdSelf);
+    NETMSG_PUSHWSTR(jkPlayer_playerInfos[localIdx].player_name, 0x10);
+    NETMSG_END(DSS_WELCOME);
+
+#ifdef TARGET_XBOX
+    XDBGF("BotMatch: autostart completing local join slot=%d dplay=%d submodeBefore=0x%X\n",
+          localIdx,
+          stdComm_dplayIdSelf,
+          g_submodeFlags);
+#endif
+    sithMulti_ProcessJoinLeave(&sithComm_netMsgTmp);
+#ifdef TARGET_XBOX
+    XDBGF("BotMatch: autostart local join complete submodeAfter=0x%X\n", g_submodeFlags);
+#endif
 }
 
 int sithMulti_ProcessPing(sithCogMsg *msg)

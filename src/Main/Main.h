@@ -11,6 +11,7 @@
 
 #ifdef QOL_IMPROVEMENTS
 extern int32_t Main_bDedicatedServer;
+extern int32_t Main_bAutostart;
 extern int32_t Main_bHeadless;
 extern int32_t Main_bVerboseNetworking;
 extern int32_t Main_bMotsCompat;
@@ -18,6 +19,8 @@ extern int32_t Main_bDwCompat;
 extern int32_t Main_bEnhancedCogVerbs;
 extern int32_t Main_numBots;
 extern int32_t Main_botMatchSeconds;
+extern int32_t Main_botCamPlayer;
+extern int32_t Main_localPlayers;
 #endif
 
 int Main_ShouldUseMotsForcePowers(void);

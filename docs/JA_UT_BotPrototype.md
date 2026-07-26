@@ -1,66 +1,105 @@
-# JA/UT Bot Prototype Handoff
+# JA/UT Multiplayer Bots
 
-## What This Prototype Does
+## Scope
 
-This branch adds an engine-side multiplayer bot prototype, enabled by command line instead of map editing:
+This branch adds engine-side multiplayer bots without requiring map authors to
+place navigation nodes. The intended behavior is a Jedi Knight player driven by
+UT-style decisions: normal JK movement and combat rules, persistent enemy and
+route choices, weighted item goals, combat repositioning, and recovery when a
+route stops making progress.
 
-```text
--bots 6 -botmatch-seconds 90
-```
-
-The shape is closer to Unreal Tournament bot control than RBots map authoring. The engine owns the bot player slots, the map graph, target choice, movement, weapon choice, melee damage, respawn, and timed smoke-test score logging.
-
-## How The Map Is Read
-
-On map load, the bot system builds a simple movement graph from information already in the level:
-
-- Spawn points become nodes because they are known valid player starts.
-- Item pickups become nodes because they are useful destinations and are usually reachable play space.
-- Floor surfaces become nodes when the surface is flagged as floor or AI-walkable and has an upward-facing normal.
-- Nodes are linked only when the engine collision ray can travel from one node's sector to the other node's sector.
-
-For `GEMPFAC.jkl`, the corrected generator produced:
+Bots are currently enabled through the Xbox autostart arguments used by the
+qualification tools:
 
 ```text
-BotNav: generated nodes=182 directedEdges=625 map='gempfac.jkl' episode='GEMPFAC'
+-autostart -mp -episode q3dm5 -map q3dm5.jkl -bots 6
 ```
 
-## What The Bot Brain Does
+UI work is outside the current scope.
 
-The brain is deliberately "medium" and engine-side:
+## Automatic Navigation
 
-- Join unused multiplayer player slots as real player things with bot net IDs.
-- Keep bot player slots alive from the server's point of view.
-- Pick visible enemies first, otherwise hunt toward the nearest active opponent's graph node.
-- Move by facing the target, applying normal player-style acceleration, and jumping when the target is higher.
-- If stuck, face the goal, press use, jump, and then choose a new goal if still blocked.
-- Carry fists, Bryar pistol, saber, energy, shields, and force mana.
-- Use Bryar at range and saber at close range.
-- Apply saber damage through the normal `sithThing_Damage` path, so normal death and multiplayer scoring code credits kills.
-- Respawn bots after death.
+The engine builds a graph during the map loading screen from information already
+present in the level:
 
-## Doors, Switches, And Elevators
+- Spawn points identify safe player starts.
+- Item locations provide useful destinations.
+- Walkable floor surfaces provide general movement coverage.
+- Adjoin portals connect rooms and place approach nodes on both sides of
+  doorways and corners.
+- Collision and floor probes reject links that a standing player cannot safely
+  traverse.
+- Jump-pad COGs and thrust sectors add launch and landing links.
 
-This prototype does not require authored call spots. The current behavior is opportunistic:
+The generated graph is saved as a versioned `.bnav` file. Later loads validate
+the map geometry and gameplay metadata before using the cache. A stale or
+incomplete cache is rejected and rebuilt automatically.
 
-- If a bot reaches a blocked goal and stops making progress, it presses use and jumps.
-- That gives it a chance to trigger nearby switches, doors, and elevator panels without custom map files.
-- It does not yet understand "this switch controls that elevator" as a semantic relationship.
+## Bot Decisions
 
-That is the main assessment point: the basic player-slot, navigation, combat, respawn, and scoring loop now works; smarter mover/switch reasoning can be judged against this running baseline.
+The brain is engine-side C code. It:
 
-## Smoke Evidence
+- Joins unused multiplayer slots as normal player things.
+- Starts with the Bryar pistol and normal ammunition.
+- Uses distinct available character models.
+- Chooses and remembers enemies instead of changing targets every frame.
+- Requires a clear combat line of sight before firing.
+- Remembers a recently hidden enemy and routes toward the last seen position.
+- Uses weighted A* routes with penalties for awkward climbs, hazards, and
+  temporarily blocked links.
+- Commits to movement and combat destinations long enough to avoid twitching.
+- Advances, retreats, strafes, changes cover, and selects range appropriate for
+  its current weapon.
+- Diverts for valuable weapons, ammunition, health, and shields when worthwhile.
+- Uses ranged weapons, close melee, Force Heal, Force Push, and Force Lightning.
+- Learns short-lived danger areas from environmental and explosive damage.
+- Detects stalled routes, blocks the failed edge temporarily, and replans.
+- Respawns through multiplayer state with its model, animation, and loadout
+  restored.
 
-All runs below used:
+Doors and nearby switches are handled opportunistically while following a route.
+Full semantic elevator behavior, including remote call switches, waiting,
+boarding, riding, and exiting, remains Phase II and is not part of the current
+qualification claim.
+
+## q3dm5 Qualification
+
+Build 97 was qualified exclusively on the `q3dm5.gob` Quake 3 remake, as
+requested. All emulator runs were muted.
+
+### Visual movement review
+
+The bot-follow capture shows sustained arena traversal, smooth turning,
+advance/retreat behavior, cover changes, combat firing, and Force use. It does
+not show the old stationary doorway dancing or repeated sub-meter reversals.
 
 ```text
--autostart -mp -episode GEMPFAC -map GEMPFAC.jkl -bots 6 -botmatch-seconds 90
+build/xbox/recordings/q3dm5-build97-slot1-corridor-review/
 ```
 
-| Run | Result | Final Bot Scores |
-| --- | --- | --- |
-| `20260721_142327-botmatch-gempfac-final-1` | `fatalCount=0`, `emulatorFatalCount=0`, reached `fmv,botnav,botmatch-final` | Bot 1: 4, Bot 2: 3, Bot 3: 2, Bot 4: 3, Bot 5: 3, Bot 6: 5 |
-| `20260721_142624-botmatch-gempfac-final-2` | `fatalCount=0`, `emulatorFatalCount=0`, reached `fmv,botnav,botmatch-final` | Bot 1: 2, Bot 2: 5, Bot 3: 2, Bot 4: 5, Bot 5: 7, Bot 6: 4 |
-| `20260721_142921-botmatch-gempfac-final-3` | `fatalCount=0`, `emulatorFatalCount=0`, reached `fmv,botnav,botmatch-final` | Bot 1: 5, Bot 2: 9, Bot 3: 3, Bot 4: 3, Bot 5: 5, Bot 6: 4 |
+### 300-second single-screen soak
 
-The smoke logs are under `build/xbox/smoke_runs/` in this worktree.
+```text
+build/xbox/smoke_runs/20260726_114944-q3dm5-sixbot-300-97-weighted-combat-muted/
+```
+
+- 40 bot kills, zero suicides
+- 9 jump-pad launches, 9 landings, zero retries or failures
+- 17 recovered route stalls across six bots
+- Zero attempts to fire without line of sight
+- Bryar, crossbow, repeater, rail detonator, and concussion rifle used
+
+### 300-second two-player split-screen soak
+
+```text
+build/xbox/smoke_runs/20260726_115616-q3dm5-splitscreen2-sixbot-300-97-weighted-muted/
+```
+
+- 40 bot kills, zero suicides
+- 22 jump-pad launches, 22 landings, zero retries or failures
+- 25 recovered route stalls across six bots
+- Zero attempts to fire without line of sight
+- Both local player slots participated correctly in damage and respawn state
+
+The Xbox build completed with `audit_xbox.py: OK`, no bot compiler warnings,
+and no build errors.

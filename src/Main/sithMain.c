@@ -250,6 +250,7 @@ int sithMain_Mode1Init_3(char *fpath)
 #ifdef TARGET_XBOX
     XDBGF("MPLoadTrace: sithMain_Mode1Init_3 after sithMulti_Startup multi=%d server=%d\n", sithNet_isMulti, sithNet_isServer);
 #endif
+    sithBot_PrepareNavigation();
     g_sithMode = 1;
 #ifdef TARGET_XBOX
     XDBG("MPLoadTrace: sithMain_Mode1Init_3 done\n");
@@ -344,6 +345,7 @@ int sithMain_tickEndMs;
 // MOTS altered
 int sithMain_Tick()
 {
+    static int botTickGateLogged = 0;
 #if 0
     if (sithWorld_pCurrentWorld) {
         for (int i = 0; i < sithWorld_pCurrentWorld->numKeyframesLoaded; i++) {
@@ -362,6 +364,23 @@ int sithMain_Tick()
     {
         sithTime_Tick();
         sithComm_Sync();
+#ifdef TARGET_XBOX
+        if (Main_numBots > 0 && botTickGateLogged < 12)
+        {
+            char botTickDbg[256];
+            _snprintf(botTickDbg, sizeof(botTickDbg),
+                      "BotMatch: tick-gate submode=0x%X multi=%d server=%d bots=%d world=%p mode=%d deltaMs=%u\n",
+                      g_submodeFlags,
+                      sithNet_isMulti,
+                      sithNet_isServer,
+                      Main_numBots,
+                      sithWorld_pCurrentWorld,
+                      g_sithMode,
+                      sithTime_deltaMs);
+            xbox_debug_Print(botTickDbg);
+            botTickGateLogged++;
+        }
+#endif
 
 #ifdef TARGET_TWL
         // Fallback to stepped 30Hz physics if ms delta is very high
