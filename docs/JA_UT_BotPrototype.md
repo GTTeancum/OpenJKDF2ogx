@@ -137,5 +137,7 @@ The default q3dm5 gate requires a complete muted match, no game or emulator
 fatals, no suicides, no firing without line of sight, no failed jump-pad
 transits, Bryar loadouts and distinct models for every bot, multiple ranged
 weapons, successful pickups and Force use, and no more than 0.90 recovered
-route stalls per bot-minute. Thresholds can be overridden when qualifying maps
-with materially different geometry.
+route stalls per bot-minute. It also limits any individual bot to 2.50 recovered
+stalls per minute so a healthy aggregate cannot hide one bot repeatedly getting
+stuck. Thresholds can be overridden when qualifying maps with materially
+different geometry.

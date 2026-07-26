@@ -2,6 +2,7 @@ param(
     [Parameter(Mandatory = $true)]
     [string[]]$RunDir,
     [double]$MaxRouteStallsPerBotMinute = 0.90,
+    [double]$MaxSingleBotRouteStallsPerMinute = 2.50,
     [int]$MinDistinctRangedWeapons = 2,
     [switch]$AllowUnmuted
 )
@@ -81,6 +82,11 @@ foreach ($requestedDir in $RunDir) {
     } else {
         @()
     }
+    $matchLines = if ($scoreboardIndex -gt 0) {
+        $logLines[0..($scoreboardIndex - 1)]
+    } else {
+        @()
+    }
 
     $botScores = @()
     foreach ($line in $finalLines | Where-Object { $_ -match '^BotMatch: score slot=' }) {
@@ -132,6 +138,23 @@ foreach ($requestedDir in $RunDir) {
     } else {
         [double]::PositiveInfinity
     }
+    $maxSingleBotStalls = 0
+    foreach ($group in $matchLines |
+        Where-Object { $_ -match '^BotMatch: route-stalled slot=(\d+) ' } |
+        ForEach-Object {
+            [void]($_ -match '^BotMatch: route-stalled slot=(\d+) ')
+            [int]$Matches[1]
+        } |
+        Group-Object) {
+        if ($group.Count -gt $maxSingleBotStalls) {
+            $maxSingleBotStalls = $group.Count
+        }
+    }
+    $maxSingleBotStallRate = if ($minutes -gt 0) {
+        $maxSingleBotStalls / $minutes
+    } else {
+        [double]::PositiveInfinity
+    }
 
     foreach ($requiredKey in @("fatalCount", "emulatorFatalCount", "reached", "muteAudio")) {
         if (!$summary.ContainsKey($requiredKey)) {
@@ -161,6 +184,10 @@ foreach ($requestedDir in $RunDir) {
         $failures.Add(("route stalls per bot-minute={0:N2} exceeds {1:N2}" -f
             $stallRate, $MaxRouteStallsPerBotMinute))
     }
+    if ($maxSingleBotStallRate -gt $MaxSingleBotRouteStallsPerMinute) {
+        $failures.Add(("single-bot route stalls per minute={0:N2} exceeds {1:N2}" -f
+            $maxSingleBotStallRate, $MaxSingleBotRouteStallsPerMinute))
+    }
     if ($loadedSlots.Count -lt $botCount) {
         $failures.Add("Bryar loadouts=$($loadedSlots.Count), bots=$botCount")
     }
@@ -188,6 +215,8 @@ foreach ($requestedDir in $RunDir) {
     $report.Add("jumpLanded=$jumpLanded")
     $report.Add("routeStalls=$routeStalls")
     $report.Add(("routeStallsPerBotMinute={0:N3}" -f $stallRate))
+    $report.Add("maxSingleBotRouteStalls=$maxSingleBotStalls")
+    $report.Add(("maxSingleBotRouteStallsPerMinute={0:N3}" -f $maxSingleBotStallRate))
     $report.Add("noLosFireAttempts=$noLosFireAttempts")
     $report.Add("BryarLoadouts=$($loadedSlots.Count)")
     $report.Add("distinctModels=$($models.Count)")
@@ -199,7 +228,7 @@ foreach ($requestedDir in $RunDir) {
     }
     $report | Set-Content -LiteralPath (Join-Path $resolvedDir "bot-quality.txt") -Encoding ASCII
     Write-Output "[$status] $resolvedDir"
-    $report | Where-Object { $_ -match '^(kills|suicides|jumpDetected|jumpLanded|routeStallsPerBotMinute|noLosFireAttempts|distinctModels|distinctRangedWeapons|forceActions|pickupActions|failure)=' } |
+    $report | Where-Object { $_ -match '^(kills|suicides|jumpDetected|jumpLanded|routeStallsPerBotMinute|maxSingleBotRouteStallsPerMinute|noLosFireAttempts|distinctModels|distinctRangedWeapons|forceActions|pickupActions|failure)=' } |
         ForEach-Object { Write-Output "  $_" }
 }
 
