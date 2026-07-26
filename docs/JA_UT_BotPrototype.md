@@ -75,7 +75,13 @@ not show the old stationary doorway dancing or repeated sub-meter reversals.
 
 ```text
 build/xbox/recordings/q3dm5-build97-slot1-corridor-review/
+build/xbox/recordings/q3dm5-build99-slot4-independent-review/
 ```
+
+The independent slot 4 sample covered another 60 seconds and another followed
+bot. Its saved log recorded six distinct models, 13 deaths and respawns, 76
+Force actions, 280 pickup actions, one successful jump-pad transit, five
+recovered route stalls, and no attempts to fire without line of sight.
 
 ### 300-second single-screen soak
 
