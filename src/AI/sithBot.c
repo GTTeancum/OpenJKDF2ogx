@@ -345,11 +345,14 @@ static void sithBot_AdjustMoveDirForPlayers(SithBotState *state, sithThing *thin
 
 static const SithBotWeaponSpec sithBot_weaponSpecs[] =
 {
+    /* MotS-only entries mirror the primary-fire values in its stock weapon COGs. */
     { SITHBIN_CONCUSSION_RIFLE,      SITHBIN_MOTS_CONCUSSION_RIFLE,      SITHBIN_POWER,       8.0, "+concbullet",   1350.0, 3.0,  5.0, 18.0, { 0.0200, 0.1500, 0.0000 }, 0.6, SITH_ANIM_FIRE, 0x60, 5.0, 18.0, 3.0, 960.0 },
     { SITHBIN_RAIL_DETONATOR,        SITHBIN_MOTS_RAIL_DETONATOR,        SITHBIN_RAILCHARGES, 1.0, "+raildet2",     1050.0, 3.6,  5.0, 15.0, { 0.0214, 0.1500, 0.0000 }, 0.4, SITH_ANIM_FIRE, 0x60, 5.0, 15.0, 3.6, 930.0 },
-    { SITHBIN_TUSKEN_PROD,           -1,                                SITHBIN_POWER,       2.0, "+crossbowbolt3", 600.0, 2.3,  7.0, 24.0, { 0.0207, 0.0888, 0.0000 }, 0.8, SITH_ANIM_FIRE, 0x20, 5.0, 20.0, 2.3, 860.0 },
+    { SITHBIN_TUSKEN_PROD,           SITHBIN_MOTS_TUSKEN_PROD,           SITHBIN_POWER,       2.0, "+crossbowbolt3", 600.0, 2.3,  7.0, 24.0, { 0.0207, 0.0888, 0.0000 }, 0.8, SITH_ANIM_FIRE, 0x20, 5.0, 20.0, 2.3, 860.0 },
     { SITHBIN_REPEATER,              SITHBIN_MOTS_REPEATER,              SITHBIN_POWER,       1.0, "+repeaterball",  360.0, 1.2,  6.0, 22.0, { 0.0170, 0.1500, 0.0000 }, 1.2, SITH_ANIM_FIRE, 0x70, 5.0, 22.0, 1.2, 820.0 },
+    { -1,                            SITHBIN_MOTS_STORMTROOPER_SCOPE,     SITHBIN_ENERGY,      4.0, "+sclaser",       500.0, 1.5, 11.0, 30.0, { 0.0000, 0.0000, 0.0350 }, 0.3, SITH_ANIM_FIRE, 0x00, 0.1, 30.0, 0.0, 780.0 },
     { SITHBIN_STORMTROOPER_RIFLE,    SITHBIN_MOTS_STORMTROOPER_RIFLE,    SITHBIN_ENERGY,      2.0, "+stlaser",       430.0, 0.8,  7.0, 25.0, { 0.0168, 0.1896, 0.0000 }, 1.0, SITH_ANIM_FIRE, 0x70, 5.0, 20.0, 0.0, 700.0 },
+    { -1,                            SITHBIN_MOTS_BLASTECH,               SITHBIN_ENERGY,      1.0, "+bryarbolt",     500.0, 0.0,  5.5, 20.0, { 0.0135, 0.1624, 0.0000 }, 0.8, SITH_ANIM_FIRE, 0x20, 5.0, 20.0, 0.0, 660.0 },
     { SITHBIN_BRYARPISTOL,           SITHBIN_MOTS_BRYARPISTOL,           SITHBIN_ENERGY,      1.0, "+bryarbolt",     500.0, 0.0,  4.5, 18.0, { 0.0135, 0.1624, 0.0000 }, 0.8, SITH_ANIM_FIRE, 0x60, 5.0, 16.0, 0.0, 500.0 }
 };
 
@@ -848,14 +851,16 @@ void sithBot_LogScoreboard(const char *reason)
                  sithBot_qualityRouteNudges,
                  sithBot_qualityRouteStalls,
                  sithBot_qualityNoLosFireAttempts);
-    sithBot_Logf("BotMatch: weapon-shots bryar=%d strifle=%d crossbow=%d repeater=%d rail=%d concussion=%d saber=%d\n",
+    sithBot_Logf("BotMatch: weapon-shots bryar=%d strifle=%d crossbow=%d repeater=%d rail=%d concussion=%d saber=%d scope=%d blastech=%d\n",
                  sithBot_qualityWeaponShots[Main_bMotsCompat ? SITHBIN_MOTS_BRYARPISTOL : SITHBIN_BRYARPISTOL],
                  sithBot_qualityWeaponShots[Main_bMotsCompat ? SITHBIN_MOTS_STORMTROOPER_RIFLE : SITHBIN_STORMTROOPER_RIFLE],
-                 Main_bMotsCompat ? 0 : sithBot_qualityWeaponShots[SITHBIN_TUSKEN_PROD],
+                 sithBot_qualityWeaponShots[Main_bMotsCompat ? SITHBIN_MOTS_TUSKEN_PROD : SITHBIN_TUSKEN_PROD],
                  sithBot_qualityWeaponShots[Main_bMotsCompat ? SITHBIN_MOTS_REPEATER : SITHBIN_REPEATER],
                  sithBot_qualityWeaponShots[Main_bMotsCompat ? SITHBIN_MOTS_RAIL_DETONATOR : SITHBIN_RAIL_DETONATOR],
                  sithBot_qualityWeaponShots[Main_bMotsCompat ? SITHBIN_MOTS_CONCUSSION_RIFLE : SITHBIN_CONCUSSION_RIFLE],
-                 sithBot_qualityWeaponShots[Main_bMotsCompat ? SITHBIN_MOTS_LIGHTSABER : SITHBIN_LIGHTSABER]);
+                 sithBot_qualityWeaponShots[Main_bMotsCompat ? SITHBIN_MOTS_LIGHTSABER : SITHBIN_LIGHTSABER],
+                 Main_bMotsCompat ? sithBot_qualityWeaponShots[SITHBIN_MOTS_STORMTROOPER_SCOPE] : 0,
+                 Main_bMotsCompat ? sithBot_qualityWeaponShots[SITHBIN_MOTS_BLASTECH] : 0);
 }
 
 static flex_t sithBot_DistSq(const rdVector3 *a, const rdVector3 *b)
@@ -4132,15 +4137,17 @@ static int sithBot_IsBlastWeaponSpec(const SithBotWeaponSpec *spec)
 
 static int sithBot_ChooseNonBlastWeapon(sithThing *thing, flex_t enemyDist)
 {
-    int bins[4];
+    int bins[6];
     int i;
 
     bins[0] = Main_bMotsCompat ? SITHBIN_MOTS_REPEATER : SITHBIN_REPEATER;
     bins[1] = Main_bMotsCompat ? SITHBIN_MOTS_STORMTROOPER_RIFLE : SITHBIN_STORMTROOPER_RIFLE;
-    bins[2] = Main_bMotsCompat ? SITHBIN_MOTS_BRYARPISTOL : SITHBIN_BRYARPISTOL;
-    bins[3] = Main_bMotsCompat ? SITHBIN_MOTS_LIGHTSABER : SITHBIN_LIGHTSABER;
+    bins[2] = Main_bMotsCompat ? SITHBIN_MOTS_STORMTROOPER_SCOPE : -1;
+    bins[3] = Main_bMotsCompat ? SITHBIN_MOTS_BLASTECH : -1;
+    bins[4] = Main_bMotsCompat ? SITHBIN_MOTS_BRYARPISTOL : SITHBIN_BRYARPISTOL;
+    bins[5] = Main_bMotsCompat ? SITHBIN_MOTS_LIGHTSABER : SITHBIN_LIGHTSABER;
 
-    for (i = 0; i < 4; i++)
+    for (i = 0; i < 6; i++)
     {
         const SithBotWeaponSpec *spec;
         if (!sithBot_WeaponAvailable(thing, bins[i]))
@@ -4206,10 +4213,16 @@ static int sithBot_GetWeaponBinForItemName(const char *name)
         return Main_bMotsCompat ? SITHBIN_MOTS_CONCUSSION_RIFLE : SITHBIN_CONCUSSION_RIFLE;
     if (strstr(name, "railgun") || strstr(name, "raildet"))
         return Main_bMotsCompat ? SITHBIN_MOTS_RAIL_DETONATOR : SITHBIN_RAIL_DETONATOR;
-    if (strstr(name, "crossbow"))
-        return Main_bMotsCompat ? -1 : SITHBIN_TUSKEN_PROD;
+    if (strstr(name, "crossbow") || strstr(name, "tusken"))
+        return Main_bMotsCompat ? SITHBIN_MOTS_TUSKEN_PROD : SITHBIN_TUSKEN_PROD;
     if (strstr(name, "repeater"))
         return Main_bMotsCompat ? SITHBIN_MOTS_REPEATER : SITHBIN_REPEATER;
+    if (Main_bMotsCompat &&
+        (strstr(name, "stormtrooper_scope") || strstr(name, "stscope") || strstr(name, "scope")))
+        return SITHBIN_MOTS_STORMTROOPER_SCOPE;
+    if (Main_bMotsCompat &&
+        (strstr(name, "blastech") || strstr(name, "greedopistol") || strstr(name, "bryarpistol")))
+        return SITHBIN_MOTS_BLASTECH;
     if (strstr(name, "strifle") || strstr(name, "storm"))
         return Main_bMotsCompat ? SITHBIN_MOTS_STORMTROOPER_RIFLE : SITHBIN_STORMTROOPER_RIFLE;
     if (strstr(name, "bryar"))
@@ -4690,12 +4703,16 @@ static int sithBot_ApplyKnownPickupFallback(SithBotState *state, sithThing *thin
             changed |= sithBot_AddInventoryAmount(thing, SITHBIN_POWER, 40.0);
         else if (weaponBin == (Main_bMotsCompat ? SITHBIN_MOTS_RAIL_DETONATOR : SITHBIN_RAIL_DETONATOR))
             changed |= sithBot_AddInventoryAmount(thing, SITHBIN_RAILCHARGES, 5.0);
-        else if (!Main_bMotsCompat && weaponBin == SITHBIN_TUSKEN_PROD)
+        else if (weaponBin == (Main_bMotsCompat ? SITHBIN_MOTS_TUSKEN_PROD : SITHBIN_TUSKEN_PROD))
             changed |= sithBot_AddInventoryAmount(thing, SITHBIN_POWER, 16.0);
         else if (weaponBin == (Main_bMotsCompat ? SITHBIN_MOTS_REPEATER : SITHBIN_REPEATER))
             changed |= sithBot_AddInventoryAmount(thing, SITHBIN_POWER, 45.0);
         else if (weaponBin == (Main_bMotsCompat ? SITHBIN_MOTS_STORMTROOPER_RIFLE : SITHBIN_STORMTROOPER_RIFLE))
             changed |= sithBot_AddInventoryAmount(thing, SITHBIN_ENERGY, 60.0);
+        else if (Main_bMotsCompat && weaponBin == SITHBIN_MOTS_STORMTROOPER_SCOPE)
+            changed |= sithBot_AddInventoryAmount(thing, SITHBIN_ENERGY, 60.0);
+        else if (Main_bMotsCompat && weaponBin == SITHBIN_MOTS_BLASTECH)
+            changed |= sithBot_AddInventoryAmount(thing, SITHBIN_ENERGY, 30.0);
         else if (weaponBin == (Main_bMotsCompat ? SITHBIN_MOTS_BRYARPISTOL : SITHBIN_BRYARPISTOL))
             changed |= sithBot_AddInventoryAmount(thing, SITHBIN_ENERGY, 30.0);
     }
@@ -5231,6 +5248,7 @@ static const char *sithBot_GetWeaponMeshName(int weaponBin)
         case SITHBIN_MOTS_STORMTROOPER_RIFLE:
             return "strg.3do";
         case SITHBIN_TUSKEN_PROD:
+        case SITHBIN_MOTS_TUSKEN_PROD:
             return "BowG.3do";
         case SITHBIN_REPEATER:
         case SITHBIN_MOTS_REPEATER:
@@ -5241,6 +5259,10 @@ static const char *sithBot_GetWeaponMeshName(int weaponBin)
         case SITHBIN_CONCUSSION_RIFLE:
         case SITHBIN_MOTS_CONCUSSION_RIFLE:
             return "cong.3do";
+        case SITHBIN_MOTS_BLASTECH:
+            return "blsg.3do";
+        case SITHBIN_MOTS_STORMTROOPER_SCOPE:
+            return "sscg.3do";
         default:
             return 0;
     }

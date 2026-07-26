@@ -62,6 +62,20 @@ Full semantic elevator behavior, including remote call switches, waiting,
 boarding, riding, and exiting, remains Phase II and is not part of the current
 qualification claim.
 
+## JK And MotS Compatibility
+
+The bot brain selects the correct JK or MotS inventory bins at runtime. Core
+Bryar, stormtrooper rifle, repeater, rail detonator, concussion rifle, saber,
+ammunition, model, respawn, and Force paths are compatibility-aware.
+
+The MotS source audit also maps the stock Tusken prod, BlasTech pistol, and
+scoped stormtrooper rifle primary fire directly from `weap_crossbow_m.cog`,
+`weap_blastech_m.cog`, and `weap_stscope_m.cog`, including their inventory
+bins, ammunition costs, projectile templates, timing, and weapon meshes.
+These additions pass the Xbox compiler and pre-build audit. Runtime qualification
+remains intentionally limited to q3dm5 until the current test-map restriction is
+lifted, so MotS runtime behavior is not yet part of the beta-readiness claim.
+
 ## q3dm5 Qualification
 
 Build 97 was qualified exclusively on the `q3dm5.gob` Quake 3 remake, as

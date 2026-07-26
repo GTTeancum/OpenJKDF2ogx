@@ -115,7 +115,7 @@ foreach ($requestedDir in $RunDir) {
 
     $weaponCounts = @{}
     if ($weaponLine) {
-        foreach ($match in [regex]::Matches($weaponLine, '(bryar|strifle|crossbow|repeater|rail|concussion)=(\d+)')) {
+        foreach ($match in [regex]::Matches($weaponLine, '(bryar|strifle|crossbow|repeater|rail|concussion|scope|blastech)=(\d+)')) {
             $weaponCounts[$match.Groups[1].Value] = [int]$match.Groups[2].Value
         }
     }
