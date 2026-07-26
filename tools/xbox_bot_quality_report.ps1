@@ -152,8 +152,10 @@ foreach ($requestedDir in $RunDir) {
     if ($jumpRetry -ne 0 -or $jumpFailed -ne 0 -or $jumpTimeout -ne 0) {
         $failures.Add("jump retries/failures/timeouts=$jumpRetry/$jumpFailed/$jumpTimeout")
     }
-    if ($jumpDetected -ne $jumpLanded) {
-        $failures.Add("jump launches/landings=$jumpDetected/$jumpLanded")
+    # A timed match may end while one or more bots are legitimately airborne.
+    # Explicit retry/failure/timeout counters are the authoritative failure signal.
+    if ($jumpLanded -gt $jumpDetected) {
+        $failures.Add("jump landing count exceeds launches=$jumpDetected/$jumpLanded")
     }
     if ($stallRate -gt $MaxRouteStallsPerBotMinute) {
         $failures.Add(("route stalls per bot-minute={0:N2} exceeds {1:N2}" -f
