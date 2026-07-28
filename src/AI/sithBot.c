@@ -83,7 +83,7 @@ void sithCogFunction_FireProjectile(sithCog *ctx);
 #define SITHBOT_COMBAT_SEPARATION_MIN 1.15
 #define SITHBOT_COMBAT_HOLD_STRAFE 0.82
 #define SITHBOT_BNAV_MAGIC 0x56414E42u
-#define SITHBOT_BNAV_VERSION 14u
+#define SITHBOT_BNAV_VERSION 17u
 
 typedef enum SithBotNodeKind
 {
@@ -222,6 +222,8 @@ typedef struct SithBotState
     uint32_t combatMoveUntilMs;
     uint32_t jumpPadAirUntilMs;
     uint32_t jumpPadDodgeUntilMs;
+    uint32_t dropAirUntilMs;
+    uint32_t nextDropMs;
     uint32_t routeWatchStartMs;
     rdVector3 lastMovePos;
     rdVector3 lastEnemySeenPos;
@@ -262,6 +264,7 @@ typedef struct SithBotState
     int jumpPadLaunchNode;
     int jumpPadTargetNode;
     int jumpPadDodgeSign;
+    int dropTargetNode;
     int routeWatchGoal;
     int routeFailureGoal;
     int routeFailureCount;
@@ -337,6 +340,7 @@ static int sithBot_HasCombatLos(sithThing *from, sithThing *to);
 static int sithBot_IsRiskyNavSectorForBot(sithSector *sector);
 static int sithBot_IsCollisionSpikeSectorForBot(sithSector *sector);
 static int sithBot_IsDynamicHazardSector(sithSector *sector);
+static int sithBot_IsUnderwaterSector(sithSector *sector);
 static int sithBot_SectorHasMagsealedSurface(sithSector *sector);
 static int sithBot_IsItemAvailable(sithThing *item);
 static int sithBot_EmergencyMoveOutOfHazard(int victimSlot, sithThing *thing);
@@ -353,6 +357,7 @@ static int sithBot_IsSafeGenericInteractionThing(sithThing *thing);
 static int sithBot_GetSurfaceCenter(sithSurface *surface, rdVector3 *center);
 static int sithBot_HandleJumpPadRoute(SithBotState *state, sithThing *thing, int startNode, int nextNode);
 static int sithBot_DetectJumpPadLaunch(SithBotState *state, sithThing *thing);
+static int sithBot_DriveDropRoute(SithBotState *state, sithThing *thing, const rdVector3 *target, int combat);
 static void sithBot_AdjustMoveDirForPlayers(SithBotState *state, sithThing *thing, rdVector3 *flatDir);
 
 static const SithBotWeaponSpec sithBot_weaponSpecs[] =
@@ -523,9 +528,11 @@ static int sithBot_ShouldFleeSelfDamage(sithThing *victim, sithThing *damager, f
         return 0;
     if (damager != victim)
         return 0;
+    if (damageClass & SITH_DAMAGE_DROWN)
+        return 1;
     if (amount < 6.0)
         return 0;
-    if (damageClass & (SITH_DAMAGE_FALL | SITH_DAMAGE_DROWN | SITH_DAMAGE_SABER))
+    if (damageClass & (SITH_DAMAGE_FALL | SITH_DAMAGE_SABER))
         return 0;
     return (damageClass & (SITH_DAMAGE_ENERGY | SITH_DAMAGE_FIRE | SITH_DAMAGE_FORCE | SITH_DAMAGE_IMPACT)) != 0;
 }
@@ -613,8 +620,12 @@ static void sithBot_MarkHazardFlee(int victimSlot, sithThing *victim, flex_t amo
     state->envDamageSector = 0;
     state->envDamageWindowMs = 0;
     state->envDamageAccum = 0.0;
-    sithBot_AddDynamicHazardSector(victim->sector, &victim->position, amount, "damage");
-    if (amount >= 40.0 || sithBot_IsCollisionSpikeSectorForBot(victim->sector))
+    if ((damageClass & SITH_DAMAGE_DROWN) == 0)
+        sithBot_AddDynamicHazardSector(victim->sector, &victim->position, amount, "damage");
+    if (amount >= 40.0 ||
+        sithBot_IsCollisionSpikeSectorForBot(victim->sector) ||
+        ((damageClass & SITH_DAMAGE_DROWN) &&
+         (victim->actorParams.health <= 15.0 || victim->actorParams.msUnderwater >= 26000)))
         sithBot_EmergencyMoveOutOfHazard(victimSlot, victim);
 
     if (sithBot_debugHazardsLogged < 40)
@@ -949,6 +960,11 @@ static int sithBot_IsRiskyNavSectorForBot(sithSector *sector)
         (SITH_SECTOR_COGLINKED | SITH_SECTOR_HAS_COLLIDE_BOX);
 }
 
+static int sithBot_IsUnderwaterSector(sithSector *sector)
+{
+    return sector && (sector->flags & SITH_SECTOR_UNDERWATER) != 0;
+}
+
 static int sithBot_IsCollisionSpikeSectorForBot(sithSector *sector)
 {
     if (!sector)
@@ -960,6 +976,7 @@ static int sithBot_IsCollisionSpikeSectorForBot(sithSector *sector)
 static int sithBot_IsNavSectorUsableForBot(sithSector *sector)
 {
     return sithBot_IsSectorSafeForBot(sector) &&
+        !sithBot_IsUnderwaterSector(sector) &&
         !sithBot_IsRiskyNavSectorForBot(sector) &&
         !sithBot_IsDynamicHazardSector(sector);
 }
@@ -1572,6 +1589,8 @@ static void sithBot_RecordSafeAnchor(SithBotState *state, sithThing *thing)
 {
     if (!state || !thing || !thing->sector || !sithBot_IsSectorSafeForBot(thing->sector))
         return;
+    if (sithBot_IsUnderwaterSector(thing->sector))
+        return;
     if (sithBot_IsDynamicHazardSector(thing->sector))
         return;
     if (!thing->attach_flags &&
@@ -1602,7 +1621,6 @@ static int sithBot_TryRecoverFromFall(SithBotState *state, sithThing *thing)
 {
     rdVector3 fallPos;
     sithSector *fallSector;
-    flex_t horizontalSpeed;
     int fallDeathSector;
     int fallDeathState;
     int unsupportedDrop;
@@ -1610,22 +1628,21 @@ static int sithBot_TryRecoverFromFall(SithBotState *state, sithThing *thing)
 
     if (!state || !thing || !thing->sector || !state->safeAnchorSector ||
         (thing->thingflags & SITH_TF_DEAD) || thing->actorParams.health <= 0.0 ||
-        state->nextFallRecoveryMs > sithTime_curMs)
+        state->nextFallRecoveryMs > sithTime_curMs ||
+        state->dropAirUntilMs > sithTime_curMs)
     {
         return 0;
     }
 
     fallDeathSector = (thing->sector->flags & SITH_SECTOR_FALLDEATH) != 0;
     fallDeathState = (thing->actorParams.typeflags & SITH_AF_FALLING_TO_DEATH) != 0;
-    horizontalSpeed = stdMath_Sqrt(thing->physicsParams.vel.x * thing->physicsParams.vel.x +
-                                   thing->physicsParams.vel.y * thing->physicsParams.vel.y);
     unsupportedDrop = !thing->attach_flags &&
         thing->physicsParams.vel.z < -1.5 &&
         thing->position.z < state->safeAnchorPos.z - 1.6 &&
         !sithBot_PositionHasWalkableFloor(thing, thing->sector, &thing->position);
     if (state->jumpPadAirUntilMs <= sithTime_curMs &&
         !thing->attach_flags &&
-        horizontalSpeed <= 0.35 &&
+        stdMath_Fabs(thing->physicsParams.vel.z) <= 0.75 &&
         !sithBot_PositionHasWalkableFloor(thing, thing->sector, &thing->position))
     {
         if (!state->unsupportedSinceMs)
@@ -1636,7 +1653,7 @@ static int sithBot_TryRecoverFromFall(SithBotState *state, sithThing *thing)
         state->unsupportedSinceMs = 0;
     }
     unsupportedStranded = state->unsupportedSinceMs &&
-        sithTime_curMs - state->unsupportedSinceMs >= 650;
+        sithTime_curMs - state->unsupportedSinceMs >= 1000;
     if (!fallDeathSector && !fallDeathState && !unsupportedDrop && !unsupportedStranded)
         return 0;
 
@@ -2025,8 +2042,8 @@ static int sithBot_AddPortalApproachNodes(void)
         fromPos.y += surface->surfaceInfo.face.normal.y * 0.06;
         fromPos.z = floorZ;
         if (fromNode < 0 ||
-            (sithBot_IsNarrowTransitSector(fromSector) &&
-             sithBot_DistSq(&sithBot_nodes[fromNode].pos, &fromPos) > 0.35 * 0.35))
+            sithBot_DistSq(&sithBot_nodes[fromNode].pos, &fromPos) >
+                (sithBot_IsNarrowTransitSector(fromSector) ? 0.35 * 0.35 : 1.25 * 1.25))
         {
             before = sithBot_numNodes;
             sithBot_AddNode(&fromPos, fromSector, SITHBOT_NODE_PORTAL, -1, 0.18);
@@ -2042,8 +2059,8 @@ static int sithBot_AddPortalApproachNodes(void)
         toPos.y += mirrorSurface->surfaceInfo.face.normal.y * 0.06;
         toPos.z = floorZ;
         if (toNode < 0 ||
-            (sithBot_IsNarrowTransitSector(toSector) &&
-             sithBot_DistSq(&sithBot_nodes[toNode].pos, &toPos) > 0.35 * 0.35))
+            sithBot_DistSq(&sithBot_nodes[toNode].pos, &toPos) >
+                (sithBot_IsNarrowTransitSector(toSector) ? 0.35 * 0.35 : 1.25 * 1.25))
         {
             before = sithBot_numNodes;
             sithBot_AddNode(&toPos, toSector, SITHBOT_NODE_PORTAL, -1, 0.18);
@@ -2234,6 +2251,75 @@ static void sithBot_LinkNodes(void)
     }
 
     sithBot_Logf("BotNav: link candidates=%d tested=%d rejected=%d added=%d\n", candidates, tested, rejected, added);
+}
+
+static int sithBot_LinkDropNodes(void)
+{
+    int added = 0;
+    int i;
+
+    for (i = 0; i < sithBot_numNodes; i++)
+    {
+        SithBotLinkCandidate candidates[SITHBOT_LINK_CANDIDATES];
+        SithBotNode *from = &sithBot_nodes[i];
+        int j;
+
+        if (from->kind == SITHBOT_NODE_LIFT || from->kind == SITHBOT_NODE_JUMPPAD)
+            continue;
+
+        sithBot_ClearLinkCandidates(candidates);
+        for (j = 0; j < sithBot_numNodes; j++)
+        {
+            SithBotNode *to = &sithBot_nodes[j];
+            flex_t dx;
+            flex_t dy;
+            flex_t drop;
+            flex_t horizontalSq;
+
+            if (i == j || sithBot_HasEdge(i, j) ||
+                to->kind != SITHBOT_NODE_FLOOR ||
+                !sithBot_IsNavSectorUsableForBot(to->sector))
+            {
+                continue;
+            }
+
+            drop = from->pos.z - to->pos.z;
+            if (drop < 0.60 || drop > 3.20)
+                continue;
+            dx = to->pos.x - from->pos.x;
+            dy = to->pos.y - from->pos.y;
+            horizontalSq = dx * dx + dy * dy;
+            if (horizontalSq < 0.16 || horizontalSq > 3.24)
+                continue;
+            if (!sithBot_PositionHasWalkableFloor(0, to->sector, &to->pos))
+                continue;
+            if (!sithBot_CanSeePosition(from->sector, &from->pos, to->sector, &to->pos))
+                continue;
+
+            sithBot_InsertLinkCandidate(candidates, j, horizontalSq + drop * drop * 0.20);
+        }
+
+        for (j = 0; j < 2 && j < SITHBOT_LINK_CANDIDATES; j++)
+        {
+            int toNode = candidates[j].nodeIdx;
+            if (toNode < 0)
+                break;
+            if (sithBot_AddEdge(i, toNode))
+            {
+                sithBot_Logf("BotNav: drop-link from=%d to=%d drop=%.2f horizontal=%.2f\n",
+                             i,
+                             toNode,
+                             from->pos.z - sithBot_nodes[toNode].pos.z,
+                             stdMath_Sqrt((from->pos.x - sithBot_nodes[toNode].pos.x) *
+                                          (from->pos.x - sithBot_nodes[toNode].pos.x) +
+                                          (from->pos.y - sithBot_nodes[toNode].pos.y) *
+                                          (from->pos.y - sithBot_nodes[toNode].pos.y)));
+                added++;
+            }
+        }
+    }
+
+    return added;
 }
 
 static flex_t sithBot_GetPathMoverDeckArea(sithThing *thing)
@@ -3303,6 +3389,7 @@ static void sithBot_BuildNav(void)
     int pathLiftEdges = 0;
     int jumpPads = 0;
     int jumpPadEdges = 0;
+    int dropEdges = 0;
     uint32_t startMs = stdPlatform_GetTimeMsec();
     uint32_t worldHash;
 
@@ -3357,6 +3444,7 @@ static void sithBot_BuildNav(void)
        consume every edge slot with local alternatives. */
     portalEdges = sithBot_LinkAdjoinPortals();
     sithBot_LinkNodes();
+    dropEdges = sithBot_LinkDropNodes();
     jumpPadEdges = sithBot_LinkJumpPadNodes();
     sithBot_LogNavComponents();
     for (i = 0; i < sithBot_numNodes; i++)
@@ -3365,7 +3453,7 @@ static void sithBot_BuildNav(void)
     sithBot_navWorld = sithWorld_pCurrentWorld;
     sithBot_navBuilt = 1;
     sithBot_SaveNavCache(worldHash);
-    sithBot_Logf("BotNav: generated nodes=%d directedEdges=%d portalNodes=%d portalEdges=%d liftSectors=%d inferredLiftSectors=%d pathLifts=%d pathLiftStops=%d pathLiftEdges=%d jumpPads=%d jumpPadEdges=%d map='%s' episode='%s'\n",
+    sithBot_Logf("BotNav: generated nodes=%d directedEdges=%d portalNodes=%d portalEdges=%d liftSectors=%d inferredLiftSectors=%d pathLifts=%d pathLiftStops=%d pathLiftEdges=%d jumpPads=%d jumpPadEdges=%d dropEdges=%d map='%s' episode='%s'\n",
                  sithBot_numNodes,
                  edgeCount,
                  portalNodes,
@@ -3377,6 +3465,7 @@ static void sithBot_BuildNav(void)
                  pathLiftEdges,
                  jumpPads,
                  jumpPadEdges,
+                 dropEdges,
                  sithWorld_pCurrentWorld->map_jkl_fname,
                  sithWorld_pCurrentWorld->episodeName);
     sithBot_Logf("BotNav: ready source=generated elapsedMs=%u map='%s' episode='%s'\n",
@@ -4197,6 +4286,9 @@ static const SithBotWeaponSpec *sithBot_GetWeaponSpec(int weaponBin)
 {
     int i;
 
+    if (weaponBin < 0)
+        return 0;
+
     for (i = 0; i < (int)(sizeof(sithBot_weaponSpecs) / sizeof(sithBot_weaponSpecs[0])); i++)
     {
         int specBin = Main_bMotsCompat ? sithBot_weaponSpecs[i].motsBin : sithBot_weaponSpecs[i].jkBin;
@@ -4502,9 +4594,9 @@ static int sithBot_ShouldSeekWeaponPickup(sithThing *thing, sithThing *enemy)
         int canSee = sithCollision_HasLos(thing, enemy, 0) ||
                      sithBot_CanSeePosition(thing->sector, &thing->position, enemy->sector, &enemy->position);
 
-        /* UT gives finding a weapon priority over charging with the default
-           melee attack. Only commit to fists when the enemy is already close. */
-        if (bestScore <= 0.0 && enemyDist > 0.90)
+        /* Keep the UT-style weapon priority while carrying only the spawn
+           pistol. Break off solely when the enemy is already on top of us. */
+        if (bestScore <= 500.0 && (!canSee || enemyDist > 1.25))
             return 1;
         if (enemyDist < 3.5 && canSee)
             return 0;
@@ -5595,6 +5687,7 @@ static void sithBot_ResetState(SithBotState *bot, int playerIdx)
     bot->ridingLiftTargetNode = -1;
     bot->jumpPadLaunchNode = -1;
     bot->jumpPadTargetNode = -1;
+    bot->dropTargetNode = -1;
     bot->routeWatchGoal = -1;
     bot->routeFailureGoal = -1;
     bot->routeFailureCount = 0;
@@ -5761,6 +5854,15 @@ static void sithBot_EnsureBots(void)
         sithBot_ActivateSlot(i, created);
         created++;
         have++;
+    }
+
+    if (sithBot_IsAutostartServerPlaceholder(0) && jkPlayer_playerInfos[0].playerThing)
+    {
+        sithThing *placeholder = jkPlayer_playerInfos[0].playerThing;
+        placeholder->thingflags |= SITH_TF_DISABLED | SITH_TF_INVULN;
+        placeholder->actorParams.typeflags |= SITH_AF_DISABLED | SITH_AF_INVULNERABLE;
+        rdVector_Zero3(&placeholder->physicsParams.acceleration);
+        sithPhysics_ThingStop(placeholder);
     }
 
     if (!sithBot_spawnedForWorld)
@@ -6224,6 +6326,51 @@ static int sithBot_ChooseEscapeNode(sithThing *thing, sithSector *hazardSector, 
     return -1;
 }
 
+static int sithBot_ChooseDryEscapeNode(sithThing *thing)
+{
+    unsigned char reachableNodes[SITHBOT_MAX_NODES];
+    int startNode;
+    int best = -1;
+    flex_t bestScore = 3.4e38f;
+    int i;
+
+    if (!thing || !thing->sector || sithBot_numNodes <= 0)
+        return -1;
+
+    startNode = sithBot_FindNearestNode(thing);
+    sithBot_MarkReachableNodes(startNode, 0, reachableNodes);
+    for (i = 0; i < sithBot_numNodes; i++)
+    {
+        flex_t distSq;
+        flex_t score;
+
+        if (!sithBot_IsNavSectorUsableForBot(sithBot_nodes[i].sector))
+            continue;
+        if (sithBot_nodes[i].kind == SITHBOT_NODE_LIFT)
+            continue;
+        if (startNode >= 0 && !reachableNodes[i])
+            continue;
+
+        distSq = sithBot_DistSq(&thing->position, &sithBot_nodes[i].pos);
+        score = distSq;
+        if (sithBot_CanSeePosition(thing->sector, &thing->position,
+                                   sithBot_nodes[i].sector, &sithBot_nodes[i].pos))
+            score -= 18.0;
+        if (sithBot_nodes[i].pos.z > thing->position.z)
+            score -= 4.0;
+        if (sithBot_nodes[i].kind == SITHBOT_NODE_FLOOR)
+            score -= 1.0;
+
+        if (score < bestScore)
+        {
+            bestScore = score;
+            best = i;
+        }
+    }
+
+    return best;
+}
+
 static int sithBot_FindNearestSafeEmergencyNode(sithThing *thing, sithSector *hazardSector)
 {
     int i;
@@ -6275,7 +6422,9 @@ static int sithBot_EmergencyMoveOutOfHazard(int victimSlot, sithThing *thing)
 
     if (!thing || !thing->sector || sithBot_numNodes <= 0)
         return 0;
-    if (!sithBot_IsRiskyNavSectorForBot(thing->sector) && !sithBot_IsCollisionSpikeSectorForBot(thing->sector))
+    if (!sithBot_IsRiskyNavSectorForBot(thing->sector) &&
+        !sithBot_IsCollisionSpikeSectorForBot(thing->sector) &&
+        !sithBot_IsUnderwaterSector(thing->sector))
         return 0;
 
     nodeIdx = sithBot_ChooseEscapeNode(thing, thing->sector, &thing->position);
@@ -7456,6 +7605,137 @@ static int sithBot_HandlePathLiftRoute(SithBotState *state, sithThing *thing, in
     return 0;
 }
 
+static int sithBot_DriveDropRoute(SithBotState *state, sithThing *thing, const rdVector3 *target, int combat)
+{
+    rdVector3 flat;
+    SithBotNode *dropTarget;
+    flex_t dist;
+    flex_t desiredSpeed;
+    flex_t response;
+    int startNode;
+
+    (void)target;
+    if (!state || !thing || sithBot_numNodes <= 0 ||
+        (combat && state->dropAirUntilMs <= sithTime_curMs))
+        return 0;
+
+    if (state->dropAirUntilMs > sithTime_curMs)
+    {
+        if (state->dropTargetNode < 0 || state->dropTargetNode >= sithBot_numNodes)
+        {
+            state->dropAirUntilMs = 0;
+            state->dropTargetNode = -1;
+            return 0;
+        }
+        dropTarget = &sithBot_nodes[state->dropTargetNode];
+        if (thing->sector == dropTarget->sector &&
+            thing->position.z <= dropTarget->pos.z + 0.30)
+        {
+            int landedNode = state->dropTargetNode;
+
+            state->dropAirUntilMs = 0;
+            state->nextDropMs = sithTime_curMs + 1500;
+            state->dropTargetNode = -1;
+            if (sithBot_debugJumpsLogged < 48)
+            {
+                sithBot_Logf("BotMatch: drop-landed slot=%d node=%d pos=(%.2f,%.2f,%.2f)\n",
+                             state->playerIdx,
+                             landedNode,
+                             thing->position.x,
+                             thing->position.y,
+                             thing->position.z);
+                sithBot_debugJumpsLogged++;
+            }
+            return 0;
+        }
+    }
+    else
+    {
+        int routeFromNode;
+        int routeToNode;
+
+        if (state->dropAirUntilMs)
+            state->nextDropMs = sithTime_curMs + 2000;
+        state->dropAirUntilMs = 0;
+        state->dropTargetNode = -1;
+        if (state->nextDropMs > sithTime_curMs)
+            return 0;
+        if (state->nextNode < 0 || state->nextNode >= sithBot_numNodes)
+            return 0;
+        startNode = sithBot_FindNearestNode(thing);
+        if (startNode < 0)
+            return 0;
+
+        routeFromNode = startNode;
+        routeToNode = state->nextNode;
+        if (routeFromNode == routeToNode ||
+            !sithBot_HasEdge(routeFromNode, routeToNode) ||
+            sithBot_nodes[routeFromNode].pos.z - sithBot_nodes[routeToNode].pos.z < 0.60)
+        {
+            flex_t ledgeDx = thing->position.x - sithBot_nodes[state->nextNode].pos.x;
+            flex_t ledgeDy = thing->position.y - sithBot_nodes[state->nextNode].pos.y;
+            int afterLedge = state->goalNode >= 0 && state->goalNode < sithBot_numNodes
+                ? sithBot_FindPathNext(state->nextNode, state->goalNode)
+                : -1;
+
+            if (afterLedge < 0 ||
+                !sithBot_HasEdge(state->nextNode, afterLedge) ||
+                sithBot_nodes[state->nextNode].pos.z - sithBot_nodes[afterLedge].pos.z < 0.60 ||
+                ledgeDx * ledgeDx + ledgeDy * ledgeDy > 0.35 * 0.35 ||
+                sithBot_AbsFlex(thing->position.z - sithBot_nodes[state->nextNode].pos.z) > 0.45)
+            {
+                return 0;
+            }
+            routeFromNode = state->nextNode;
+            routeToNode = afterLedge;
+        }
+
+        flat.x = sithBot_nodes[routeToNode].pos.x - sithBot_nodes[routeFromNode].pos.x;
+        flat.y = sithBot_nodes[routeToNode].pos.y - sithBot_nodes[routeFromNode].pos.y;
+        flat.z = 0.0;
+        dist = rdVector_Len3(&flat);
+        if (dist < 0.40 || dist > 1.85)
+            return 0;
+
+        state->dropTargetNode = routeToNode;
+        state->nextNode = routeToNode;
+        state->dropAirUntilMs = sithTime_curMs + 2600;
+        if (sithBot_debugJumpsLogged < 48)
+        {
+            sithBot_Logf("BotMatch: drop-start slot=%d from=%d to=%d drop=%.2f horizontal=%.2f\n",
+                         state->playerIdx,
+                         routeFromNode,
+                         state->dropTargetNode,
+                         sithBot_nodes[routeFromNode].pos.z - sithBot_nodes[state->dropTargetNode].pos.z,
+                         dist);
+            sithBot_debugJumpsLogged++;
+        }
+    }
+
+    dropTarget = &sithBot_nodes[state->dropTargetNode];
+    rdVector_Sub3(&flat, &dropTarget->pos, &thing->position);
+    flat.z = 0.0;
+    dist = rdVector_Normalize3Acc(&flat);
+    if (dist <= 0.001)
+        return 1;
+
+    desiredSpeed = thing->physicsParams.maxVel;
+    if (desiredSpeed < 2.6)
+        desiredSpeed = 2.6;
+    if (desiredSpeed > 3.6)
+        desiredSpeed = 3.6;
+    response = state->frameDeltaSeconds * 7.0;
+    if (response < 0.03)
+        response = 0.03;
+    if (response > 0.25)
+        response = 0.25;
+    thing->physicsParams.vel.x += (flat.x * desiredSpeed - thing->physicsParams.vel.x) * response;
+    thing->physicsParams.vel.y += (flat.y * desiredSpeed - thing->physicsParams.vel.y) * response;
+    thing->physicsParams.acceleration.x = 0.0;
+    thing->physicsParams.acceleration.y = 0.0;
+    return 1;
+}
+
 static void sithBot_MoveToward(SithBotState *state, sithThing *thing, const rdVector3 *target, int combat)
 {
     rdVector3 flat;
@@ -7465,6 +7745,70 @@ static void sithBot_MoveToward(SithBotState *state, sithThing *thing, const rdVe
     flex_t thrust;
 
     rdVector_Sub3(&flat, target, &thing->position);
+    if (sithBot_IsUnderwaterSector(thing->sector))
+    {
+        flex_t rise = flat.z;
+        flex_t desiredSwimSpeed;
+        flex_t swimResponse;
+        flex_t targetVerticalSpeed;
+        flex_t verticalResponse;
+        int atWaterSurface = (thing->physicsParams.physflags & SITH_PF_WATERSURFACE) != 0;
+
+        flat.z = 0.0;
+        dist = rdVector_Normalize3Acc(&flat);
+
+        if (thing->attach_flags)
+            sithThing_DetachThing(thing);
+
+        desiredSwimSpeed = atWaterSurface ? 1.80 : 1.35;
+        swimResponse = state->frameDeltaSeconds * 4.0;
+        if (swimResponse < 0.04)
+            swimResponse = 0.04;
+        if (swimResponse > 0.20)
+            swimResponse = 0.20;
+        if (dist > 0.001)
+        {
+            thing->physicsParams.vel.x +=
+                (flat.x * desiredSwimSpeed - thing->physicsParams.vel.x) * swimResponse;
+            thing->physicsParams.vel.y +=
+                (flat.y * desiredSwimSpeed - thing->physicsParams.vel.y) * swimResponse;
+        }
+        else
+        {
+            thing->physicsParams.vel.x *= 1.0 - swimResponse;
+            thing->physicsParams.vel.y *= 1.0 - swimResponse;
+        }
+        rdVector_Zero3(&thing->physicsParams.acceleration);
+
+        targetVerticalSpeed = atWaterSurface ? 0.45 : (rise > 0.80 ? 0.60 : 0.35);
+        if (atWaterSurface)
+        {
+            /* JK's underwater physics clamps upward surface motion whenever
+               local vertical acceleration is nonnegative. A tiny negative
+               input leaves the velocity unclamped so the bot can cross into
+               the dry sector above; normal gravity resumes there. */
+            thing->physicsParams.acceleration.z = -0.01;
+        }
+        verticalResponse = state->frameDeltaSeconds * 4.0;
+        if (verticalResponse < 0.04)
+            verticalResponse = 0.04;
+        if (verticalResponse > 0.20)
+            verticalResponse = 0.20;
+        thing->physicsParams.vel.z +=
+            (targetVerticalSpeed - thing->physicsParams.vel.z) * verticalResponse;
+        if (atWaterSurface && thing->physicsParams.vel.z > 0.25)
+            thing->physicsParams.vel.z = 0.25;
+        if (atWaterSurface && rise > 0.08 && dist < 1.10 &&
+            state->nextUseMs <= sithTime_curMs)
+        {
+            sithPlayerActions_JumpWithVel(thing, 1.0);
+            state->nextUseMs = sithTime_curMs + 900;
+        }
+        return;
+    }
+    if (sithBot_DriveDropRoute(state, thing, target, combat))
+        return;
+
     flat.z = 0.0;
     dist = rdVector_Normalize3Acc(&flat);
     if (dist <= 0.001)
@@ -8919,6 +9263,57 @@ static int sithBot_RunHazardFlee(SithBotState *state, sithThing *thing)
     return 1;
 }
 
+static int sithBot_RunWaterEscape(SithBotState *state, sithThing *thing)
+{
+    rdVector3 moveTarget;
+    int startNode;
+    int nextNode;
+
+    if (!state || !thing ||
+        (thing->thingflags & SITH_TF_DEAD) ||
+        thing->actorParams.health <= 0.0 ||
+        !sithBot_IsUnderwaterSector(thing->sector))
+        return 0;
+
+    if (state->goalNode < 0 || state->goalNode >= sithBot_numNodes ||
+        !sithBot_IsNavSectorUsableForBot(sithBot_nodes[state->goalNode].sector))
+    {
+        state->goalNode = sithBot_ChooseDryEscapeNode(thing);
+        state->goalMode = SITHBOT_GOAL_ESCAPE;
+        state->nextGoalMs = sithTime_curMs + 5000;
+        state->nextNode = -1;
+        state->routeGoalNode = -1;
+        state->routeCommitUntilMs = 0;
+    }
+
+    if (state->goalNode < 0 || state->goalNode >= sithBot_numNodes)
+    {
+        rdVector_Copy3(&moveTarget, &thing->position);
+        moveTarget.z += 3.0;
+        sithBot_MoveToward(state, thing, &moveTarget, 0);
+        sithBot_SyncPositionIfNeeded(state, thing);
+        if (thing->actorParams.msUnderwater >= 26000 || thing->actorParams.health <= 15.0)
+            sithBot_EmergencyMoveOutOfHazard(state->playerIdx, thing);
+        return 1;
+    }
+
+    startNode = sithBot_FindNearestNode(thing);
+    nextNode = sithBot_FindPathNext(startNode, state->goalNode);
+    if (nextNode < 0 || nextNode >= sithBot_numNodes)
+        nextNode = state->goalNode;
+
+    state->nextNode = nextNode;
+    rdVector_Copy3(&moveTarget, &sithBot_nodes[nextNode].pos);
+    if ((thing->physicsParams.physflags & SITH_PF_WATERSURFACE) == 0 &&
+        moveTarget.z < thing->position.z + 1.0)
+        moveTarget.z = thing->position.z + 1.0;
+
+    sithBot_FaceToward(state, thing, &moveTarget, 0);
+    sithBot_MoveToward(state, thing, &moveTarget, 0);
+    sithBot_SyncPositionIfNeeded(state, thing);
+    return 1;
+}
+
 static int sithBot_RunArmGoal(SithBotState *state, sithThing *thing, sithThing *enemyThing)
 {
     rdVector3 moveTarget;
@@ -9240,6 +9635,8 @@ static void sithBot_TickState(SithBotState *state, flex_t deltaSeconds, int delt
 
     info->lastUpdateMs = sithTime_curMs;
 
+    if (sithBot_RunWaterEscape(state, thing))
+        return;
     if (sithBot_TryRecoverFromFall(state, thing))
         return;
     sithBot_RecordSafeAnchor(state, thing);
@@ -9288,6 +9685,13 @@ static void sithBot_TickState(SithBotState *state, flex_t deltaSeconds, int delt
 
     if (sithBot_RunHazardFlee(state, thing))
         return;
+    if (state->goalMode == SITHBOT_GOAL_ESCAPE && !state->hazardSector)
+    {
+        state->goalNode = -1;
+        state->nextNode = -1;
+        state->nextGoalMs = 0;
+        state->goalMode = SITHBOT_GOAL_ROAM;
+    }
 
     if (sithBot_GetPathLiftForNode(state->nextNode))
     {
