@@ -7,6 +7,7 @@ param(
     [int]$FrameCount = 60,
     [int]$FrameIntervalMs = 250,
     [int]$BotCamera = 1,
+    [string]$AutoStartArgs = "",
     [int]$StartupTimeoutSeconds = 180
 )
 
@@ -45,8 +46,11 @@ if (!(Test-Path -LiteralPath $startScript)) { throw "Missing capture launcher: $
 New-Item -ItemType Directory -Force -Path $sequenceDir, $framesDir | Out-Null
 Stop-CaptureProcesses
 Copy-Item -LiteralPath $xbeSource -Destination $xbeTarget -Force
+if (!$AutoStartArgs) {
+    $AutoStartArgs = "-autostart -mp -episode q3dm5 -map q3dm5.jkl -bots 6 -botmatch-seconds 120 -botcam $BotCamera"
+}
 Set-Content -LiteralPath $autoStartArgsPath `
-    -Value "-autostart -mp -episode q3dm5 -map q3dm5.jkl -bots 6 -botmatch-seconds 120 -botcam $BotCamera" `
+    -Value $AutoStartArgs `
     -Encoding ASCII -NoNewline
 Set-Content -LiteralPath $disableMusicPath -Value "1" -Encoding ASCII
 Set-Content -LiteralPath $muteAudioPath -Value "1" -Encoding ASCII

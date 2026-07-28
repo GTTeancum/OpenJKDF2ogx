@@ -44,6 +44,8 @@
 
 void sithCogFunctionSector_SetSectorThrust(sithCog *ctx);
 void sithCogFunctionThing_ApplyForce(sithCog *ctx);
+void sithCogFunctionThing_CreateThing(sithCog *ctx);
+void sithCogFunction_FireProjectile(sithCog *ctx);
 
 #define SITHBOT_MAX_BOTS 31
 #define SITHBOT_MAX_NODES 512
@@ -70,7 +72,7 @@ void sithCogFunctionThing_ApplyForce(sithCog *ctx);
 #define SITHBOT_FORCE_PUSH_COST 20.0
 #define SITHBOT_ARM_REJECT_SLOTS 4
 #define SITHBOT_ROUTE_COMMIT_MS 2600
-#define SITHBOT_ROUTE_WATCH_MS 1100
+#define SITHBOT_ROUTE_WATCH_MS 1500
 #define SITHBOT_INTERACTION_WAIT_MS 600
 #define SITHBOT_INTERACTION_REPEAT_MS 1800
 #define SITHBOT_TACTICAL_MOVE_MIN_MS 1600
@@ -207,6 +209,7 @@ typedef struct SithBotState
     uint32_t nextForceRegenMs;
     uint32_t nextTacticalPickupMs;
     uint32_t explosiveBackoffUntilMs;
+    uint32_t ricochetBackoffUntilMs;
     uint32_t hazardFleeUntilMs;
     uint32_t respawnAtMs;
     uint32_t lastMoveCheckMs;
@@ -234,6 +237,7 @@ typedef struct SithBotState
     sithSector *envDamageSector;
     uint32_t nextSafeAnchorMs;
     uint32_t nextFallRecoveryMs;
+    uint32_t unsupportedSinceMs;
     uint32_t envDamageWindowMs;
     flex_t envDamageAccum;
     flex_t armBestDist;
@@ -299,6 +303,7 @@ static int sithBot_debugArmRejectsLogged;
 static int sithBot_debugTacticalPickupsLogged;
 static int sithBot_debugNoLosFireLogged;
 static int sithBot_debugForceLogged;
+static int sithBot_debugRicochetHoldsLogged;
 static int sithBot_debugFallRecoveriesLogged;
 static int sithBot_debugUsesLogged;
 static int sithBot_debugLiftsLogged;
@@ -312,6 +317,10 @@ static int sithBot_qualityJumpTimeout;
 static int sithBot_qualityRouteNudges;
 static int sithBot_qualityRouteStalls;
 static int sithBot_qualityNoLosFireAttempts;
+static int sithBot_qualityForceHeal;
+static int sithBot_qualityForcePush;
+static int sithBot_qualityForceLightning;
+static int sithBot_qualitySelfRicochetSuppressions;
 static int sithBot_qualityWeaponShots[SITHBIN_NUMBINS];
 static int sithBot_cameraPlayer;
 static SithBotDynamicHazard sithBot_dynamicHazards[SITHBOT_MAX_DYNAMIC_HAZARDS];
@@ -328,6 +337,7 @@ static int sithBot_HasCombatLos(sithThing *from, sithThing *to);
 static int sithBot_IsRiskyNavSectorForBot(sithSector *sector);
 static int sithBot_IsCollisionSpikeSectorForBot(sithSector *sector);
 static int sithBot_IsDynamicHazardSector(sithSector *sector);
+static int sithBot_SectorHasMagsealedSurface(sithSector *sector);
 static int sithBot_IsItemAvailable(sithThing *item);
 static int sithBot_EmergencyMoveOutOfHazard(int victimSlot, sithThing *thing);
 static int sithBot_PositionHasWalkableFootprint(sithThing *probeThing, sithSector *sector, const rdVector3 *pos, const rdVector3 *flatDir, flex_t stepHeight);
@@ -338,6 +348,8 @@ static void sithBot_FaceToward(SithBotState *state, sithThing *thing, const rdVe
 static int sithBot_IsDirectDestinationSafe(sithThing *thing, const rdVector3 *destination);
 static int sithBot_CogControlsThing(sithCog *cog, sithThing *thing);
 static int sithBot_CogHandlesMessage(sithCog *cog, int message);
+static int sithBot_IsSafeGenericInteractionSurface(sithSurface *surface);
+static int sithBot_IsSafeGenericInteractionThing(sithThing *thing);
 static int sithBot_GetSurfaceCenter(sithSurface *surface, rdVector3 *center);
 static int sithBot_HandleJumpPadRoute(SithBotState *state, sithThing *thing, int startNode, int nextNode);
 static int sithBot_DetectJumpPadLaunch(SithBotState *state, sithThing *thing);
@@ -346,7 +358,7 @@ static void sithBot_AdjustMoveDirForPlayers(SithBotState *state, sithThing *thin
 static const SithBotWeaponSpec sithBot_weaponSpecs[] =
 {
     /* MotS-only entries mirror the primary-fire values in its stock weapon COGs. */
-    { SITHBIN_CONCUSSION_RIFLE,      SITHBIN_MOTS_CONCUSSION_RIFLE,      SITHBIN_POWER,       8.0, "+concbullet",   1350.0, 3.0,  5.0, 18.0, { 0.0200, 0.1500, 0.0000 }, 0.6, SITH_ANIM_FIRE, 0x60, 5.0, 18.0, 3.0, 960.0 },
+    { SITHBIN_CONCUSSION_RIFLE,      SITHBIN_MOTS_CONCUSSION_RIFLE,      SITHBIN_POWER,       8.0, "+concbullet",   1350.0, 5.5,  7.0, 18.0, { 0.0200, 0.1500, 0.0000 }, 0.6, SITH_ANIM_FIRE, 0x60, 5.0, 18.0, 5.5, 960.0 },
     { SITHBIN_RAIL_DETONATOR,        SITHBIN_MOTS_RAIL_DETONATOR,        SITHBIN_RAILCHARGES, 1.0, "+raildet2",     1050.0, 3.6,  5.0, 15.0, { 0.0214, 0.1500, 0.0000 }, 0.4, SITH_ANIM_FIRE, 0x60, 5.0, 15.0, 3.6, 930.0 },
     { SITHBIN_TUSKEN_PROD,           SITHBIN_MOTS_TUSKEN_PROD,           SITHBIN_POWER,       2.0, "+crossbowbolt3", 600.0, 2.3,  7.0, 24.0, { 0.0207, 0.0888, 0.0000 }, 0.8, SITH_ANIM_FIRE, 0x20, 5.0, 20.0, 2.3, 860.0 },
     { SITHBIN_REPEATER,              SITHBIN_MOTS_REPEATER,              SITHBIN_POWER,       1.0, "+repeaterball",  360.0, 1.2,  6.0, 22.0, { 0.0170, 0.1500, 0.0000 }, 1.2, SITH_ANIM_FIRE, 0x70, 5.0, 22.0, 1.2, 820.0 },
@@ -491,6 +503,20 @@ static int sithBot_IsDynamicHazardSector(sithSector *sector)
     return 0;
 }
 
+static int sithBot_SectorHasMagsealedSurface(sithSector *sector)
+{
+    uint32_t i;
+
+    if (!sector || !sector->surfaces)
+        return 0;
+    for (i = 0; i < sector->numSurfaces; i++)
+    {
+        if (sector->surfaces[i].surfaceFlags & SITH_SURFACE_MAGSEALED)
+            return 1;
+    }
+    return 0;
+}
+
 static int sithBot_ShouldFleeSelfDamage(sithThing *victim, sithThing *damager, flex_t amount, int damageClass)
 {
     if (!victim || !damager || amount <= 0.05)
@@ -518,7 +544,7 @@ static int sithBot_IsEnvironmentalDamageSource(sithThing *victim, sithThing *dam
     {
         return 0;
     }
-    if (damager && (damager->type == SITH_THING_PLAYER || damager->type == SITH_THING_WEAPON || damager->type == SITH_THING_EXPLOSION))
+    if (damager && damager->type == SITH_THING_PLAYER)
         return 0;
 
     return (damageClass & (SITH_DAMAGE_IMPACT | SITH_DAMAGE_ENERGY | SITH_DAMAGE_FIRE | SITH_DAMAGE_FORCE | SITH_DAMAGE_DROWN)) != 0;
@@ -630,6 +656,24 @@ void sithBot_LogDamageEvent(sithThing *victim, sithThing *damager, flex_t amount
     if (!victimIsBot && !ownerIsBot)
         return;
 
+    if (victimIsBot && ownerSlot == victimSlot && damager &&
+        damager->type == SITH_THING_WEAPON &&
+        (damageClass & SITH_DAMAGE_ENERGY) != 0)
+    {
+        int stateIdx = sithBot_BotStateForPlayer(victimSlot);
+        if (stateIdx >= 0)
+        {
+            SithBotState *state = &sithBot_bots[stateIdx];
+            uint32_t backoffMs = victim->actorParams.health - amount < 50.0 ? 30000 : 12000;
+            state->ricochetBackoffUntilMs = sithTime_curMs + backoffMs;
+            state->combatHasMoveTarget = 0;
+            state->combatMoveUntilMs = 0;
+            state->goalMode = SITHBOT_GOAL_ESCAPE;
+            state->goalNode = -1;
+            state->nextGoalMs = 0;
+        }
+    }
+
     if (victimIsBot && ownerSlot >= 0 && ownerSlot != victimSlot &&
         sithBot_IsThingAlivePlayer(owner) &&
         !((sithNet_MultiModeFlags & MULTIMODEFLAG_TEAMS) &&
@@ -704,7 +748,6 @@ int sithBot_ShouldSuppressDamage(sithThing *victim, sithThing *damager, flex_t a
     int ownerSlot;
 
     (void)amount;
-    (void)damageClass;
     if (!sithNet_isMulti || !victim || victim->type != SITH_THING_PLAYER)
         return 0;
     victimSlot = sithBot_GetPlayerSlotForThing(victim);
@@ -716,6 +759,15 @@ int sithBot_ShouldSuppressDamage(sithThing *victim, sithThing *damager, flex_t a
     ownerSlot = sithBot_GetPlayerSlotForThing(owner);
     if (ownerSlot >= 0 && sithBot_IsAutostartServerPlaceholder(ownerSlot))
         return 1;
+    if (victimSlot >= 0 && ownerSlot == victimSlot &&
+        sithBot_IsBotNetId(jkPlayer_playerInfos[victimSlot].net_id) &&
+        damager && damager->type == SITH_THING_WEAPON &&
+        damager->weaponParams.numDeflectionBounces > 0 &&
+        (damageClass & SITH_DAMAGE_ENERGY) != 0)
+    {
+        sithBot_qualitySelfRicochetSuppressions++;
+        return 1;
+    }
     return 0;
 }
 
@@ -842,7 +894,7 @@ void sithBot_LogScoreboard(const char *reason)
                      info->score,
                      info->net_id);
     }
-    sithBot_Logf("BotMatch: quality jumpDetected=%d jumpLanded=%d jumpRetry=%d jumpFailed=%d jumpTimeout=%d routeNudges=%d routeStalls=%d noLosFireAttempts=%d\n",
+    sithBot_Logf("BotMatch: quality jumpDetected=%d jumpLanded=%d jumpRetry=%d jumpFailed=%d jumpTimeout=%d routeNudges=%d routeStalls=%d noLosFireAttempts=%d forceHeal=%d forcePush=%d forceLightning=%d selfRicochetSuppressions=%d\n",
                  sithBot_qualityJumpDetected,
                  sithBot_qualityJumpLanded,
                  sithBot_qualityJumpRetry,
@@ -850,7 +902,11 @@ void sithBot_LogScoreboard(const char *reason)
                  sithBot_qualityJumpTimeout,
                  sithBot_qualityRouteNudges,
                  sithBot_qualityRouteStalls,
-                 sithBot_qualityNoLosFireAttempts);
+                 sithBot_qualityNoLosFireAttempts,
+                 sithBot_qualityForceHeal,
+                 sithBot_qualityForcePush,
+                 sithBot_qualityForceLightning,
+                 sithBot_qualitySelfRicochetSuppressions);
     sithBot_Logf("BotMatch: weapon-shots bryar=%d strifle=%d crossbow=%d repeater=%d rail=%d concussion=%d saber=%d scope=%d blastech=%d\n",
                  sithBot_qualityWeaponShots[Main_bMotsCompat ? SITHBIN_MOTS_BRYARPISTOL : SITHBIN_BRYARPISTOL],
                  sithBot_qualityWeaponShots[Main_bMotsCompat ? SITHBIN_MOTS_STORMTROOPER_RIFLE : SITHBIN_STORMTROOPER_RIFLE],
@@ -1546,8 +1602,11 @@ static int sithBot_TryRecoverFromFall(SithBotState *state, sithThing *thing)
 {
     rdVector3 fallPos;
     sithSector *fallSector;
+    flex_t horizontalSpeed;
     int fallDeathSector;
+    int fallDeathState;
     int unsupportedDrop;
+    int unsupportedStranded;
 
     if (!state || !thing || !thing->sector || !state->safeAnchorSector ||
         (thing->thingflags & SITH_TF_DEAD) || thing->actorParams.health <= 0.0 ||
@@ -1557,11 +1616,28 @@ static int sithBot_TryRecoverFromFall(SithBotState *state, sithThing *thing)
     }
 
     fallDeathSector = (thing->sector->flags & SITH_SECTOR_FALLDEATH) != 0;
+    fallDeathState = (thing->actorParams.typeflags & SITH_AF_FALLING_TO_DEATH) != 0;
+    horizontalSpeed = stdMath_Sqrt(thing->physicsParams.vel.x * thing->physicsParams.vel.x +
+                                   thing->physicsParams.vel.y * thing->physicsParams.vel.y);
     unsupportedDrop = !thing->attach_flags &&
         thing->physicsParams.vel.z < -1.5 &&
         thing->position.z < state->safeAnchorPos.z - 1.6 &&
         !sithBot_PositionHasWalkableFloor(thing, thing->sector, &thing->position);
-    if (!fallDeathSector && !unsupportedDrop)
+    if (state->jumpPadAirUntilMs <= sithTime_curMs &&
+        !thing->attach_flags &&
+        horizontalSpeed <= 0.35 &&
+        !sithBot_PositionHasWalkableFloor(thing, thing->sector, &thing->position))
+    {
+        if (!state->unsupportedSinceMs)
+            state->unsupportedSinceMs = sithTime_curMs;
+    }
+    else
+    {
+        state->unsupportedSinceMs = 0;
+    }
+    unsupportedStranded = state->unsupportedSinceMs &&
+        sithTime_curMs - state->unsupportedSinceMs >= 650;
+    if (!fallDeathSector && !fallDeathState && !unsupportedDrop && !unsupportedStranded)
         return 0;
 
     rdVector_Copy3(&fallPos, &thing->position);
@@ -1585,6 +1661,7 @@ static int sithBot_TryRecoverFromFall(SithBotState *state, sithThing *thing)
     state->hazardSector = fallSector;
     state->stuckTicks = 0;
     state->blockedMoveTicks = 0;
+    state->unsupportedSinceMs = 0;
     state->nextFallRecoveryMs = sithTime_curMs + 1200;
     state->nextSafeAnchorMs = sithTime_curMs + 750;
     rdVector_Copy3(&state->lastMovePos, &thing->position);
@@ -1597,7 +1674,9 @@ static int sithBot_TryRecoverFromFall(SithBotState *state, sithThing *thing)
     {
         sithBot_Logf("BotMatch: fall-recovery slot=%d reason=%s pos=(%.2f,%.2f,%.2f) anchor=(%.2f,%.2f,%.2f)\n",
                      state->playerIdx,
-                     fallDeathSector ? "fall-sector" : "unsupported-drop",
+                     fallDeathSector ? "fall-sector" :
+                         (fallDeathState ? "fall-state" :
+                          (unsupportedDrop ? "unsupported-drop" : "unsupported-stranded")),
                      fallPos.x,
                      fallPos.y,
                      fallPos.z,
@@ -4135,6 +4214,100 @@ static int sithBot_IsBlastWeaponSpec(const SithBotWeaponSpec *spec)
          strstr(spec->projectileName, "crossbow"));
 }
 
+static int sithBot_HasBlastMuzzleClearance(sithThing *thing, sithThing *enemy, const rdVector3 *aim, flex_t safeDist)
+{
+    sithCollisionSearchEntry *entry;
+    rdVector3 start;
+    rdVector3 dir;
+    flex_t targetDist;
+    flex_t searchDist;
+    int clear = 1;
+
+    if (!thing || !thing->sector || !aim || safeDist <= 0.0)
+        return 0;
+
+    rdVector_Copy3(&start, &thing->position);
+    start.z += 0.08;
+    rdVector_Sub3(&dir, aim, &start);
+    targetDist = rdVector_Normalize3Acc(&dir);
+    if (targetDist <= 0.001)
+        return 0;
+
+    searchDist = safeDist + 0.35;
+    if (searchDist > targetDist)
+        searchDist = targetDist;
+
+    sithCollision_SearchRadiusForThings(thing->sector,
+                                        thing,
+                                        &start,
+                                        &dir,
+                                        searchDist,
+                                        0.04,
+                                        RAYCAST_2000 | RAYCAST_100 | RAYCAST_2);
+    while ((entry = sithCollision_NextSearchResult()) != 0)
+    {
+        if (entry->hitType & SITHCOLLISION_ADJOINCROSS)
+            continue;
+        if ((entry->hitType & SITHCOLLISION_THING) && entry->receiver == enemy)
+            break;
+        if (entry->hitType & (SITHCOLLISION_WORLD | SITHCOLLISION_THING))
+        {
+            clear = 0;
+            break;
+        }
+    }
+    sithCollision_SearchClose();
+    return clear;
+}
+
+static int sithBot_HasSafeRicochetBackstop(sithThing *thing, sithThing *enemy, sithThing *projectile, const rdVector3 *aim)
+{
+    sithCollisionSearchEntry *entry;
+    rdVector3 start;
+    rdVector3 dir;
+    flex_t aimDist;
+    int clear = 1;
+
+    if (!thing || !thing->sector || !enemy || !projectile || !aim)
+        return 0;
+
+    rdVector_Copy3(&start, &thing->position);
+    start.z += 0.08;
+    rdVector_Sub3(&dir, aim, &start);
+    aimDist = rdVector_Normalize3Acc(&dir);
+    if (aimDist <= 0.001)
+        return 0;
+
+    /* A predicted hit is safe; a predicted miss must not terminate on a
+       ricochet surface anywhere within the projectile's nearby flight path. */
+    sithCollision_SearchRadiusForThings(thing->sector,
+                                        thing,
+                                        &start,
+                                        &dir,
+                                        aimDist + 8.0,
+                                        0.05,
+                                        RAYCAST_2000 | RAYCAST_100 | RAYCAST_2);
+    while ((entry = sithCollision_NextSearchResult()) != 0)
+    {
+        if (entry->hitType & SITHCOLLISION_ADJOINCROSS)
+            continue;
+        if ((entry->hitType & SITHCOLLISION_THING) && entry->receiver == enemy)
+            break;
+        if (entry->hitType & SITHCOLLISION_WORLD)
+        {
+            int ricochets = (projectile->weaponParams.typeflags & SITH_WF_RICOCHET_OFF_SURFACE) != 0 ||
+                ((projectile->weaponParams.typeflags & SITH_WF_IMPACT_SOUND_FX) != 0 &&
+                 entry->surface &&
+                 (entry->surface->surfaceFlags & SITH_SURFACE_MAGSEALED) != 0);
+            if (entry->distance < aimDist - 0.10 || ricochets)
+                clear = 0;
+            break;
+        }
+    }
+    sithCollision_SearchClose();
+    return clear;
+}
+
 static int sithBot_ChooseNonBlastWeapon(sithThing *thing, flex_t enemyDist)
 {
     int bins[6];
@@ -5418,6 +5591,7 @@ static void sithBot_ResetState(SithBotState *bot, int playerIdx)
     bot->steeringTargetNode = -1;
     bot->routeGoalNode = -1;
     bot->ridingLiftThingIdx = -1;
+    bot->nextForceMs = sithTime_curMs + (uint32_t)(4500.0 + _frand() * 3500.0);
     bot->ridingLiftTargetNode = -1;
     bot->jumpPadLaunchNode = -1;
     bot->jumpPadTargetNode = -1;
@@ -6262,6 +6436,80 @@ static int sithBot_IsAimAligned(sithThing *thing, const rdVector3 *target, flex_
     return rdVector_Dot3(&aimOrientation.lvec, &dir) >= minDot;
 }
 
+static int sithBot_IsSafeGenericInteractionCog(sithCog *cog)
+{
+    if (!cog || !sithBot_CogHandlesMessage(cog, SITH_MESSAGE_ACTIVATE))
+        return 0;
+
+    /* Nearby-use is for route controls. Projectile and spawned-weapon COGs are
+       map traps, not traversal controls, and must never be activated blindly. */
+    if (sithBot_CogScriptUsesVerb(cog, sithCogFunction_FireProjectile) ||
+        sithBot_CogScriptUsesVerb(cog, sithCogFunctionThing_CreateThing))
+    {
+        return 0;
+    }
+
+    return 1;
+}
+
+static int sithBot_IsSafeGenericInteractionSurface(sithSurface *surface)
+{
+    int found = 0;
+    int i;
+
+    if (!surface)
+        return 0;
+
+    for (i = 0; i < sithCog_numSurfaceLinks; i++)
+    {
+        sithCogSurfaceLink *link = &sithCog_aSurfaceLinks[i];
+        if (link->surface != surface || !sithBot_CogHandlesMessage(link->cog, SITH_MESSAGE_ACTIVATE))
+            continue;
+        if (!sithBot_IsSafeGenericInteractionCog(link->cog))
+            return 0;
+        found = 1;
+    }
+
+    return found;
+}
+
+static int sithBot_IsSafeGenericInteractionThing(sithThing *thing)
+{
+    int found = 0;
+    int i;
+
+    if (!thing)
+        return 0;
+
+    if (thing->class_cog && sithBot_CogHandlesMessage(thing->class_cog, SITH_MESSAGE_ACTIVATE))
+    {
+        if (!sithBot_IsSafeGenericInteractionCog(thing->class_cog))
+            return 0;
+        found = 1;
+    }
+    if (thing->capture_cog && sithBot_CogHandlesMessage(thing->capture_cog, SITH_MESSAGE_ACTIVATE))
+    {
+        if (!sithBot_IsSafeGenericInteractionCog(thing->capture_cog))
+            return 0;
+        found = 1;
+    }
+
+    for (i = 0; i < sithCog_numThingLinks; i++)
+    {
+        sithCogThingLink *link = &sithCog_aThingLinks[i];
+        if (link->thing != thing || link->signature != thing->signature ||
+            !sithBot_CogHandlesMessage(link->cog, SITH_MESSAGE_ACTIVATE))
+        {
+            continue;
+        }
+        if (!sithBot_IsSafeGenericInteractionCog(link->cog))
+            return 0;
+        found = 1;
+    }
+
+    return found;
+}
+
 static int sithBot_TryActivateNearbyInteraction(SithBotState *state, sithThing *thing, const rdVector3 *target, int routeOnly)
 {
     sithSurface *bestSurface = 0;
@@ -6290,7 +6538,8 @@ static int sithBot_TryActivateNearbyInteraction(SithBotState *state, sithThing *
         int validVertices = 0;
         int j;
 
-        if (!(surface->surfaceFlags & SITH_SURFACE_COG_LINKED) || face->numVertices <= 0 || !face->vertexPosIdx)
+        if (!(surface->surfaceFlags & SITH_SURFACE_COG_LINKED) || face->numVertices <= 0 || !face->vertexPosIdx ||
+            !sithBot_IsSafeGenericInteractionSurface(surface))
             continue;
         if (routeOnly && stdMath_Fabs(face->normal.z) > 0.65)
             continue;
@@ -6341,7 +6590,8 @@ static int sithBot_TryActivateNearbyInteraction(SithBotState *state, sithThing *
 
             if (candidate == thing || (candidate->type != SITH_THING_COG && candidate->type != SITH_THING_GHOST) ||
                 !(candidate->thingflags & SITH_TF_CAPTURED) ||
-                (candidate->thingflags & (SITH_TF_DISABLED | SITH_TF_WILLBEREMOVED)))
+                (candidate->thingflags & (SITH_TF_DISABLED | SITH_TF_WILLBEREMOVED)) ||
+                !sithBot_IsSafeGenericInteractionThing(candidate))
                 continue;
 
             distSq = sithBot_DistSq(&thing->position, &candidate->position);
@@ -8148,8 +8398,9 @@ static int sithBot_TryUseForce(SithBotState *state, sithThing *thing, sithThing 
         sithInventory_ChangeInv(thing, SITHBIN_FORCEMANA, -SITHBOT_FORCE_HEAL_COST);
         sithBot_PlayForceAnimation(thing);
         sithBot_SpawnHealEffect(thing);
-        state->nextForceMs = sithTime_curMs + 9000;
+        state->nextForceMs = sithTime_curMs + (uint32_t)(12000.0 + _frand() * 3000.0);
         state->nextFireMs = sithTime_curMs + 700;
+        sithBot_qualityForceHeal++;
         if (sithBot_debugForceLogged < 80)
         {
             sithBot_Logf("BotMatch: force-heal slot=%d rank=%.0f healthBefore=%.2f healthAfter=%.2f manaBefore=%.2f manaAfter=%.2f\n",
@@ -8177,6 +8428,12 @@ static int sithBot_TryUseForce(SithBotState *state, sithThing *thing, sithThing 
         if (rank <= 0.0 || !sithInventory_GetAvailable(thing, SITHBIN_F_PUSH) ||
             mana < SITHBOT_FORCE_PUSH_COST || dist < 0.45 || dist > 1.55)
             return 0;
+        if (dist > 0.78 &&
+            thing->actorParams.health > thing->actorParams.maxHealth * 0.58)
+        {
+            state->nextForceMs = sithTime_curMs + (uint32_t)(1800.0 + _frand() * 1200.0);
+            return 0;
+        }
 
         rdVector_Sub3(&forceDir, &enemy->position, &thing->position);
         forceDir.z += 0.18;
@@ -8205,8 +8462,9 @@ static int sithBot_TryUseForce(SithBotState *state, sithThing *thing, sithThing 
         sithPhysics_ThingApplyForce(enemy, &force);
         sithThing_SetSyncFlags(enemy, THING_SYNC_POS);
         sithInventory_ChangeInv(thing, SITHBIN_FORCEMANA, -SITHBOT_FORCE_PUSH_COST);
-        state->nextForceMs = sithTime_curMs + (uint32_t)(5200.0 + _frand() * 1800.0);
+        state->nextForceMs = sithTime_curMs + (uint32_t)(9000.0 + _frand() * 4000.0);
         state->nextFireMs = sithTime_curMs + 700;
+        sithBot_qualityForcePush++;
         if (enemy->actorParams.playerinfo)
         {
             int enemySlot = (int)(enemy->actorParams.playerinfo - jkPlayer_playerInfos);
@@ -8241,6 +8499,13 @@ static int sithBot_TryUseForce(SithBotState *state, sithThing *thing, sithThing 
         if (rank <= 0.0 || !sithInventory_GetAvailable(thing, SITHBIN_F_LIGHTNING) ||
             mana < SITHBOT_FORCE_LIGHTNING_COST || dist < 0.65 || dist > 1.55)
             return 0;
+        if (enemy->actorParams.health > enemy->actorParams.maxHealth * 0.48 &&
+            !(thing->actorParams.health <= thing->actorParams.maxHealth * 0.32 &&
+              dist <= 1.05))
+        {
+            state->nextForceMs = sithTime_curMs + (uint32_t)(1800.0 + _frand() * 1200.0);
+            return 0;
+        }
 
         projectileTemplate = sithTemplate_GetEntryByName("+force_lightning");
         if (!projectileTemplate)
@@ -8280,8 +8545,9 @@ static int sithBot_TryUseForce(SithBotState *state, sithThing *thing, sithThing 
 
         sithInventory_ChangeInv(thing, SITHBIN_FORCEMANA, -SITHBOT_FORCE_LIGHTNING_COST);
         sithCog_SendMessageFromThing(thing, spawned, SITH_MESSAGE_FIRE);
-        state->nextForceMs = sithTime_curMs + (uint32_t)(1900.0 + _frand() * 700.0);
+        state->nextForceMs = sithTime_curMs + (uint32_t)(9500.0 + _frand() * 4500.0);
         state->nextFireMs = sithTime_curMs + 700;
+        sithBot_qualityForceLightning++;
         if (sithBot_debugForceLogged < 80)
         {
             sithBot_Logf("BotMatch: force-lightning slot=%d target=%d rank=%.0f projectileThing=%d dist=%.2f manaBefore=%.2f manaAfter=%.2f\n",
@@ -8349,6 +8615,18 @@ static void sithBot_FireAt(SithBotState *state, sithThing *thing, sithThing *ene
         }
         spec = sithBot_GetWeaponSpec(weaponBin);
     }
+    if (sithBot_IsBlastWeaponSpec(spec) &&
+        !sithBot_HasBlastMuzzleClearance(thing, enemy, &aim, spec->selfSafeDist))
+    {
+        state->explosiveBackoffUntilMs = sithTime_curMs + 3000;
+        weaponBin = sithBot_ChooseNonBlastWeapon(thing, dist);
+        if (weaponBin < 0)
+        {
+            state->nextFireMs = sithTime_curMs + 180;
+            return;
+        }
+        spec = sithBot_GetWeaponSpec(weaponBin);
+    }
     if (weaponBin != sithInventory_GetCurWeapon(thing))
     {
         sithInventory_SetCurWeapon(thing, weaponBin);
@@ -8412,6 +8690,28 @@ static void sithBot_FireAt(SithBotState *state, sithThing *thing, sithThing *ene
             return;
         }
 
+        if ((projectile->weaponParams.typeflags &
+             (SITH_WF_RICOCHET_OFF_SURFACE | SITH_WF_IMPACT_SOUND_FX)) != 0 &&
+            (state->ricochetBackoffUntilMs > sithTime_curMs ||
+             (thing->actorParams.health < 45.0 &&
+              sithBot_SectorHasMagsealedSurface(thing->sector))))
+        {
+            state->combatHasMoveTarget = 0;
+            state->combatMoveUntilMs = 0;
+            state->nextFireMs = sithTime_curMs + 300;
+            if (sithBot_debugRicochetHoldsLogged < 40)
+            {
+                sithBot_Logf("BotMatch: fire-hold-ricochet slot=%d target=%d weapon=%d dist=%.2f reason=%s\n",
+                             state->playerIdx,
+                             enemy->actorParams.playerinfo ? (int)(enemy->actorParams.playerinfo - jkPlayer_playerInfos) : -1,
+                             weaponBin,
+                             dist,
+                             state->ricochetBackoffUntilMs > sithTime_curMs ? "self-hit" : "low-health");
+                sithBot_debugRicochetHoldsLogged++;
+            }
+            return;
+        }
+
         projectileSpeed = rdVector_Len3(&projectile->physicsParams.vel);
         if (projectileSpeed > 0.1)
         {
@@ -8427,6 +8727,22 @@ static void sithBot_FireAt(SithBotState *state, sithThing *thing, sithThing *ene
         aim.z += 0.08;
         rdVector_Scale3(&lead, &enemy->physicsParams.vel, leadSeconds);
         rdVector_Add3Acc(&aim, &lead);
+        if (!sithBot_HasSafeRicochetBackstop(thing, enemy, projectile, &aim))
+        {
+            state->combatHasMoveTarget = 0;
+            state->combatMoveUntilMs = 0;
+            state->nextFireMs = sithTime_curMs + 240;
+            if (sithBot_debugRicochetHoldsLogged < 40)
+            {
+                sithBot_Logf("BotMatch: fire-hold-ricochet slot=%d target=%d weapon=%d dist=%.2f\n",
+                             state->playerIdx,
+                             enemy->actorParams.playerinfo ? (int)(enemy->actorParams.playerinfo - jkPlayer_playerInfos) : -1,
+                             weaponBin,
+                             dist);
+                sithBot_debugRicochetHoldsLogged++;
+            }
+            return;
+        }
         sithBot_FaceToward(state, thing, &aim, 1);
         rdVector_Sub3(&dir, &aim, &thing->position);
         if (rdVector_Normalize3Acc(&dir) <= 0.001 ||
@@ -9242,6 +9558,7 @@ static void sithBot_ResetForWorldChange(void)
     sithBot_debugArmRejectsLogged = 0;
     sithBot_debugTacticalPickupsLogged = 0;
     sithBot_debugForceLogged = 0;
+    sithBot_debugRicochetHoldsLogged = 0;
     sithBot_debugFallRecoveriesLogged = 0;
     sithBot_debugUsesLogged = 0;
     sithBot_debugLiftsLogged = 0;
@@ -9255,6 +9572,10 @@ static void sithBot_ResetForWorldChange(void)
     sithBot_qualityRouteNudges = 0;
     sithBot_qualityRouteStalls = 0;
     sithBot_qualityNoLosFireAttempts = 0;
+    sithBot_qualityForceHeal = 0;
+    sithBot_qualityForcePush = 0;
+    sithBot_qualityForceLightning = 0;
+    sithBot_qualitySelfRicochetSuppressions = 0;
     memset(sithBot_qualityWeaponShots, 0, sizeof(sithBot_qualityWeaponShots));
     sithBot_cameraPlayer = 0;
     memset(sithBot_dynamicHazards, 0, sizeof(sithBot_dynamicHazards));

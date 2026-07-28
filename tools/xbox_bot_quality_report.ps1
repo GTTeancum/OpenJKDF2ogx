@@ -3,6 +3,7 @@ param(
     [string[]]$RunDir,
     [double]$MaxRouteStallsPerBotMinute = 0.90,
     [double]$MaxSingleBotRouteStallsPerMinute = 2.50,
+    [double]$MaxOffensiveForceActionsPerBotMinute = 2.00,
     [int]$MinDistinctRangedWeapons = 2,
     [switch]$AllowUnmuted
 )
@@ -59,6 +60,10 @@ foreach ($requestedDir in $RunDir) {
     $jumpTimeout = 0
     $routeStalls = 0
     $noLosFireAttempts = 0
+    $forceHealCount = 0
+    $forcePushCount = 0
+    $forceLightningCount = 0
+    $hasForceCounters = $false
     if ($qualityLine -and
         $qualityLine -match 'jumpDetected=(\d+) jumpLanded=(\d+) jumpRetry=(\d+) jumpFailed=(\d+) jumpTimeout=(\d+).*routeStalls=(\d+) noLosFireAttempts=(\d+)') {
         $jumpDetected = [int]$Matches[1]
@@ -68,6 +73,13 @@ foreach ($requestedDir in $RunDir) {
         $jumpTimeout = [int]$Matches[5]
         $routeStalls = [int]$Matches[6]
         $noLosFireAttempts = [int]$Matches[7]
+    }
+    if ($qualityLine -and
+        $qualityLine -match 'forceHeal=(\d+) forcePush=(\d+) forceLightning=(\d+)') {
+        $forceHealCount = [int]$Matches[1]
+        $forcePushCount = [int]$Matches[2]
+        $forceLightningCount = [int]$Matches[3]
+        $hasForceCounters = $true
     }
 
     $scoreboardIndex = -1
@@ -155,6 +167,11 @@ foreach ($requestedDir in $RunDir) {
     } else {
         [double]::PositiveInfinity
     }
+    $offensiveForceRate = if ($botCount -gt 0 -and $minutes -gt 0) {
+        ($forcePushCount + $forceLightningCount) / ($botCount * $minutes)
+    } else {
+        0.0
+    }
 
     foreach ($requiredKey in @("fatalCount", "emulatorFatalCount", "reached", "muteAudio")) {
         if (!$summary.ContainsKey($requiredKey)) {
@@ -188,6 +205,10 @@ foreach ($requestedDir in $RunDir) {
         $failures.Add(("single-bot route stalls per minute={0:N2} exceeds {1:N2}" -f
             $maxSingleBotStallRate, $MaxSingleBotRouteStallsPerMinute))
     }
+    if ($hasForceCounters -and $offensiveForceRate -gt $MaxOffensiveForceActionsPerBotMinute) {
+        $failures.Add(("offensive Force actions per bot-minute={0:N2} exceeds {1:N2}" -f
+            $offensiveForceRate, $MaxOffensiveForceActionsPerBotMinute))
+    }
     if ($loadedSlots.Count -lt $botCount) {
         $failures.Add("Bryar loadouts=$($loadedSlots.Count), bots=$botCount")
     }
@@ -217,6 +238,12 @@ foreach ($requestedDir in $RunDir) {
     $report.Add(("routeStallsPerBotMinute={0:N3}" -f $stallRate))
     $report.Add("maxSingleBotRouteStalls=$maxSingleBotStalls")
     $report.Add(("maxSingleBotRouteStallsPerMinute={0:N3}" -f $maxSingleBotStallRate))
+    $report.Add("forceHeal=$forceHealCount")
+    $report.Add("forcePush=$forcePushCount")
+    $report.Add("forceLightning=$forceLightningCount")
+    if ($hasForceCounters) {
+        $report.Add(("offensiveForceActionsPerBotMinute={0:N3}" -f $offensiveForceRate))
+    }
     $report.Add("noLosFireAttempts=$noLosFireAttempts")
     $report.Add("BryarLoadouts=$($loadedSlots.Count)")
     $report.Add("distinctModels=$($models.Count)")
@@ -228,7 +255,7 @@ foreach ($requestedDir in $RunDir) {
     }
     $report | Set-Content -LiteralPath (Join-Path $resolvedDir "bot-quality.txt") -Encoding ASCII
     Write-Output "[$status] $resolvedDir"
-    $report | Where-Object { $_ -match '^(kills|suicides|jumpDetected|jumpLanded|routeStallsPerBotMinute|maxSingleBotRouteStallsPerMinute|noLosFireAttempts|distinctModels|distinctRangedWeapons|forceActions|pickupActions|failure)=' } |
+    $report | Where-Object { $_ -match '^(kills|suicides|jumpDetected|jumpLanded|routeStallsPerBotMinute|maxSingleBotRouteStallsPerMinute|offensiveForceActionsPerBotMinute|noLosFireAttempts|distinctModels|distinctRangedWeapons|forceActions|pickupActions|failure)=' } |
         ForEach-Object { Write-Output "  $_" }
 }
 
