@@ -454,7 +454,7 @@ int sithCogParse_ReallocSymboltable(sithCogSymboltable *table)
         table->max_entries = reallocAmt;
     }
     result = table->max_entries;
-#ifndef COG_CRC32_SYMBOL_NAMES
+#if !defined(COG_CRC32_SYMBOL_NAMES) && !defined(QOL_IMPROVEMENTS)
     i_ = 0;
     if ( result )
     {

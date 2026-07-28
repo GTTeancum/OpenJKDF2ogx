@@ -14,6 +14,7 @@
 #include "Engine/sithPhysics.h"
 #include "Engine/sithPuppet.h"
 #include "Engine/rdThing.h"
+#include "General/crc32.h"
 #include "General/stdConffile.h"
 #include "General/stdMath.h"
 #include "Gameplay/jkSaber.h"
@@ -83,7 +84,7 @@ void sithCogFunction_FireProjectile(sithCog *ctx);
 #define SITHBOT_COMBAT_SEPARATION_MIN 1.15
 #define SITHBOT_COMBAT_HOLD_STRAFE 0.82
 #define SITHBOT_BNAV_MAGIC 0x56414E42u
-#define SITHBOT_BNAV_VERSION 17u
+#define SITHBOT_BNAV_VERSION 19u
 
 typedef enum SithBotNodeKind
 {
@@ -261,6 +262,8 @@ typedef struct SithBotState
     int steeringCombat;
     int ridingLiftThingIdx;
     int ridingLiftTargetNode;
+    int liftExitNode;
+    uint32_t liftExitUntilMs;
     int jumpPadLaunchNode;
     int jumpPadTargetNode;
     int jumpPadDodgeSign;
@@ -324,6 +327,9 @@ static int sithBot_qualityForceHeal;
 static int sithBot_qualityForcePush;
 static int sithBot_qualityForceLightning;
 static int sithBot_qualitySelfRicochetSuppressions;
+static int sithBot_qualityLiftCalls;
+static int sithBot_qualityLiftBoards;
+static int sithBot_qualityLiftExits;
 static int sithBot_qualityWeaponShots[SITHBIN_NUMBINS];
 static int sithBot_cameraPlayer;
 static SithBotDynamicHazard sithBot_dynamicHazards[SITHBOT_MAX_DYNAMIC_HAZARDS];
@@ -905,7 +911,7 @@ void sithBot_LogScoreboard(const char *reason)
                      info->score,
                      info->net_id);
     }
-    sithBot_Logf("BotMatch: quality jumpDetected=%d jumpLanded=%d jumpRetry=%d jumpFailed=%d jumpTimeout=%d routeNudges=%d routeStalls=%d noLosFireAttempts=%d forceHeal=%d forcePush=%d forceLightning=%d selfRicochetSuppressions=%d\n",
+    sithBot_Logf("BotMatch: quality jumpDetected=%d jumpLanded=%d jumpRetry=%d jumpFailed=%d jumpTimeout=%d routeNudges=%d routeStalls=%d noLosFireAttempts=%d forceHeal=%d forcePush=%d forceLightning=%d selfRicochetSuppressions=%d liftCalls=%d liftBoards=%d liftExits=%d\n",
                  sithBot_qualityJumpDetected,
                  sithBot_qualityJumpLanded,
                  sithBot_qualityJumpRetry,
@@ -917,7 +923,10 @@ void sithBot_LogScoreboard(const char *reason)
                  sithBot_qualityForceHeal,
                  sithBot_qualityForcePush,
                  sithBot_qualityForceLightning,
-                 sithBot_qualitySelfRicochetSuppressions);
+                 sithBot_qualitySelfRicochetSuppressions,
+                 sithBot_qualityLiftCalls,
+                 sithBot_qualityLiftBoards,
+                 sithBot_qualityLiftExits);
     sithBot_Logf("BotMatch: weapon-shots bryar=%d strifle=%d crossbow=%d repeater=%d rail=%d concussion=%d saber=%d scope=%d blastech=%d\n",
                  sithBot_qualityWeaponShots[Main_bMotsCompat ? SITHBIN_MOTS_BRYARPISTOL : SITHBIN_BRYARPISTOL],
                  sithBot_qualityWeaponShots[Main_bMotsCompat ? SITHBIN_MOTS_STORMTROOPER_RIFLE : SITHBIN_STORMTROOPER_RIFLE],
@@ -2387,6 +2396,88 @@ static flex_t sithBot_GetPathMoverDeckArea(sithThing *thing)
     return bestArea;
 }
 
+static int sithBot_StringContainsNoCase(const char *text, const char *needle)
+{
+    size_t needleLen;
+
+    if (!text || !needle || !*needle)
+        return 0;
+    needleLen = strlen(needle);
+    while (*text)
+    {
+        if (!__strnicmp(text, needle, needleLen))
+            return 1;
+        text++;
+    }
+    return 0;
+}
+
+static int sithBot_GetPathMoverControllerClass(sithThing *thing)
+{
+    int sawDoor = 0;
+    int i;
+
+    if (!thing)
+        return 0;
+
+    for (i = 0; i < sithCog_numThingLinks; i++)
+    {
+        sithCogThingLink *link = &sithCog_aThingLinks[i];
+        sithCogScript *script;
+        int j;
+
+        if (link->thing != thing || link->signature != thing->signature ||
+            !link->cog || !link->cog->cogscript)
+        {
+            continue;
+        }
+        script = link->cog->cogscript;
+#ifdef SITH_DEBUG_STRUCT_NAMES
+        if (sithBot_StringContainsNoCase(link->cog->cogscript_fpath, "elev") ||
+            sithBot_StringContainsNoCase(link->cog->cogscript_fpath, "lift"))
+        {
+            return 1;
+        }
+        if (sithBot_StringContainsNoCase(link->cog->cogscript_fpath, "door"))
+            sawDoor = 1;
+#endif
+        if (!script->pSymbolTable || !link->cog->pSymbolTable)
+            continue;
+        for (j = 0; j < (int)script->numIdk; j++)
+        {
+            sithCogReference *ref = &script->aIdk[j];
+            sithCogSymbol *runtimeSymbol;
+            sithCogSymbol *scriptSymbol;
+
+            if (ref->type != SENDERTYPE_THING || ref->hash < 0 ||
+                ref->hash >= (int)link->cog->pSymbolTable->entry_cnt ||
+                ref->hash >= (int)script->pSymbolTable->entry_cnt)
+            {
+                continue;
+            }
+            runtimeSymbol = &link->cog->pSymbolTable->buckets[ref->hash];
+            if (runtimeSymbol->val.data[0] != thing->thingIdx)
+                continue;
+            scriptSymbol = &script->pSymbolTable->buckets[ref->hash];
+#ifndef COG_CRC32_SYMBOL_NAMES
+            if (scriptSymbol->pName &&
+                (sithBot_StringContainsNoCase(scriptSymbol->pName, "elev") ||
+                 sithBot_StringContainsNoCase(scriptSymbol->pName, "lift")))
+            {
+                return 1;
+            }
+            if (scriptSymbol->pName &&
+                sithBot_StringContainsNoCase(scriptSymbol->pName, "door"))
+            {
+                sawDoor = 1;
+            }
+#endif
+        }
+    }
+
+    return sawDoor ? -1 : 0;
+}
+
 static int sithBot_IsPathLiftThing(sithThing *thing)
 {
     int i;
@@ -2396,6 +2487,9 @@ static int sithBot_IsPathLiftThing(sithThing *thing)
     {
         return 0;
     }
+
+    if (sithBot_GetPathMoverControllerClass(thing) < 0)
+        return 0;
 
     if (sithBot_GetPathMoverDeckArea(thing) < 0.025)
         return 0;
@@ -2630,27 +2724,19 @@ static int sithBot_AddPathLiftStop(sithThing *lift, int frameIdx, int baseNodeCo
             fallbackScore1 = thisStopScore;
             fallbackNode1 = i;
         }
-        if (carAtStop && !sithBot_IsWalkableSegment(candidate, &sithBot_nodes[stopNode]))
-            continue;
-        if (canEnterCar)
-            approachEdges += sithBot_AddEdge(i, stopNode);
-        approachEdges += sithBot_AddEdge(stopNode, i);
     }
 
-    if (carAtStop && approachEdges == 0)
+    if (fallbackNode0 >= 0)
     {
-        if (fallbackNode0 >= 0)
-        {
-            if (canEnterCar)
-                approachEdges += sithBot_AddEdge(fallbackNode0, stopNode);
-            approachEdges += sithBot_AddEdge(stopNode, fallbackNode0);
-        }
-        if (fallbackNode1 >= 0)
-        {
-            if (canEnterCar)
-                approachEdges += sithBot_AddEdge(fallbackNode1, stopNode);
-            approachEdges += sithBot_AddEdge(stopNode, fallbackNode1);
-        }
+        if (canEnterCar)
+            approachEdges += sithBot_AddEdge(fallbackNode0, stopNode);
+        approachEdges += sithBot_AddEdge(stopNode, fallbackNode0);
+    }
+    if (fallbackNode1 >= 0)
+    {
+        if (canEnterCar)
+            approachEdges += sithBot_AddEdge(fallbackNode1, stopNode);
+        approachEdges += sithBot_AddEdge(stopNode, fallbackNode1);
     }
 
     if (outApproachEdges)
@@ -5685,6 +5771,7 @@ static void sithBot_ResetState(SithBotState *bot, int playerIdx)
     bot->ridingLiftThingIdx = -1;
     bot->nextForceMs = sithTime_curMs + (uint32_t)(4500.0 + _frand() * 3500.0);
     bot->ridingLiftTargetNode = -1;
+    bot->liftExitNode = -1;
     bot->jumpPadLaunchNode = -1;
     bot->jumpPadTargetNode = -1;
     bot->dropTargetNode = -1;
@@ -5996,6 +6083,16 @@ static int sithBot_CheckRouteGoalProgress(SithBotState *state, sithThing *thing)
             state->routePriorNode = -1;
             state->routeFlipCount = 0;
         }
+        return 0;
+    }
+
+    if (state->ridingLiftThingIdx >= 0 ||
+        (state->nextNode >= 0 && state->nextNode < sithBot_numNodes &&
+         sithBot_nodes[state->nextNode].kind == SITHBOT_NODE_LIFT))
+    {
+        state->routeWatchStartMs = sithTime_curMs;
+        rdVector_Copy3(&state->routeWatchPos, &thing->position);
+        state->routeFlipCount = 0;
         return 0;
     }
 
@@ -6842,6 +6939,141 @@ static int sithBot_CogHandlesMessage(sithCog *cog, int message)
     return 0;
 }
 
+static sithCogSymbol *sithBot_GetCogSurfaceScriptSymbol(sithCog *cog, sithSurface *surface)
+{
+    sithCogScript *script;
+    int linkOrdinal = -1;
+    int surfaceRefOrdinal = 0;
+    int i;
+    int surfaceIdx;
+
+    if (!cog || !surface || !cog->cogscript || !cog->cogscript->pSymbolTable ||
+        !cog->pSymbolTable || !cog->pSymbolTable->buckets ||
+        !sithWorld_pCurrentWorld)
+    {
+        return NULL;
+    }
+
+    script = cog->cogscript;
+    for (i = 0; i < (int)script->numIdk; i++)
+    {
+        sithCogReference *ref = &script->aIdk[i];
+        sithCogSymbol *runtimeSymbol;
+        sithCogSymbol *scriptSymbol;
+
+        if (ref->type != SENDERTYPE_SURFACE)
+            continue;
+        if (ref->hash < 0 ||
+            ref->hash >= (int)cog->pSymbolTable->entry_cnt ||
+            ref->hash >= (int)script->pSymbolTable->entry_cnt)
+        {
+            continue;
+        }
+        runtimeSymbol = &cog->pSymbolTable->buckets[ref->hash];
+        scriptSymbol = &script->pSymbolTable->buckets[ref->hash];
+        if (!runtimeSymbol || !scriptSymbol || runtimeSymbol->val.type != COG_VARTYPE_INT)
+            continue;
+        surfaceIdx = runtimeSymbol->val.data[0];
+        if (surfaceIdx < 0 || surfaceIdx >= sithWorld_pCurrentWorld->numSurfaces ||
+            &sithWorld_pCurrentWorld->surfaces[surfaceIdx] != surface)
+        {
+            continue;
+        }
+        return scriptSymbol;
+    }
+
+    /* Surface links are registered while walking a COG's references in
+       declaration order. Some legacy instances no longer retain values that
+       reverse-map cleanly, so pair the linked-surface ordinal with the script
+       surface-reference ordinal. */
+    surfaceRefOrdinal = 0;
+    for (i = 0; i < sithCog_numSurfaceLinks; i++)
+    {
+        if (sithCog_aSurfaceLinks[i].cog != cog)
+            continue;
+        if (sithCog_aSurfaceLinks[i].surface == surface)
+        {
+            linkOrdinal = surfaceRefOrdinal;
+            break;
+        }
+        surfaceRefOrdinal++;
+    }
+    if (linkOrdinal < 0)
+        return NULL;
+
+    surfaceRefOrdinal = 0;
+    for (i = 0; i < (int)script->numIdk; i++)
+    {
+        sithCogReference *ref = &script->aIdk[i];
+        sithCogSymbol *runtimeSymbol;
+
+        if (ref->type != SENDERTYPE_SURFACE)
+            continue;
+        if (ref->hash < 0 || ref->hash >= (int)cog->pSymbolTable->entry_cnt)
+            continue;
+        runtimeSymbol = &cog->pSymbolTable->buckets[ref->hash];
+        if (runtimeSymbol->val.data[0] < 0 ||
+            runtimeSymbol->val.data[0] >= sithWorld_pCurrentWorld->numSurfaces)
+        {
+            continue;
+        }
+        if (surfaceRefOrdinal++ == linkOrdinal)
+            return ref->hash < (int)script->pSymbolTable->entry_cnt
+                ? &script->pSymbolTable->buckets[ref->hash]
+                : NULL;
+    }
+    return NULL;
+}
+
+static int sithBot_CogSurfaceMatchesSymbol(sithCog *cog, sithSurface *surface, const char *name)
+{
+    sithCogSymbol *scriptSymbol = sithBot_GetCogSurfaceScriptSymbol(cog, surface);
+
+    if (!scriptSymbol || !name)
+        return 0;
+#ifdef COG_CRC32_SYMBOL_NAMES
+    return scriptSymbol->nameCrc == stdCrc32(name, strlen(name));
+#else
+    return scriptSymbol->pName && !_strcmp(scriptSymbol->pName, name);
+#endif
+}
+
+static int sithBot_GetLiftControlRank(sithCog *cog, sithSurface *surface, int attached,
+                                      int targetFrame, int currentFrame)
+{
+    static const char *callNames[] = {
+        "callbutton", "button", "call0", "call1", "call2", "call3"
+    };
+    int i;
+
+    if (!cog || !surface)
+        return 0;
+
+    if (attached && targetFrame > currentFrame &&
+        sithBot_CogSurfaceMatchesSymbol(cog, surface, "upbutton"))
+    {
+        return 3;
+    }
+    if (attached && targetFrame < currentFrame &&
+        sithBot_CogSurfaceMatchesSymbol(cog, surface, "dnbutton"))
+    {
+        return 3;
+    }
+    for (i = 0; i < (int)(sizeof(callNames) / sizeof(callNames[0])); i++)
+    {
+        if (sithBot_CogSurfaceMatchesSymbol(cog, surface, callNames[i]))
+            return attached ? 2 : 3;
+    }
+    if (sithBot_CogSurfaceMatchesSymbol(cog, surface, "upbutton") ||
+        sithBot_CogSurfaceMatchesSymbol(cog, surface, "dnbutton"))
+    {
+        return 1;
+    }
+
+    /* Mod COGs often use custom symbol names. Keep them usable as a fallback. */
+    return 1;
+}
+
 static int sithBot_GetSurfaceCenter(sithSurface *surface, rdVector3 *center)
 {
     rdFace *face;
@@ -7000,6 +7232,7 @@ static int sithBot_MoveToLiftControl(SithBotState *state, sithThing *bot, sithTh
     sithThing *bestThing = 0;
     rdVector3 bestPos;
     flex_t bestScore = 3.4e38f;
+    int bestRank = 0;
     flex_t dist;
     int i;
 
@@ -7017,6 +7250,7 @@ static int sithBot_MoveToLiftControl(SithBotState *state, sithThing *bot, sithTh
         rdVector3 center;
         flex_t score;
         int approach;
+        int rank;
 
         if (!surface || surface->adjoin ||
             stdMath_Fabs(surface->surfaceInfo.face.normal.z) > 0.65 ||
@@ -7026,9 +7260,12 @@ static int sithBot_MoveToLiftControl(SithBotState *state, sithThing *bot, sithTh
         {
             continue;
         }
+        rank = sithBot_GetLiftControlRank(link->cog, surface, 0,
+                                          liftNode->pathFrame, lift->curframe);
         approach = sithBot_FindControlApproach(&center, surface->parent_sector, liftNode, steps, &score);
-        if (approach >= 0 && score < bestScore)
+        if (approach >= 0 && (rank > bestRank || (rank == bestRank && score < bestScore)))
         {
+            bestRank = rank;
             bestScore = score;
             bestApproach = approach;
             bestSurface = surface;
@@ -7043,6 +7280,7 @@ static int sithBot_MoveToLiftControl(SithBotState *state, sithThing *bot, sithTh
         sithThing *control = link->thing;
         flex_t score;
         int approach;
+        int rank = 1;
 
         if (!control || control == lift || link->signature != control->signature ||
             !sithBot_CogControlsThing(link->cog, lift) ||
@@ -7051,8 +7289,9 @@ static int sithBot_MoveToLiftControl(SithBotState *state, sithThing *bot, sithTh
             continue;
         }
         approach = sithBot_FindControlApproach(&control->position, control->sector, liftNode, steps, &score);
-        if (approach >= 0 && score < bestScore)
+        if (approach >= 0 && (rank > bestRank || (rank == bestRank && score < bestScore)))
         {
+            bestRank = rank;
             bestScore = score;
             bestApproach = approach;
             bestSurface = 0;
@@ -7078,6 +7317,7 @@ static int sithBot_MoveToLiftControl(SithBotState *state, sithThing *bot, sithTh
                 sithCog_SendMessageFromSurface(bestSurface, bot, SITH_MESSAGE_ACTIVATE);
             else
                 sithCog_SendMessageFromThing(bestThing, bot, SITH_MESSAGE_ACTIVATE);
+            sithBot_qualityLiftCalls++;
             state->lastInteractionSurfaceIdx = bestSurface ? (int)bestSurface->index : -1;
             state->lastInteractionThingIdx = bestThing ? bestThing->thingIdx : -1;
             state->nextUseMs = sithTime_curMs + 1200;
@@ -7126,11 +7366,14 @@ static int sithBot_MoveToLiftControl(SithBotState *state, sithThing *bot, sithTh
     return 1;
 }
 
-static int sithBot_TryActivateLiftControl(SithBotState *state, sithThing *bot, sithThing *lift, int attached)
+static int sithBot_TryActivateLiftControl(SithBotState *state, sithThing *bot, sithThing *lift,
+                                          int attached, int targetFrame)
 {
     sithSurface *bestSurface = 0;
     sithThing *bestThing = 0;
-    flex_t bestDistSq = attached ? 2.25 : 1.44;
+    flex_t maxDistSq = attached ? 2.25 : 1.44;
+    flex_t bestDistSq = maxDistSq;
+    int bestRank = 0;
     flex_t bestDist;
     int i;
 
@@ -7144,6 +7387,7 @@ static int sithBot_TryActivateLiftControl(SithBotState *state, sithThing *bot, s
         rdFace *face;
         rdVector3 center;
         flex_t distSq;
+        int rank;
         int j;
 
         if (!surface || (!attached && surface->adjoin) ||
@@ -7164,9 +7408,14 @@ static int sithBot_TryActivateLiftControl(SithBotState *state, sithThing *bot, s
         if (j != (int)face->numVertices)
             continue;
         rdVector_InvScale3Acc(&center, (flex_t)face->numVertices);
+        rank = sithBot_GetLiftControlRank(link->cog, surface, attached,
+                                          targetFrame, lift->curframe);
         distSq = sithBot_DistSq(&bot->position, &center);
-        if (distSq < bestDistSq)
+        if (distSq >= maxDistSq)
+            continue;
+        if (rank > bestRank || (rank == bestRank && distSq < bestDistSq))
         {
+            bestRank = rank;
             bestDistSq = distSq;
             bestSurface = surface;
             bestThing = 0;
@@ -7178,6 +7427,7 @@ static int sithBot_TryActivateLiftControl(SithBotState *state, sithThing *bot, s
         sithCogThingLink *controlLink = &sithCog_aThingLinks[i];
         sithThing *control = controlLink->thing;
         flex_t distSq;
+        int rank = 1;
 
         if (!control || control == lift || controlLink->signature != control->signature ||
             !sithBot_CogControlsThing(controlLink->cog, lift) ||
@@ -7186,8 +7436,11 @@ static int sithBot_TryActivateLiftControl(SithBotState *state, sithThing *bot, s
             continue;
         }
         distSq = sithBot_DistSq(&bot->position, &control->position);
-        if (distSq < bestDistSq)
+        if (distSq >= maxDistSq)
+            continue;
+        if (rank > bestRank || (rank == bestRank && distSq < bestDistSq))
         {
+            bestRank = rank;
             bestDistSq = distSq;
             bestThing = control;
             bestSurface = 0;
@@ -7203,6 +7456,7 @@ static int sithBot_TryActivateLiftControl(SithBotState *state, sithThing *bot, s
         state->lastInteractionSurfaceIdx = (int)bestSurface->index;
         state->lastInteractionThingIdx = -1;
         sithCog_SendMessageFromSurface(bestSurface, bot, SITH_MESSAGE_ACTIVATE);
+        sithBot_qualityLiftCalls++;
         if (sithBot_debugUsesLogged < 40)
         {
             sithBot_Logf("BotMatch: lift-control slot=%d lift=%d kind=surface index=%u dist=%.2f\n",
@@ -7215,6 +7469,7 @@ static int sithBot_TryActivateLiftControl(SithBotState *state, sithThing *bot, s
         state->lastInteractionSurfaceIdx = -1;
         state->lastInteractionThingIdx = bestThing->thingIdx;
         sithCog_SendMessageFromThing(bestThing, bot, SITH_MESSAGE_ACTIVATE);
+        sithBot_qualityLiftCalls++;
         if (sithBot_debugUsesLogged < 40)
         {
             sithBot_Logf("BotMatch: lift-control slot=%d lift=%d kind=thing index=%d dist=%.2f\n",
@@ -7278,6 +7533,42 @@ static int sithBot_FindNearbyPathLiftStop(sithThing *thing, sithThing *lift, int
     return bestNode >= 0 ? bestNode : requestedNode;
 }
 
+static int sithBot_FindPathLiftExitNode(int stopNode, int goalNode)
+{
+    SithBotNode *stop;
+    int bestNode = -1;
+    flex_t bestScore = 3.4e38f;
+    int i;
+
+    if (stopNode < 0 || stopNode >= sithBot_numNodes)
+        return -1;
+    stop = &sithBot_nodes[stopNode];
+    for (i = 0; i < stop->edgeCount; i++)
+    {
+        int candidateIdx = stop->edges[i];
+        SithBotNode *candidate;
+        flex_t score;
+
+        if (candidateIdx < 0 || candidateIdx >= sithBot_numNodes)
+            continue;
+        candidate = &sithBot_nodes[candidateIdx];
+        if (candidate->kind == SITHBOT_NODE_LIFT ||
+            !sithBot_IsNavSectorUsableForBot(candidate->sector))
+        {
+            continue;
+        }
+        score = goalNode >= 0 && goalNode < sithBot_numNodes
+            ? sithBot_DistSq(&candidate->pos, &sithBot_nodes[goalNode].pos)
+            : sithBot_DistSq(&candidate->pos, &stop->pos);
+        if (score < bestScore)
+        {
+            bestScore = score;
+            bestNode = candidateIdx;
+        }
+    }
+    return bestNode;
+}
+
 static int sithBot_TryAttachToPathLift(sithThing *thing, sithThing *lift)
 {
     sithCollisionSearchEntry *entry;
@@ -7337,6 +7628,42 @@ static int sithBot_TryAttachToPathLift(sithThing *thing, sithThing *lift)
     return attached;
 }
 
+static int sithBot_PathLiftSupportsPoint(sithThing *thing, sithThing *lift, const rdVector3 *point)
+{
+    sithCollisionSearchEntry *entry;
+    rdVector3 down;
+    rdVector3 probeStart;
+    rdVector3 worldNormal;
+    int supported = 0;
+
+    if (!thing || !lift || !lift->sector || !point)
+        return 0;
+
+    rdVector_Copy3(&probeStart, point);
+    probeStart.z += 0.22;
+    rdVector_Neg3(&down, &rdroid_zVector3);
+    sithCollision_SearchRadiusForThings(lift->sector,
+                                        0,
+                                        &probeStart,
+                                        &down,
+                                        1.15,
+                                        0.04,
+                                        RAYCAST_10 | RAYCAST_2000 | RAYCAST_800 | RAYCAST_2);
+    while ((entry = sithCollision_NextSearchResult()) != 0)
+    {
+        if (!(entry->hitType & SITHCOLLISION_THING) || entry->receiver != lift || !entry->face)
+            continue;
+        rdMatrix_TransformVector34(&worldNormal, &entry->face->normal, &lift->lookOrientation);
+        if (rdVector_Dot3(&worldNormal, &rdroid_zVector3) >= 0.60)
+        {
+            supported = 1;
+            break;
+        }
+    }
+    sithCollision_SearchClose();
+    return supported;
+}
+
 static int sithBot_HandlePathLiftRoute(SithBotState *state, sithThing *thing, int nextNode)
 {
     int requestedNode = nextNode;
@@ -7344,9 +7671,11 @@ static int sithBot_HandlePathLiftRoute(SithBotState *state, sithThing *thing, in
     sithThing *lift;
     sithThingFrame *frame;
     rdVector3 boardDir;
+    rdVector3 boardProbe;
     flex_t dx;
     flex_t dy;
     flex_t boardDist;
+    flex_t boardProbeDist;
     flex_t boardSpeed;
     int attached;
     int atStop;
@@ -7354,6 +7683,15 @@ static int sithBot_HandlePathLiftRoute(SithBotState *state, sithThing *thing, in
 
     if (!state || !thing)
         return 0;
+    if (state->ridingLiftTargetNode >= 0 &&
+        state->ridingLiftTargetNode < sithBot_numNodes &&
+        sithBot_GetPathLiftForNode(state->ridingLiftTargetNode))
+    {
+        /* Route goals may change while a slow JK lift is travelling. Resolve
+           the locked stop before testing the caller's freshly planned node,
+           otherwise a non-lift node bypasses arrival and exit handling. */
+        nextNode = state->ridingLiftTargetNode;
+    }
     lift = sithBot_GetPathLiftForNode(nextNode);
     if (!lift)
         return 0;
@@ -7373,8 +7711,21 @@ static int sithBot_HandlePathLiftRoute(SithBotState *state, sithThing *thing, in
         flex_t relX = thing->position.x - lift->position.x;
         flex_t relY = thing->position.y - lift->position.y;
         flex_t relZ = sithBot_AbsFlex(thing->position.z - lift->position.z);
+        flex_t stopX = thing->position.x - node->pos.x;
+        flex_t stopY = thing->position.y - node->pos.y;
+        flex_t stopZ = sithBot_AbsFlex(thing->position.z - node->pos.z);
 
-        if (relX * relX + relY * relY <= 0.95 * 0.95 && relZ <= 1.25)
+        if (atStop && lift->curframe == node->pathFrame &&
+            stopX * stopX + stopY * stopY <= 1.10 * 1.10 && stopZ <= 1.25)
+        {
+            /* JK clears a passenger's surface attachment as a persistent lift
+               settles. The car and passenger are already at the locked stop,
+               so continue into the ordinary physical exit without fabricating
+               a new attachment. */
+            attached = 1;
+        }
+        else if (moving &&
+                 relX * relX + relY * relY <= 0.95 * 0.95 && relZ <= 1.25)
         {
             /* Some MotS path things briefly lose a surface attachment while
                changing sectors. Preserve the passenger relationship until the
@@ -7394,6 +7745,19 @@ static int sithBot_HandlePathLiftRoute(SithBotState *state, sithThing *thing, in
         }
     }
 
+    if (attached && state->ridingLiftTargetNode >= 0 &&
+        state->ridingLiftTargetNode < sithBot_numNodes &&
+        sithBot_GetPathLiftForNode(state->ridingLiftTargetNode) == lift)
+    {
+        nextNode = state->ridingLiftTargetNode;
+        node = &sithBot_nodes[nextNode];
+        frame = &lift->trackParams.aFrames[node->pathFrame];
+        dx = lift->position.x - frame->pos.x;
+        dy = lift->position.y - frame->pos.y;
+        atStop = dx * dx + dy * dy +
+            (lift->position.z - frame->pos.z) * (lift->position.z - frame->pos.z) < 0.24 * 0.24;
+    }
+
     if (!attached)
     {
         nextNode = sithBot_FindNearbyPathLiftStop(thing, lift, requestedNode);
@@ -7407,12 +7771,17 @@ static int sithBot_HandlePathLiftRoute(SithBotState *state, sithThing *thing, in
 
     if (attached)
     {
-        if (atStop && lift->curframe == node->pathFrame && state->goalNode >= 0 &&
-            state->goalNode < sithBot_numNodes)
+        if (atStop && lift->curframe == node->pathFrame)
         {
-            int rideNode = sithBot_FindPathNext(nextNode, state->goalNode);
+            int reachedRideTarget = state->ridingLiftTargetNode == nextNode;
+            int rideNode = reachedRideTarget
+                ? sithBot_FindPathLiftExitNode(nextNode, state->goalNode)
+                : (state->goalNode >= 0 && state->goalNode < sithBot_numNodes
+                    ? sithBot_FindPathNext(nextNode, state->goalNode)
+                    : -1);
             sithThing *rideLift = sithBot_GetPathLiftForNode(rideNode);
-            if (rideLift == lift && sithBot_nodes[rideNode].pathFrame != lift->curframe)
+            if (!reachedRideTarget && rideLift == lift &&
+                sithBot_nodes[rideNode].pathFrame != lift->curframe)
             {
                 state->nextNode = rideNode;
                 state->ridingLiftTargetNode = rideNode;
@@ -7424,11 +7793,16 @@ static int sithBot_HandlePathLiftRoute(SithBotState *state, sithThing *thing, in
             }
             else
             {
+                if (rideNode < 0 || sithBot_GetPathLiftForNode(rideNode))
+                    rideNode = sithBot_FindPathLiftExitNode(nextNode, state->goalNode);
+                if (rideNode < 0)
+                    return 1;
                 if (thing->attach_flags & SITH_ATTACH_NO_MOVE)
                 {
                     sithThing_DetachThing(thing);
                     sithPhysics_ThingStop(thing);
-                    sithPhysics_FindFloor(thing, 1);
+                    if (node->sector && thing->sector != node->sector)
+                        sithThing_MoveToSector(thing, node->sector, 0);
                     if (sithComm_multiplayerFlags)
                         sithDSSThing_SendSyncThingAttachment(thing, -1, 255, 1);
                 }
@@ -7436,32 +7810,21 @@ static int sithBot_HandlePathLiftRoute(SithBotState *state, sithThing *thing, in
                    nearest node while the car still fills the shaft can select
                    the opposite landing and send the bot straight back in. */
                 state->nextNode = rideNode;
-                state->ridingLiftThingIdx = -1;
                 state->ridingLiftTargetNode = -1;
+                state->liftExitNode = rideNode;
+                state->liftExitUntilMs = sithTime_curMs + 2200;
                 state->routeGoalNode = state->goalNode;
                 state->routeBestDist = rideNode >= 0 && rideNode < sithBot_numNodes
                     ? rdVector_Dist3(&thing->position, &sithBot_nodes[rideNode].pos)
                     : 3.4e38f;
                 state->routeCommitUntilMs = sithTime_curMs + SITHBOT_ROUTE_COMMIT_MS;
-                if (state->nextLiftLogMs <= sithTime_curMs && sithBot_debugLiftsLogged < 48)
-                {
-                    sithBot_Logf("BotMatch: lift-exit slot=%d thing=%d frame=%d next=%d dist=%.2f\n",
-                                 state->playerIdx,
-                                 lift->thingIdx,
-                                 node->pathFrame,
-                                 rideNode,
-                                 state->routeBestDist);
-                    sithBot_debugLiftsLogged++;
-                    state->nextLiftLogMs = sithTime_curMs + 500;
-                }
-                return 0;
+                return 1;
             }
         }
 
-        if (!moving && !atStop && lift->goalframe != node->pathFrame &&
-            state->nextUseMs <= sithTime_curMs)
+        if (!moving && !atStop && state->nextUseMs <= sithTime_curMs)
         {
-            if (!sithBot_TryActivateLiftControl(state, thing, lift, 1))
+            if (!sithBot_TryActivateLiftControl(state, thing, lift, 1, node->pathFrame))
                 sithPlayerActions_Activate(thing);
             state->nextUseMs = sithTime_curMs + 900;
         }
@@ -7489,74 +7852,26 @@ static int sithBot_HandlePathLiftRoute(SithBotState *state, sithThing *thing, in
         /* Board an available car before considering its controls. */
         if (state->nextUseMs < sithTime_curMs + 800)
             state->nextUseMs = sithTime_curMs + 800;
+        state->lastMoveCheckMs = sithTime_curMs;
+        rdVector_Copy3(&state->lastMovePos, &thing->position);
 
         boardDir.x = node->pos.x - thing->position.x;
         boardDir.y = node->pos.y - thing->position.y;
         boardDir.z = 0.0;
         boardDist = rdVector_Normalize3Acc(&boardDir);
-        if (boardDist < 0.55)
+        if (boardDist > 1.35)
+            return 0;
+        if (boardDist < 0.65 && sithBot_TryAttachToPathLift(thing, lift))
         {
-            if (sithBot_TryAttachToPathLift(thing, lift))
-            {
-                state->ridingLiftThingIdx = lift->thingIdx;
-                state->ridingLiftTargetNode = nextNode;
-                if (state->nextLiftLogMs <= sithTime_curMs && sithBot_debugLiftsLogged < 48)
-                {
-                    sithBot_Logf("BotMatch: lift-attach slot=%d thing=%d frame=%d pos=(%.2f,%.2f,%.2f)\n",
-                                 state->playerIdx,
-                                 lift->thingIdx,
-                                 node->pathFrame,
-                                 thing->position.x,
-                                 thing->position.y,
-                                 thing->position.z);
-                    sithBot_debugLiftsLogged++;
-                    state->nextLiftLogMs = sithTime_curMs + 500;
-                }
-                sithBot_SyncPositionIfNeeded(state, thing);
-                return 1;
-            }
-
-            if (boardDist < 0.38 && sithBot_AbsFlex(thing->position.z - node->pos.z) < 0.45)
-            {
-                /* The car is under the bot, but a narrow cross-sector ray can
-                   miss its face. A locked relative attachment is equivalent
-                   for a passenger who intentionally stands still during the
-                   ride and is released at the destination frame. */
-                sithThing_AttachThing(thing, lift);
-                thing->attach_flags |= SITH_ATTACH_NO_MOVE;
-                rdVector_Zero3(&thing->physicsParams.acceleration);
-                rdVector_Zero3(&thing->physicsParams.vel);
-                state->ridingLiftThingIdx = lift->thingIdx;
-                state->ridingLiftTargetNode = nextNode;
-                if (sithComm_multiplayerFlags)
-                    sithDSSThing_SendSyncThingAttachment(thing, -1, 255, 1);
-                sithBot_SyncPositionIfNeeded(state, thing);
-                return 1;
-            }
-
-            sithBot_FaceToward(state, thing, &node->pos, 0);
-            rdVector_Zero3(&thing->physicsParams.acceleration);
-            if (boardDist > 0.035)
-            {
-                boardSpeed = boardDist * 4.0;
-                if (boardSpeed < 0.25)
-                    boardSpeed = 0.25;
-                if (boardSpeed > 0.75)
-                    boardSpeed = 0.75;
-                thing->physicsParams.vel.x = boardDir.x * boardSpeed;
-                thing->physicsParams.vel.y = boardDir.y * boardSpeed;
-            }
-            else
-            {
-                sithBot_DampHorizontalVelocity(state, thing, 12.0);
-            }
+            state->ridingLiftThingIdx = lift->thingIdx;
+            state->ridingLiftTargetNode = -1;
+            sithBot_qualityLiftBoards++;
             if (state->nextLiftLogMs <= sithTime_curMs && sithBot_debugLiftsLogged < 48)
             {
-                sithBot_Logf("BotMatch: lift-board slot=%d thing=%d frame=%d dist=%.2f pos=(%.2f,%.2f,%.2f)\n",
+                sithBot_Logf("BotMatch: lift-attach slot=%d thing=%d frame=%d pos=(%.2f,%.2f,%.2f)\n",
                              state->playerIdx,
                              lift->thingIdx,
                              node->pathFrame,
-                             boardDist,
                              thing->position.x,
                              thing->position.y,
                              thing->position.z);
@@ -7566,7 +7881,44 @@ static int sithBot_HandlePathLiftRoute(SithBotState *state, sithThing *thing, in
             sithBot_SyncPositionIfNeeded(state, thing);
             return 1;
         }
-        return 0;
+
+        boardProbeDist = boardDist < 0.90 ? boardDist : 0.90;
+        rdVector_Copy3(&boardProbe, &thing->position);
+        boardProbe.x += boardDir.x * boardProbeDist;
+        boardProbe.y += boardDir.y * boardProbeDist;
+        if (!sithBot_IsMoveStepSafeWithRise(thing, &boardDir, boardProbeDist, 0.35) &&
+            !sithBot_PathLiftSupportsPoint(thing, lift, &boardProbe))
+        {
+            rdVector_Zero3(&thing->physicsParams.acceleration);
+            sithBot_DampHorizontalVelocity(state, thing, 12.0);
+            sithBot_SyncPositionIfNeeded(state, thing);
+            return 1;
+        }
+
+        sithBot_FaceToward(state, thing, &node->pos, 0);
+        rdVector_Zero3(&thing->physicsParams.acceleration);
+        boardSpeed = boardDist * 2.0;
+        if (boardSpeed < 0.30)
+            boardSpeed = 0.30;
+        if (boardSpeed > 0.80)
+            boardSpeed = 0.80;
+        thing->physicsParams.vel.x = boardDir.x * boardSpeed;
+        thing->physicsParams.vel.y = boardDir.y * boardSpeed;
+        if (state->nextLiftLogMs <= sithTime_curMs && sithBot_debugLiftsLogged < 48)
+        {
+            sithBot_Logf("BotMatch: lift-board slot=%d thing=%d frame=%d dist=%.2f pos=(%.2f,%.2f,%.2f)\n",
+                         state->playerIdx,
+                         lift->thingIdx,
+                         node->pathFrame,
+                         boardDist,
+                         thing->position.x,
+                         thing->position.y,
+                         thing->position.z);
+            sithBot_debugLiftsLogged++;
+            state->nextLiftLogMs = sithTime_curMs + 500;
+        }
+        sithBot_SyncPositionIfNeeded(state, thing);
+        return 1;
     }
 
     if (!moving && sithBot_MoveToLiftControl(state, thing, lift, node))
@@ -7574,11 +7926,13 @@ static int sithBot_HandlePathLiftRoute(SithBotState *state, sithThing *thing, in
 
     dx = thing->position.x - node->pos.x;
     dy = thing->position.y - node->pos.y;
-    if (!atStop && dx * dx + dy * dy < 0.90 * 0.90)
+    if (!atStop && dx * dx + dy * dy < 2.25 * 2.25)
     {
+        state->lastMoveCheckMs = sithTime_curMs;
+        rdVector_Copy3(&state->lastMovePos, &thing->position);
         if (!moving && state->nextUseMs <= sithTime_curMs)
         {
-            if (!sithBot_TryActivateLiftControl(state, thing, lift, 0))
+            if (!sithBot_TryActivateLiftControl(state, thing, lift, 0, node->pathFrame))
                 sithPlayerActions_Activate(thing);
             state->nextUseMs = sithTime_curMs + 900;
         }
@@ -7603,6 +7957,94 @@ static int sithBot_HandlePathLiftRoute(SithBotState *state, sithThing *thing, in
     }
 
     return 0;
+}
+
+static int sithBot_HandleLiftExit(SithBotState *state, sithThing *thing)
+{
+    SithBotNode *exitNode;
+    sithThing *lift = 0;
+    rdVector3 exitTarget;
+    rdVector3 exitDir;
+    rdVector3 clearDir;
+    flex_t exitDist;
+    flex_t clearDist;
+    flex_t exitSpeed;
+
+    if (!state || !thing || state->liftExitNode < 0 ||
+        state->liftExitNode >= sithBot_numNodes)
+    {
+        return 0;
+    }
+
+    exitNode = &sithBot_nodes[state->liftExitNode];
+    rdVector_Copy3(&exitTarget, &exitNode->pos);
+    if (state->ridingLiftThingIdx >= 0)
+        lift = sithThing_GetThingByIdx(state->ridingLiftThingIdx);
+    if (sithBot_IsPathLiftThing(lift))
+    {
+        clearDir.x = exitNode->pos.x - lift->position.x;
+        clearDir.y = exitNode->pos.y - lift->position.y;
+        clearDir.z = 0.0;
+        clearDist = rdVector_Normalize3Acc(&clearDir);
+        if (clearDist > 0.05 && clearDist < 0.85)
+        {
+            exitTarget.x = lift->position.x + clearDir.x * 0.85;
+            exitTarget.y = lift->position.y + clearDir.y * 0.85;
+        }
+    }
+    exitDir.x = exitTarget.x - thing->position.x;
+    exitDir.y = exitTarget.y - thing->position.y;
+    exitDir.z = 0.0;
+    exitDist = rdVector_Normalize3Acc(&exitDir);
+    if (exitDist < 0.25 &&
+        sithBot_AbsFlex(thing->position.z - exitTarget.z) < 0.50)
+    {
+        if (thing->sector != exitNode->sector)
+            sithThing_MoveToSector(thing, exitNode->sector, 0);
+        sithPhysics_FindFloor(thing, 1);
+        state->nextNode = state->liftExitNode;
+        state->ridingLiftThingIdx = -1;
+        state->liftExitNode = -1;
+        state->liftExitUntilMs = 0;
+        sithBot_qualityLiftExits++;
+        if (state->nextLiftLogMs <= sithTime_curMs && sithBot_debugLiftsLogged < 48)
+        {
+            sithBot_Logf("BotMatch: lift-exit slot=%d next=%d dist=%.2f sector=%d\n",
+                         state->playerIdx,
+                         state->nextNode,
+                         exitDist,
+                         sithBot_GetSectorIndex(thing->sector));
+            sithBot_debugLiftsLogged++;
+            state->nextLiftLogMs = sithTime_curMs + 500;
+        }
+        return 0;
+    }
+
+    if (sithTime_curMs >= state->liftExitUntilMs)
+    {
+        state->ridingLiftThingIdx = -1;
+        state->liftExitNode = -1;
+        state->liftExitUntilMs = 0;
+        state->nextNode = -1;
+        state->nextGoalMs = 0;
+        return 0;
+    }
+
+    state->lastMoveCheckMs = sithTime_curMs;
+    rdVector_Copy3(&state->lastMovePos, &thing->position);
+    if (thing->attach_flags & (SITH_ATTACH_THING | SITH_ATTACH_THINGSURFACE))
+        sithThing_DetachThing(thing);
+    sithBot_FaceToward(state, thing, &exitTarget, 0);
+    rdVector_Zero3(&thing->physicsParams.acceleration);
+    exitSpeed = exitDist * 2.0;
+    if (exitSpeed < 0.40)
+        exitSpeed = 0.40;
+    if (exitSpeed > 0.85)
+        exitSpeed = 0.85;
+    thing->physicsParams.vel.x = exitDir.x * exitSpeed;
+    thing->physicsParams.vel.y = exitDir.y * exitSpeed;
+    sithBot_SyncPositionIfNeeded(state, thing);
+    return 1;
 }
 
 static int sithBot_DriveDropRoute(SithBotState *state, sithThing *thing, const rdVector3 *target, int combat)
@@ -9683,6 +10125,9 @@ static void sithBot_TickState(SithBotState *state, flex_t deltaSeconds, int delt
 
     sithBot_TryPickupNearby(state, thing);
 
+    if (sithBot_HandleLiftExit(state, thing))
+        return;
+
     if (sithBot_RunHazardFlee(state, thing))
         return;
     if (state->goalMode == SITHBOT_GOAL_ESCAPE && !state->hazardSector)
@@ -9693,26 +10138,29 @@ static void sithBot_TickState(SithBotState *state, flex_t deltaSeconds, int delt
         state->goalMode = SITHBOT_GOAL_ROAM;
     }
 
-    if (sithBot_GetPathLiftForNode(state->nextNode))
     {
-        SithBotNode *liftNode = &sithBot_nodes[state->nextNode];
-        sithThing *lift = sithBot_GetPathLiftForNode(state->nextNode);
-        flex_t dx = thing->position.x - liftNode->pos.x;
-        flex_t dy = thing->position.y - liftNode->pos.y;
-        int attached = (thing->attach_flags & (SITH_ATTACH_THING | SITH_ATTACH_THINGSURFACE)) &&
-            thing->attachedThing == lift;
-
-        if (attached || dx * dx + dy * dy < 1.25 * 1.25)
+        int activeLiftNode = state->ridingLiftTargetNode >= 0 &&
+            state->ridingLiftTargetNode < sithBot_numNodes &&
+            sithBot_GetPathLiftForNode(state->ridingLiftTargetNode)
+            ? state->ridingLiftTargetNode
+            : state->nextNode;
+        if (sithBot_GetPathLiftForNode(activeLiftNode))
         {
+            SithBotNode *liftNode = &sithBot_nodes[activeLiftNode];
+            flex_t dx = thing->position.x - liftNode->pos.x;
+            flex_t dy = thing->position.y - liftNode->pos.y;
+
             rdVector_Copy3(&moveTarget, &liftNode->pos);
-            if (!sithBot_HandlePathLiftRoute(state, thing, state->nextNode))
+            if (sithBot_HandlePathLiftRoute(state, thing, activeLiftNode))
+                return;
+            if (dx * dx + dy * dy < 1.25 * 1.25)
             {
                 sithBot_FaceToward(state, thing, &moveTarget, 0);
                 sithBot_MoveToward(state, thing, &moveTarget, 0);
                 sithBot_CheckStuck(state, thing, &moveTarget);
                 sithBot_SyncPositionIfNeeded(state, thing);
+                return;
             }
-            return;
         }
     }
 
@@ -9980,6 +10428,9 @@ static void sithBot_ResetForWorldChange(void)
     sithBot_qualityForcePush = 0;
     sithBot_qualityForceLightning = 0;
     sithBot_qualitySelfRicochetSuppressions = 0;
+    sithBot_qualityLiftCalls = 0;
+    sithBot_qualityLiftBoards = 0;
+    sithBot_qualityLiftExits = 0;
     memset(sithBot_qualityWeaponShots, 0, sizeof(sithBot_qualityWeaponShots));
     sithBot_cameraPlayer = 0;
     memset(sithBot_dynamicHazards, 0, sizeof(sithBot_dynamicHazards));

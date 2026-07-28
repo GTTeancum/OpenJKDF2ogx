@@ -10,6 +10,9 @@ param(
     [string]$AutoStartArgs = "",
     [int]$BotCount = 0,
     [int]$BotMatchSeconds = 0,
+    [ValidateSet("Idle", "BelowNormal", "Normal")]
+    [string]$ProcessPriority = "BelowNormal",
+    [long]$ProcessAffinityMask = 0,
     [switch]$DisableMusic,
     [switch]$MuteAudio
 )
@@ -57,6 +60,20 @@ function Stop-CxbxProcesses {
     Get-CxbxProcesses | ForEach-Object {
         try {
             Stop-Process -Id $_.ProcessId -Force -ErrorAction SilentlyContinue
+        }
+        catch {
+        }
+    }
+}
+
+function Set-CxbxResourceLimits {
+    Get-CxbxProcesses | ForEach-Object {
+        try {
+            $process = Get-Process -Id $_.ProcessId -ErrorAction Stop
+            $process.PriorityClass = $ProcessPriority
+            if ($ProcessAffinityMask -gt 0) {
+                $process.ProcessorAffinity = [intptr]$ProcessAffinityMask
+            }
         }
         catch {
         }
@@ -172,12 +189,16 @@ $proc = Start-Process `
     -RedirectStandardOutput $stdoutPath `
     -RedirectStandardError $stderrPath
 
+Start-Sleep -Milliseconds 100
+Set-CxbxResourceLimits
+
 $deadline = $start.AddSeconds($WatchdogSeconds)
 $lastLogLength = 0
 $lastLogWrite = $null
 
 while ((Get-Date) -lt $deadline) {
     Start-Sleep -Seconds 2
+    Set-CxbxResourceLimits
 
     $activeLog = if (Test-Path -LiteralPath $gameLog) { $gameLog } elseif (Test-Path -LiteralPath $fallbackGameLog) { $fallbackGameLog } else { $null }
     if ($activeLog) {
