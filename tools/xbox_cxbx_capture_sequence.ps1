@@ -77,10 +77,15 @@ try {
         New-Item -ItemType File -Force -Path $captureTrigger | Out-Null
 
         $captureDeadline = (Get-Date).AddSeconds(30)
+        $triggerRetryAt = (Get-Date).AddSeconds(2)
         $frameReady = $false
         while ((Get-Date) -lt $captureDeadline) {
             Start-Sleep -Milliseconds 20
             if (!(Test-Path -LiteralPath $captureOutput)) {
+                if ((Get-Date) -ge $triggerRetryAt) {
+                    New-Item -ItemType File -Force -Path $captureTrigger | Out-Null
+                    $triggerRetryAt = (Get-Date).AddSeconds(2)
+                }
                 continue
             }
             try {

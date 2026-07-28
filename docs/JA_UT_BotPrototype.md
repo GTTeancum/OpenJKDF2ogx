@@ -97,6 +97,19 @@ bot. Its saved log recorded six distinct models, 13 deaths and respawns, 76
 Force actions, 280 pickup actions, one successful jump-pad transit, five
 recovered route stalls, and no attempts to fire without line of sight.
 
+The final Build 101 review follows bot slot 3 for 60 seconds at 4 FPS:
+
+```text
+build/xbox/recordings/q3dm5-build101-slot3-final-4fps/
+```
+
+The followed bot crossed 16 sectors, moved in 21 of 26 telemetry samples,
+reached 2.03 units/second, fought at short and long range, used Force
+Lightning, died, respawned with its Bryar and model restored, and resumed
+navigation. The full segment recorded five successful jump-pad transits, five
+recovered route stalls, zero failed jumps, and zero attempts to fire without
+line of sight.
+
 ### 300-second single-screen soak
 
 ```text
@@ -123,6 +136,30 @@ build/xbox/smoke_runs/20260726_115616-q3dm5-splitscreen2-sixbot-300-97-weighted-
 
 The Xbox build completed with `audit_xbox.py: OK`, no bot compiler warnings,
 and no build errors.
+
+### Build 101 MotS-compatibility regression
+
+Build 101 adds the audited MotS weapon mappings without changing JK weapon
+scores or movement behavior. Its repeated 300-second q3dm5 qualification:
+
+```text
+build/xbox/smoke_runs/20260728_073012-q3dm5-sixbot-300-101-repeat2-muted/
+```
+
+- 43 bot kills, zero suicides
+- 13 jump-pad launches, 12 completed before the final tick, and zero retries,
+  failures, or timeouts
+- 22 recovered route stalls across six bots (0.733 per bot-minute)
+- Maximum individual-bot recovery rate of 1.60 per minute
+- Zero attempts to fire without line of sight
+- Six distinct models and five ranged weapon types
+- 80 successful Force actions and 302 successful pickup actions
+
+An earlier unchanged Build 101 run recorded 28 distributed route recoveries
+(0.933 per bot-minute), one above the aggregate gate, while passing every other
+check. The clean repeat and the absence of a repeated edge or concentrated
+stuck bot establish that result as normal match variance rather than a
+reproducible regression.
 
 ## Repeatable Quality Gate
 
