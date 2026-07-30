@@ -198,6 +198,7 @@ extern "C" void std3D_XboxSetScreenSpaceRenderList(int enable)
 #define STD3D_TRI_FLAG_CLAMP_X 0x20000
 #define STD3D_TRI_FLAG_CLAMP_Y 0x40000
 #define STD3D_TRI_FLAG_NEAREST 0x80000
+#define STD3D_TRI_FLAG_NO_CULL 0x100000
 
 #ifdef __cplusplus
 extern "C" {
@@ -1416,15 +1417,16 @@ void std3D_DrawRenderList(void)
                             && g_pfnBindTexture);
             unsigned int id = textured ? (unsigned int)t->texture->texture_id : 0u;
             int sampler_flags = textured ? (t->flags & (STD3D_TRI_FLAG_CLAMP_X | STD3D_TRI_FLAG_CLAMP_Y | STD3D_TRI_FLAG_NEAREST)) : 0;
-
             if (textured) {
                 if (t->flags != last_flags) {
 #if defined(TARGET_XBOX) && defined(XBOX_PERF_SMOKE)
                     perfFlagChanges++;
 #endif
                     glEnable(GL_BLEND);
-                    if (g_xboxScreenSpaceRenderList) glDisable(GL_CULL_FACE);
-                    else                            glEnable(GL_CULL_FACE);
+                    if (g_xboxScreenSpaceRenderList || (t->flags & STD3D_TRI_FLAG_NO_CULL))
+                        glDisable(GL_CULL_FACE);
+                    else
+                        glEnable(GL_CULL_FACE);
 
                     if (g_xboxScreenSpaceRenderList) {
                         glDepthFunc(GL_LEQUAL);

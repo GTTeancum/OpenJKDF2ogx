@@ -21,6 +21,8 @@ extern int32_t Main_numBots;
 extern int32_t Main_botMatchSeconds;
 extern int32_t Main_botCamPlayer;
 extern int32_t Main_localPlayers;
+extern char Main_strEpisode[129];
+extern char Main_strMap[132];
 #endif
 
 int Main_ShouldUseMotsForcePowers(void);

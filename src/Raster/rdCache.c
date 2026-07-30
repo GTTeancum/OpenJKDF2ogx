@@ -429,6 +429,10 @@ int rdCache_SendFaceListToHardware()
         {
             flags_idk_ |= 0x80000;
         }
+        if (active_6c->type & RD_FF_DOUBLE_SIDED)
+        {
+            flags_idk_ |= 0x100000;
+        }
 #endif
 
 #if defined(SDL2_RENDER) || defined(TARGET_TWL)

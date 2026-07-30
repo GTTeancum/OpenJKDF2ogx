@@ -1016,6 +1016,10 @@ LABEL_28:
         stdControl_ToggleCursor(1);
         JKTRACE("GameplayShow: Flush\n");
         stdControl_Flush();
+#ifdef TARGET_XBOX
+        if (Main_bAutostart)
+            sithMulti_CompleteLocalJoinForAutostart();
+#endif
         JKTRACE("GameplayShow: jkGame_Update\n");
 #ifdef TARGET_XBOX
         XDBG("MPLoadTrace: GameplayShow before warmup jkGame_Update\n");

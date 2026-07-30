@@ -263,6 +263,10 @@ int Main_StartupDedicated(int bFullyDedicated)
     v34.maxPlayers = jkGuiNetHost_maxPlayers;
     v34.sessionFlags = jkGuiNetHost_sessionFlags;
     v34.multiModeFlags = jkGuiNetHost_gameFlags;
+    if (Main_bAutostart && !__strcmpi(v34.episodeGobName, "JK1CTF"))
+    {
+        v34.multiModeFlags = MULTIMODEFLAG_TEAMS | MULTIMODEFLAG_2 | MULTIMODEFLAG_100;
+    }
     v34.maxRank = jkGuiNetHost_maxRank;
     v34.scoreLimit = jkGuiNetHost_scoreLimit;
     v34.timeLimit = jkGuiNetHost_timeLimit;

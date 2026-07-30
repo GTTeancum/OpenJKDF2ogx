@@ -147,9 +147,15 @@ int32_t sithCog_Startup()
 // Added: Register all new COG verbs last
 int32_t sithCog_StartupEnhanced()
 {
-    if (!Main_bEnhancedCogVerbs) return 1;
-
     sithCogSymboltable* ctx = sithCog_pSymbolTable;
+
+    /* Weapon COGs use this to resolve logical weapon slots against the
+       inventory that is actually loaded. It is harmless for stock JK and
+       required when a compatible inventory relocates the weapon bins. */
+    if (!Main_bMotsCompat)
+        sithCogScript_RegisterVerb(ctx, sithCogFunction_GetWeaponBin, "getweaponbin");
+
+    if (!Main_bEnhancedCogVerbs) return 1;
 
     // Generic
     if (!Main_bMotsCompat) {
@@ -160,8 +166,6 @@ int32_t sithCog_StartupEnhanced()
 
         sithCogScript_RegisterVerb(ctx,sithCogFunction_FireProjectileData,"fireprojectiledata");
         sithCogScript_RegisterVerb(ctx,sithCogFunction_FireProjectileLocal,"fireprojectilelocal");
-
-        sithCogScript_RegisterVerb(ctx,sithCogFunction_GetWeaponBin,"getweaponbin");
 
         sithCogScript_RegisterVerb(ctx,sithCogFunction_SendMessageExRadius,"sendmessageexradius");
 

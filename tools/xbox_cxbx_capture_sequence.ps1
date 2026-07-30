@@ -9,8 +9,12 @@ param(
     [int]$BotCamera = 1,
     [string]$AutoStartArgs = "",
     [int]$StartupTimeoutSeconds = 180,
+    [int]$CaptureDelaySeconds = 0,
     [int]$RealtimeSeconds = 0,
     [int]$RealtimeFps = 30,
+    [ValidateSet("Idle", "BelowNormal", "Normal")]
+    [string]$ProcessPriority = "BelowNormal",
+    [long]$ProcessAffinityMask = 0,
     [string]$WindowTitle = "Cxbx-Reloaded"
 )
 
@@ -61,6 +65,16 @@ Remove-Item -LiteralPath $gameLog -Force -ErrorAction SilentlyContinue
 
 try {
     $sessionInfo = & $startScript -Xbe $xbeTarget -Session $safeSession
+    try {
+        $captureProcess = Get-Process -Id ([int]$sessionInfo.process_id) -ErrorAction Stop
+        $captureProcess.PriorityClass = $ProcessPriority
+        if ($ProcessAffinityMask -gt 0) {
+            $captureProcess.ProcessorAffinity = [intptr]$ProcessAffinityMask
+        }
+    }
+    catch {
+        Write-Warning "Unable to apply capture process resource limits: $($_.Exception.Message)"
+    }
     $deadline = (Get-Date).AddSeconds($StartupTimeoutSeconds)
     while ((Get-Date) -lt $deadline) {
         if (Test-Path -LiteralPath $gameLog) {
@@ -73,6 +87,9 @@ try {
     if (!(Test-Path -LiteralPath $gameLog) -or
         !(Select-String -Path $gameLog -Pattern "BotMatch: start" -Quiet)) {
         throw "Timed out waiting for BotMatch start."
+    }
+    if ($CaptureDelaySeconds -gt 0) {
+        Start-Sleep -Seconds $CaptureDelaySeconds
     }
 
     Add-Type -AssemblyName System.Drawing
