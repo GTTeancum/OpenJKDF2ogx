@@ -25,6 +25,7 @@
 
 static wchar_t jkGuiTitle_tmpBuffer[512];
 static wchar_t jkGuiTitle_versionBuffer[64];
+static wchar_t jkGuiTitle_loadingStatusBuffer[64];
 static flex_t jkGuiTitle_loadPercent;
 
 static jkGuiElement jkGuiTitle_elementsLoad[6] = {
@@ -107,6 +108,7 @@ void jkGuiTitle_Shutdown()
     
     // Added: clean reset
     memset(jkGuiTitle_versionBuffer, 0, sizeof(jkGuiTitle_versionBuffer));
+    memset(jkGuiTitle_loadingStatusBuffer, 0, sizeof(jkGuiTitle_loadingStatusBuffer));
     jkGuiTitle_loadPercent = 0;
 }
 
@@ -385,6 +387,7 @@ void jkGuiTitle_ShowLoading(char *a1, wchar_t *a2)
     jkGuiRend_SetCursorVisible(0);
     sithWorld_SetLoadPercentCallback(jkGuiTitle_WorldLoadCallback);
     jkGuiTitle_elementsLoad[1].selectedTextEntry = 0;
+    jkGuiTitle_elementsLoad[2].wstr = jkStrings_GetUniStringWithFallback("GUI_LOADING");
 
 #ifdef TARGET_XBOX
     xbox_debug_Print("TitleShowLoading: resolving mission text\n");
@@ -404,6 +407,32 @@ void jkGuiTitle_ShowLoading(char *a1, wchar_t *a2)
 #ifdef TARGET_XBOX
     xbox_debug_Print("TitleShowLoading: done\n");
 #endif
+}
+
+void jkGuiTitle_SetLoadingStatus(const wchar_t *status)
+{
+    if (status && *status)
+    {
+        stdString_SafeWStrCopy(jkGuiTitle_loadingStatusBuffer, status,
+                               sizeof(jkGuiTitle_loadingStatusBuffer) /
+                                   sizeof(jkGuiTitle_loadingStatusBuffer[0]));
+        jkGuiTitle_elementsLoad[2].wstr = jkGuiTitle_loadingStatusBuffer;
+    }
+    else
+    {
+        jkGuiTitle_loadingStatusBuffer[0] = 0;
+        jkGuiTitle_elementsLoad[2].wstr =
+            jkStrings_GetUniStringWithFallback("GUI_LOADING");
+    }
+
+    if (jkGuiTitle_whichLoading == 2)
+    {
+        jkGuiRend_UpdateAndDrawClickable(&jkGuiTitle_elementsLoad[2],
+                                         &jkGuiTitle_menuLoad, 1);
+#ifdef TARGET_XBOX
+        stdDisplay_DDrawGdiSurfaceFlip();
+#endif
+    }
 }
 
 void jkGuiTitle_LoadingFinalize()

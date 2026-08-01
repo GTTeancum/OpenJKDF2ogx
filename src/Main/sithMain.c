@@ -6,6 +6,7 @@
 #endif
 #include "Main/jkGame.h"
 #include "Main/Main.h"
+#include "Gui/jkGUITitle.h"
 #include "World/sithWorld.h"
 #include "World/jkPlayer.h"
 #include "Engine/sithCollision.h"
@@ -52,6 +53,8 @@
 
 // Added: FoV fixes
 flex_t sithMain_lastAspect = 1.0;
+
+static void sithMain_BotNavigationStatus(SithBotNavPhase phase);
 
 int sithMain_Startup(HostServices *commonFuncs)
 {
@@ -250,7 +253,23 @@ int sithMain_Mode1Init_3(char *fpath)
 #ifdef TARGET_XBOX
     XDBGF("MPLoadTrace: sithMain_Mode1Init_3 after sithMulti_Startup multi=%d server=%d\n", sithNet_isMulti, sithNet_isServer);
 #endif
-    sithBot_PrepareNavigation();
+    if (Main_numBots > 0)
+    {
+        wchar_t botStatus[64];
+
+        jk_snwprintf(botStatus,
+                     sizeof(botStatus) / sizeof(botStatus[0]),
+                     L"Preparing navigation for %d bots",
+                     Main_numBots);
+        jkGuiTitle_SetLoadingStatus(botStatus);
+        sithBot_PrepareNavigation(sithMain_BotNavigationStatus);
+        jk_snwprintf(botStatus,
+                     sizeof(botStatus) / sizeof(botStatus[0]),
+                     L"Starting match with %d bots",
+                     Main_numBots);
+        jkGuiTitle_SetLoadingStatus(botStatus);
+        jkGuiTitle_WorldLoadCallback(100.0);
+    }
     g_sithMode = 1;
 #ifdef TARGET_XBOX
     XDBG("MPLoadTrace: sithMain_Mode1Init_3 done\n");
@@ -759,4 +778,44 @@ void sithMain_AutoSave()
         sithGamesave_Write(v5, 1, 0, 0);
         sithTime_Startup();
     }
+}
+static void sithMain_BotNavigationStatus(SithBotNavPhase phase)
+{
+    wchar_t status[64];
+    flex_t progress;
+
+    switch (phase)
+    {
+        case SITHBOT_NAV_CHECKING_CACHE:
+            jk_snwprintf(status, 64, L"Checking navigation for %d bots", Main_numBots);
+            progress = 91.0;
+            break;
+        case SITHBOT_NAV_ANALYZING_MAP:
+            jk_snwprintf(status, 64, L"Analyzing map for %d bots", Main_numBots);
+            progress = 93.0;
+            break;
+        case SITHBOT_NAV_CONNECTING_ROUTES:
+            stdString_SafeWStrCopy(status, L"Connecting bot routes", 64);
+            progress = 96.0;
+            break;
+        case SITHBOT_NAV_SAVING_CACHE:
+            stdString_SafeWStrCopy(status, L"Saving bot navigation", 64);
+            progress = 98.0;
+            break;
+        case SITHBOT_NAV_READY_FROM_CACHE:
+            stdString_SafeWStrCopy(status, L"Bot navigation loaded", 64);
+            progress = 99.0;
+            break;
+        case SITHBOT_NAV_READY_GENERATED:
+            stdString_SafeWStrCopy(status, L"Bot navigation ready", 64);
+            progress = 99.0;
+            break;
+        default:
+            stdString_SafeWStrCopy(status, L"Preparing bot navigation", 64);
+            progress = 90.0;
+            break;
+    }
+
+    jkGuiTitle_SetLoadingStatus(status);
+    jkGuiTitle_WorldLoadCallback(progress);
 }

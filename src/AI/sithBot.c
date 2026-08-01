@@ -99,7 +99,7 @@ void sithCogFunction_FireProjectile(sithCog *ctx);
 #define SITHBOT_SHARED_EDGE_BLOCK_MS 30000
 #define SITHBOT_EDGE_FAILURE_MEMORY_MS 60000
 #define SITHBOT_BNAV_MAGIC 0x56414E42u
-#define SITHBOT_BNAV_VERSION 37u
+#define SITHBOT_BNAV_VERSION 40u
 
 typedef enum SithBotNodeKind
 {
@@ -159,6 +159,13 @@ typedef struct SithBotCornerCandidate
     int to;
     flex_t cost;
 } SithBotCornerCandidate;
+
+typedef struct SithBotJumpCandidate
+{
+    int from;
+    int to;
+    flex_t cost;
+} SithBotJumpCandidate;
 
 typedef struct SithBotNavFileHeader
 {
@@ -264,6 +271,7 @@ typedef struct SithBotState
     uint32_t respawnAtMs;
     uint32_t lastMoveCheckMs;
     uint32_t blockedSinceMs;
+    uint32_t hardStuckSinceMs;
     uint32_t routeCommitUntilMs;
     uint32_t interactionWaitUntilMs;
     uint32_t interactionRepeatUntilMs;
@@ -281,6 +289,7 @@ typedef struct SithBotState
     uint32_t nextDropMs;
     uint32_t routeWatchStartMs;
     rdVector3 lastMovePos;
+    rdVector3 hardStuckPos;
     rdVector3 lastEnemySeenPos;
     rdVector3 combatMoveTarget;
     rdVector3 steeringDir;
@@ -303,6 +312,7 @@ typedef struct SithBotState
     flex_t frameDeltaSeconds;
     int frameTimingReliable;
     int stuckTicks;
+    int hardStuckFailures;
     int blockedMoveTicks;
     int goalMode;
     int routeGoalNode;
@@ -2769,6 +2779,7 @@ static int sithBot_IsRouteNodeReached(sithThing *thing, const SithBotNode *node,
     flex_t dy;
     flex_t dz;
     flex_t reachRadius;
+    flex_t clearanceRadius;
 
     if (!thing || !node)
         return 0;
@@ -2776,13 +2787,24 @@ static int sithBot_IsRouteNodeReached(sithThing *thing, const SithBotNode *node,
     dx = thing->position.x - node->pos.x;
     dy = thing->position.y - node->pos.y;
     dz = sithBot_AbsFlex(thing->position.z - node->pos.z);
-    reachRadius = node->kind == SITHBOT_NODE_PORTAL ? 0.24 : normalRadius;
-    return (thing->sector == node->sector &&
-            sithBot_DistSq(&thing->position, &node->pos) < reachRadius * reachRadius) ||
-           (dx * dx + dy * dy < 0.15 * 0.15 && dz < 0.40) ||
-           (node->kind != SITHBOT_NODE_PORTAL &&
-            sithBot_IsNarrowTransitSector(node->sector) &&
-            dx * dx + dy * dy < 0.34 * 0.34 && dz < 0.40);
+    reachRadius = sithBot_GetRouteNodeReachRadius(node, normalRadius);
+    if ((thing->sector == node->sector &&
+         sithBot_DistSq(&thing->position, &node->pos) < reachRadius * reachRadius) ||
+        (dx * dx + dy * dy < 0.15 * 0.15 && dz < 0.40))
+    {
+        return 1;
+    }
+    if (node->kind == SITHBOT_NODE_PORTAL)
+        return 0;
+
+    clearanceRadius = reachRadius;
+    if (clearanceRadius > 0.34)
+        clearanceRadius = 0.34;
+    return dx * dx + dy * dy < clearanceRadius * clearanceRadius &&
+        dz < 0.40 &&
+        node->pos.z - thing->position.z < 0.20 &&
+        sithBot_CanSeePosition(thing->sector, &thing->position,
+                               node->sector, &node->pos);
 }
 
 static int sithBot_AddPortalApproachNodes(void)
@@ -3132,7 +3154,6 @@ static int sithBot_LinkDropNodes(void)
     return added;
 }
 
-#if 0
 static int sithBot_IsJumpArcClear(const SithBotNode *from, const SithBotNode *to)
 {
     rdVector3 start;
@@ -3277,9 +3298,14 @@ static int sithBot_LinkJumpTransitions(int *outEdges)
             dy = to->pos.y - from->pos.y;
             dz = to->pos.z - from->pos.z;
             horizontalSq = dx * dx + dy * dy;
-            if (horizontalSq < 0.35 * 0.35 ||
-                horizontalSq > 1.65 * 1.65 ||
-                sithBot_AbsFlex(dz) > 0.45)
+            if (from->kind != SITHBOT_NODE_PORTAL &&
+                to->kind != SITHBOT_NODE_PORTAL)
+            {
+                continue;
+            }
+            if (horizontalSq < 0.45 * 0.45 ||
+                horizontalSq > 1.20 * 1.20 ||
+                sithBot_AbsFlex(dz) > 0.35)
             {
                 continue;
             }
@@ -3311,31 +3337,17 @@ static int sithBot_LinkJumpTransitions(int *outEdges)
 
     for (i = 0; i < SITHBOT_JUMP_CANDIDATES &&
                 candidates[i].from >= 0 &&
-                sithBot_numNodes + 2 <= SITHBOT_MAX_NODES &&
-                transitionCount < 32; i++)
+                transitionCount < 16; i++)
     {
         int from = candidates[i].from;
         int to = candidates[i].to;
         int fromComponent = component[from];
         int toComponent = component[to];
-        int jumpTo;
-        int jumpBack;
-
         if (fromComponent == toComponent)
             continue;
 
-        jumpTo = sithBot_AddNode(&sithBot_nodes[to].pos,
-                                 sithBot_nodes[to].sector,
-                                 SITHBOT_NODE_JUMP, -1, 0.0);
-        jumpBack = sithBot_AddNode(&sithBot_nodes[from].pos,
-                                   sithBot_nodes[from].sector,
-                                   SITHBOT_NODE_JUMP, -1, 0.0);
-        if (jumpTo < 0 || jumpBack < 0)
-            break;
-        edgeCount += sithBot_AddPreferredEdge(from, jumpTo);
-        edgeCount += sithBot_AddPreferredEdge(jumpTo, to);
-        edgeCount += sithBot_AddPreferredEdge(to, jumpBack);
-        edgeCount += sithBot_AddPreferredEdge(jumpBack, from);
+        edgeCount += sithBot_AddPreferredEdge(from, to);
+        edgeCount += sithBot_AddPreferredEdge(to, from);
         sithBot_Logf("BotNav: jump-transition from=%d to=%d horizontal=%.2f dz=%.2f\n",
                      from,
                      to,
@@ -3357,6 +3369,208 @@ static int sithBot_LinkJumpTransitions(int *outEdges)
     return transitionCount;
 }
 
+static int sithBot_LinkJumpDropTransitions(int *outEdges)
+{
+    enum { SITHBOT_JUMP_DROP_CANDIDATES = 128 };
+    SithBotJumpCandidate candidates[SITHBOT_JUMP_DROP_CANDIDATES];
+    uint32_t spawnReachMask[SITHBOT_MAX_NODES];
+    int reachableItems[SITHBOT_MAX_NODES];
+    int queue[SITHBOT_MAX_NODES];
+    int visited[SITHBOT_MAX_NODES];
+    int selectedFrom[SITHBOT_JUMP_DROP_CANDIDATES];
+    int selectedTo[SITHBOT_JUMP_DROP_CANDIDATES];
+    int transitionCount = 0;
+    int edgeCount = 0;
+    int spawnBit = 0;
+    int i;
+    int j;
+
+    for (i = 0; i < sithBot_numNodes; i++)
+    {
+        spawnReachMask[i] = 0;
+        reachableItems[i] = -1;
+    }
+    for (i = 0; i < sithBot_numNodes && spawnBit < 32; i++)
+    {
+        int head = 0;
+        int tail = 0;
+
+        if (sithBot_nodes[i].kind != SITHBOT_NODE_SPAWN)
+            continue;
+        for (j = 0; j < sithBot_numNodes; j++)
+            visited[j] = 0;
+        visited[i] = 1;
+        queue[tail++] = i;
+        while (head < tail)
+        {
+            SithBotNode *node = &sithBot_nodes[queue[head++]];
+            int edgeIdx;
+
+            for (edgeIdx = 0; edgeIdx < node->edgeCount; edgeIdx++)
+            {
+                int next = node->edges[edgeIdx];
+                if (next < 0 || next >= sithBot_numNodes || visited[next])
+                    continue;
+                visited[next] = 1;
+                queue[tail++] = next;
+            }
+        }
+        for (j = 0; j < sithBot_numNodes; j++)
+        {
+            if (visited[j])
+                spawnReachMask[j] |= (uint32_t)1 << spawnBit;
+        }
+        spawnBit++;
+    }
+
+    for (i = 0; i < SITHBOT_JUMP_DROP_CANDIDATES; i++)
+    {
+        candidates[i].from = -1;
+        candidates[i].to = -1;
+        candidates[i].cost = 3.4e38f;
+        selectedFrom[i] = -1;
+        selectedTo[i] = -1;
+    }
+
+    for (i = 0; i < sithBot_numNodes; i++)
+    {
+        SithBotNode *from = &sithBot_nodes[i];
+
+        if (from->kind != SITHBOT_NODE_FLOOR &&
+            from->kind != SITHBOT_NODE_PORTAL)
+        {
+            continue;
+        }
+        for (j = 0; j < sithBot_numNodes; j++)
+        {
+            SithBotNode *to = &sithBot_nodes[j];
+            flex_t dx;
+            flex_t dy;
+            flex_t drop;
+            flex_t horizontalSq;
+            flex_t cost;
+            uint32_t gainedSpawns;
+            int gainedSpawnCount = 0;
+            int itemCount;
+            int head;
+            int tail;
+            int bitIdx;
+
+            if (i == j || sithBot_HasEdge(i, j) ||
+                (to->kind != SITHBOT_NODE_FLOOR &&
+                 to->kind != SITHBOT_NODE_PORTAL) ||
+                (from->kind != SITHBOT_NODE_PORTAL &&
+                 to->kind != SITHBOT_NODE_PORTAL))
+            {
+                continue;
+            }
+
+            drop = from->pos.z - to->pos.z;
+            dx = to->pos.x - from->pos.x;
+            dy = to->pos.y - from->pos.y;
+            horizontalSq = dx * dx + dy * dy;
+            if (drop < 0.60 || drop > 1.65 ||
+                horizontalSq < 0.35 * 0.35 ||
+                horizontalSq > 1.25 * 1.25 ||
+                !sithBot_PositionHasWalkableFloor(0, to->sector, &to->pos) ||
+                !sithBot_IsJumpArcClear(from, to))
+            {
+                continue;
+            }
+
+            gainedSpawns = spawnReachMask[i] & ~spawnReachMask[j];
+            if (!gainedSpawns)
+                continue;
+            for (bitIdx = 0; bitIdx < 32; bitIdx++)
+            {
+                if (gainedSpawns & ((uint32_t)1 << bitIdx))
+                    gainedSpawnCount++;
+            }
+
+            itemCount = reachableItems[j];
+            if (itemCount < 0)
+            {
+                for (bitIdx = 0; bitIdx < sithBot_numNodes; bitIdx++)
+                    visited[bitIdx] = 0;
+                head = 0;
+                tail = 0;
+                itemCount = 0;
+                visited[j] = 1;
+                queue[tail++] = j;
+                while (head < tail)
+                {
+                    SithBotNode *node = &sithBot_nodes[queue[head++]];
+                    int edgeIdx;
+
+                    if (node->kind == SITHBOT_NODE_ITEM)
+                        itemCount++;
+                    for (edgeIdx = 0; edgeIdx < node->edgeCount; edgeIdx++)
+                    {
+                        int next = node->edges[edgeIdx];
+                        if (next < 0 || next >= sithBot_numNodes || visited[next])
+                            continue;
+                        visited[next] = 1;
+                        queue[tail++] = next;
+                    }
+                }
+                reachableItems[j] = itemCount;
+            }
+            if (!itemCount)
+                continue;
+
+            cost = horizontalSq + drop * drop * 0.20;
+            cost -= gainedSpawnCount * 3.0;
+            cost -= (itemCount > 24 ? 24 : itemCount) * 0.15;
+            sithBot_InsertJumpCandidate(candidates,
+                                        SITHBOT_JUMP_DROP_CANDIDATES,
+                                        i, j, cost);
+        }
+    }
+
+    for (i = 0; i < SITHBOT_JUMP_DROP_CANDIDATES &&
+                candidates[i].from >= 0 &&
+                transitionCount < 16; i++)
+    {
+        int from = candidates[i].from;
+        int to = candidates[i].to;
+        int duplicateArea = 0;
+
+        for (j = 0; j < transitionCount; j++)
+        {
+            if (sithBot_DistSq(&sithBot_nodes[from].pos,
+                               &sithBot_nodes[selectedFrom[j]].pos) < 0.45 * 0.45 &&
+                sithBot_DistSq(&sithBot_nodes[to].pos,
+                               &sithBot_nodes[selectedTo[j]].pos) < 0.45 * 0.45)
+            {
+                duplicateArea = 1;
+                break;
+            }
+        }
+        if (duplicateArea)
+            continue;
+
+        if (!sithBot_AddPreferredEdge(from, to))
+            continue;
+        selectedFrom[transitionCount] = from;
+        selectedTo[transitionCount] = to;
+        edgeCount++;
+        transitionCount++;
+        sithBot_Logf("BotNav: jump-drop-transition from=%d to=%d horizontal=%.2f drop=%.2f\n",
+                     from,
+                     to,
+                     stdMath_Sqrt((sithBot_nodes[to].pos.x - sithBot_nodes[from].pos.x) *
+                                  (sithBot_nodes[to].pos.x - sithBot_nodes[from].pos.x) +
+                                  (sithBot_nodes[to].pos.y - sithBot_nodes[from].pos.y) *
+                                  (sithBot_nodes[to].pos.y - sithBot_nodes[from].pos.y)),
+                     sithBot_nodes[from].pos.z - sithBot_nodes[to].pos.z);
+    }
+
+    if (outEdges)
+        *outEdges = edgeCount;
+    return transitionCount;
+}
+
+#if 0
 static void sithBot_InsertCornerCandidate(SithBotCornerCandidate *candidates,
                                           int capacity, int from, int to,
                                           flex_t cost)
@@ -4718,7 +4932,7 @@ static int sithBot_SaveNavCache(uint32_t worldHash)
     return 1;
 }
 
-static void sithBot_BuildNav(void)
+static void sithBot_BuildNav(SithBotNavStatusCallback statusCallback)
 {
     int i;
     int j;
@@ -4733,6 +4947,10 @@ static void sithBot_BuildNav(void)
     int jumpPads = 0;
     int jumpPadEdges = 0;
     int dropEdges = 0;
+    int jumpTransitions = 0;
+    int jumpTransitionEdges = 0;
+    int jumpDropTransitions = 0;
+    int jumpDropTransitionEdges = 0;
     uint32_t startMs = stdPlatform_GetTimeMsec();
     uint32_t worldHash;
 
@@ -4742,11 +4960,16 @@ static void sithBot_BuildNav(void)
     if (!sithWorld_pCurrentWorld)
         return;
 
+    if (statusCallback)
+        statusCallback(SITHBOT_NAV_CHECKING_CACHE);
+    sithWorld_UpdateLoadPercent(93.0);
     sithBot_InferControlledHazards();
     inferredLiftSectors = sithBot_InferLiftSectorsFromCogs();
     worldHash = sithBot_GetNavWorldHash();
     if (sithBot_LoadNavCache(worldHash))
     {
+        if (statusCallback)
+            statusCallback(SITHBOT_NAV_READY_FROM_CACHE);
         sithBot_LogNavComponents();
         sithBot_Logf("BotNav: ready source=cache elapsedMs=%u map='%s' episode='%s'\n",
                      (unsigned int)(stdPlatform_GetTimeMsec() - startMs),
@@ -4755,6 +4978,9 @@ static void sithBot_BuildNav(void)
         return;
     }
 
+    if (statusCallback)
+        statusCallback(SITHBOT_NAV_ANALYZING_MAP);
+    sithWorld_UpdateLoadPercent(94.0);
     for (i = 0; i < jkPlayer_maxPlayers; i++)
     {
         if (sithBot_IsSectorSafeForBot(jkPlayer_playerInfos[i].pSpawnSector))
@@ -4778,17 +5004,29 @@ static void sithBot_BuildNav(void)
             if (sithBot_AddNode(&sector->center, sector, SITHBOT_NODE_LIFT, -1, 1.0) >= 0)
                 liftSectors++;
         }
+        if ((i & 31) == 31 && sithWorld_pCurrentWorld->numSectors > 0)
+        {
+            flex_t sectorProgress =
+                94.0 + 2.0 * (flex_t)(i + 1) /
+                    (flex_t)sithWorld_pCurrentWorld->numSectors;
+            sithWorld_UpdateLoadPercent(sectorProgress);
+        }
     }
 
     jumpPads = sithBot_AddJumpPadNodes();
     portalNodes = sithBot_AddPortalApproachNodes();
     pathLifts = sithBot_AddPathLiftNodes(&pathLiftStops, &pathLiftEdges);
 
+    if (statusCallback)
+        statusCallback(SITHBOT_NAV_CONNECTING_ROUTES);
+    sithWorld_UpdateLoadPercent(97.0);
     /* Reserve graph capacity for room-to-room travel before dense floor samples
        consume every edge slot with local alternatives. */
     portalEdges = sithBot_LinkAdjoinPortals();
     sithBot_LinkNodes();
     dropEdges = sithBot_LinkDropNodes();
+    jumpTransitions = sithBot_LinkJumpTransitions(&jumpTransitionEdges);
+    jumpDropTransitions = sithBot_LinkJumpDropTransitions(&jumpDropTransitionEdges);
     jumpPadEdges = sithBot_LinkJumpPadNodes();
     sithBot_LogNavComponents();
     for (i = 0; i < sithBot_numNodes; i++)
@@ -4796,8 +5034,13 @@ static void sithBot_BuildNav(void)
 
     sithBot_navWorld = sithWorld_pCurrentWorld;
     sithBot_navBuilt = 1;
+    if (statusCallback)
+        statusCallback(SITHBOT_NAV_SAVING_CACHE);
+    sithWorld_UpdateLoadPercent(99.0);
     sithBot_SaveNavCache(worldHash);
-    sithBot_Logf("BotNav: generated nodes=%d directedEdges=%d portalNodes=%d portalEdges=%d liftSectors=%d inferredLiftSectors=%d pathLifts=%d pathLiftStops=%d pathLiftEdges=%d jumpPads=%d jumpPadEdges=%d dropEdges=%d map='%s' episode='%s'\n",
+    if (statusCallback)
+        statusCallback(SITHBOT_NAV_READY_GENERATED);
+    sithBot_Logf("BotNav: generated nodes=%d directedEdges=%d portalNodes=%d portalEdges=%d liftSectors=%d inferredLiftSectors=%d pathLifts=%d pathLiftStops=%d pathLiftEdges=%d jumpPads=%d jumpPadEdges=%d dropEdges=%d jumpTransitions=%d jumpTransitionEdges=%d jumpDropTransitions=%d jumpDropTransitionEdges=%d map='%s' episode='%s'\n",
                  sithBot_numNodes,
                  edgeCount,
                  portalNodes,
@@ -4810,6 +5053,10 @@ static void sithBot_BuildNav(void)
                  jumpPads,
                  jumpPadEdges,
                  dropEdges,
+                 jumpTransitions,
+                 jumpTransitionEdges,
+                 jumpDropTransitions,
+                 jumpDropTransitionEdges,
                  sithWorld_pCurrentWorld->map_jkl_fname,
                  sithWorld_pCurrentWorld->episodeName);
     sithBot_Logf("BotNav: ready source=generated elapsedMs=%u map='%s' episode='%s'\n",
@@ -5496,10 +5743,10 @@ static int sithBot_FindRouteMoveNode(int startNode, int goalNode, sithThing *thi
             break;
         startNode = nextNode;
         candidateNode = sithBot_FindPathNext(ownerSlot, startNode, goalNode);
+        nextNode = candidateNode;
         if (!overlappingTransition && !reachedPortal &&
             !sithBot_CanSkipRouteNode(thing, candidateNode))
             break;
-        nextNode = candidateNode;
         skipped++;
     }
     return nextNode;
@@ -5732,10 +5979,10 @@ static int sithBot_FindRouteMoveNodeAvoidSector(int startNode, int goalNode, sit
             break;
         startNode = nextNode;
         candidateNode = sithBot_FindPathNextAvoidSector(ownerSlot, startNode, goalNode, avoidSector);
+        nextNode = candidateNode;
         if (!overlappingTransition && !reachedPortal &&
             !sithBot_CanSkipRouteNode(thing, candidateNode))
             break;
-        nextNode = candidateNode;
         skipped++;
     }
     return nextNode;
@@ -7633,16 +7880,6 @@ static void sithBot_ActivateSlot(int playerIdx, int botNumber)
 {
     sithPlayerInfo *info;
     sithThing *thing;
-    const wchar_t *botNames[] = {
-        L"Bot 1",
-        L"Bot 2",
-        L"Bot 3",
-        L"Bot 4",
-        L"Bot 5",
-        L"Bot 6",
-        L"Bot 7",
-        L"Bot 8"
-    };
 
     if (playerIdx <= 0 || playerIdx >= jkPlayer_maxPlayers)
         return;
@@ -7663,7 +7900,10 @@ static void sithBot_ActivateSlot(int playerIdx, int botNumber)
     info->respawnMask = 0;
     info->teamNum = sithBot_IsTeamMode() ? ((botNumber & 1) + 1) : 0;
 
-    _wcsncpy(info->player_name, botNames[botNumber % (int)(sizeof(botNames) / sizeof(botNames[0]))], 31);
+    jk_snwprintf(info->player_name,
+                 sizeof(info->player_name) / sizeof(info->player_name[0]),
+                 L"Bot %d",
+                 botNumber + 1);
     info->player_name[31] = 0;
     _wcsncpy(info->multi_name, info->player_name, 31);
     info->multi_name[31] = 0;
@@ -8737,6 +8977,8 @@ static int sithBot_TryActivateNearbyInteraction(SithBotState *state, sithThing *
     rdVector3 routeDir;
     flex_t bestDistSq = routeOnly ? 0.81 : 0.3025;
     flex_t bestDist = 0.0;
+    uint32_t waitMs = SITHBOT_INTERACTION_WAIT_MS;
+    uint32_t repeatMs = SITHBOT_INTERACTION_REPEAT_MS;
     int hasRouteDir = 0;
     int i;
 
@@ -8862,6 +9104,15 @@ static int sithBot_TryActivateNearbyInteraction(SithBotState *state, sithThing *
         state->lastInteractionSurfaceIdx = -1;
         state->lastInteractionThingIdx = bestThing->thingIdx;
         sithCog_SendMessageFromThing(bestThing, thing, SITH_MESSAGE_ACTIVATE);
+        if (bestThing->moveType == SITH_MT_PATH &&
+            bestThing->trackParams.loadedFrames >= 2)
+        {
+            /* A path door is still solid while its opening frame advances.
+               Let it clear the route before walking into it or declaring the
+               graph edge blocked. */
+            waitMs = 1400;
+            repeatMs = 3200;
+        }
         if (sithBot_debugUsesLogged < 40)
         {
             sithBot_Logf("BotMatch: use-interaction slot=%d kind=thing index=%d dist=%.2f\n",
@@ -8876,8 +9127,8 @@ static int sithBot_TryActivateNearbyInteraction(SithBotState *state, sithThing *
         if (sithComm_multiplayerFlags && track >= 0)
             sithDSSThing_SendPlayKeyMode(thing, SITH_ANIM_ACTIVATE, thing->rdthing.puppet->tracks[track].field_130, -1, 255);
     }
-    state->interactionWaitUntilMs = sithTime_curMs + SITHBOT_INTERACTION_WAIT_MS;
-    state->interactionRepeatUntilMs = sithTime_curMs + SITHBOT_INTERACTION_REPEAT_MS;
+    state->interactionWaitUntilMs = sithTime_curMs + waitMs;
+    state->interactionRepeatUntilMs = sithTime_curMs + repeatMs;
     state->interactionRelinkAtMs = sithTime_curMs + 900;
 
     return 1;
@@ -10301,6 +10552,31 @@ static int sithBot_IsPathLiftReservedByOther(const SithBotState *state,
     return 0;
 }
 
+static void sithBot_AnchorPassengerToPathLift(sithThing *passenger,
+                                               sithThing *lift)
+{
+    rdVector3 anchoredPos;
+
+    if (!passenger || !lift ||
+        !(passenger->attach_flags & SITH_ATTACH_NO_MOVE) ||
+        !(passenger->attach_flags &
+          (SITH_ATTACH_THING | SITH_ATTACH_THINGSURFACE)) ||
+        passenger->attachedThing != lift)
+    {
+        return;
+    }
+
+    /* NO_MOVE attachments are carried from field_4C by the parent's collision
+       update. Some scripted path movers change frames without taking that path,
+       so preserve the same attachment contract here for bot passengers. */
+    rdMatrix_TransformVector34(
+        &anchoredPos, &passenger->field_4C, &lift->lookOrientation);
+    rdVector_Add3Acc(&anchoredPos, &lift->position);
+    rdVector_Copy3(&passenger->position, &anchoredPos);
+    if (passenger->sector != lift->sector)
+        sithThing_MoveToSector(passenger, lift->sector, 0);
+}
+
 static int sithBot_HandlePathLiftRoute(SithBotState *state, sithThing *thing, int nextNode)
 {
     int requestedNode = nextNode;
@@ -10344,6 +10620,8 @@ static int sithBot_HandlePathLiftRoute(SithBotState *state, sithThing *thing, in
         thing->attachedThing == lift;
     if (attached && state->ridingLiftThingIdx != lift->thingIdx)
         state->ridingLiftThingIdx = lift->thingIdx;
+    if (attached)
+        sithBot_AnchorPassengerToPathLift(thing, lift);
 
     if (!attached && state->ridingLiftThingIdx == lift->thingIdx)
     {
@@ -11551,9 +11829,8 @@ static int sithBot_RouteNeedsShortGapJump(SithBotState *state, sithThing *thing,
 
     if (!state || !thing || !thing->sector || !target || !flatDir ||
         state->nextNode < 0 || state->nextNode >= sithBot_numNodes ||
-        sithBot_nodes[state->nextNode].kind != SITHBOT_NODE_PORTAL ||
         targetDist < 0.45 || targetDist > 1.20 ||
-        target->z - thing->position.z < -0.15 ||
+        target->z - thing->position.z < -1.65 ||
         target->z - thing->position.z > 0.35)
     {
         return 0;
@@ -12323,6 +12600,58 @@ static int sithBot_HandleJumpPadRoute(SithBotState *state, sithThing *thing, int
 
 static void sithBot_CheckStuck(SithBotState *state, sithThing *thing, const rdVector3 *target)
 {
+    flex_t hardStuckMovedSq;
+    int purposefulHold =
+        state->enemyVisibleCached ||
+        (state->goalNode >= 0 && state->goalNode < sithBot_numNodes &&
+         sithBot_DistSq(&thing->position, &sithBot_nodes[state->goalNode].pos) <
+             0.80 * 0.80) ||
+        (state->goalMode == SITHBOT_GOAL_CTF &&
+         state->ctfObjective == SITHBOT_CTF_DEFEND_BASE);
+
+    if (purposefulHold)
+    {
+        state->hardStuckSinceMs = sithTime_curMs;
+        state->hardStuckFailures = 0;
+        rdVector_Copy3(&state->hardStuckPos, &thing->position);
+    }
+    else if (!state->hardStuckSinceMs)
+    {
+        state->hardStuckSinceMs = sithTime_curMs;
+        rdVector_Copy3(&state->hardStuckPos, &thing->position);
+    }
+    hardStuckMovedSq = sithBot_DistSq(&state->hardStuckPos, &thing->position);
+    if (hardStuckMovedSq >= 0.65 * 0.65)
+    {
+        state->hardStuckSinceMs = sithTime_curMs;
+        state->hardStuckFailures = 0;
+        rdVector_Copy3(&state->hardStuckPos, &thing->position);
+    }
+    else if (sithTime_curMs - state->hardStuckSinceMs >= 18000 &&
+             state->hardStuckFailures >= 4 &&
+             !state->enemyVisibleCached &&
+             !(state->goalMode == SITHBOT_GOAL_CTF &&
+               state->ctfObjective == SITHBOT_CTF_DEFEND_BASE) &&
+             state->ridingLiftThingIdx < 0 &&
+             state->liftExitNode < 0 &&
+             state->interactionWaitUntilMs <= sithTime_curMs &&
+             !(thing->attach_flags & SITH_ATTACH_NO_MOVE))
+    {
+        /* Route goals can change repeatedly while the actor remains physically
+           wedged. UT-style bots eventually suicide rather than occupy the same
+           unusable position for the rest of the match. */
+        sithBot_Logf("BotMatch: hard-stuck-suicide slot=%d pos=(%.2f,%.2f,%.2f) moved=%.2f\n",
+                     state->playerIdx,
+                     thing->position.x,
+                     thing->position.y,
+                     thing->position.z,
+                     stdMath_Sqrt(hardStuckMovedSq));
+        state->hardStuckSinceMs = 0;
+        sithThing_Damage(thing, thing, thing->actorParams.health + 100.0,
+                         SITH_DAMAGE_SABER);
+        return;
+    }
+
     if (!state->lastMoveCheckMs)
     {
         state->lastMoveCheckMs = sithTime_curMs;
@@ -12340,6 +12669,7 @@ static void sithBot_CheckStuck(SithBotState *state, sithThing *thing, const rdVe
         flex_t targetDz = target->z - thing->position.z;
 
         state->stuckTicks++;
+        state->hardStuckFailures++;
         if (targetDz > 0.30 && targetDz < 1.20 && state->nextUseMs <= sithTime_curMs)
         {
             sithBot_FaceToward(state, thing, target, 0);
@@ -14840,7 +15170,7 @@ void sithBot_TickAll(flex_t deltaSeconds, int deltaMs)
         sithBot_ResetForWorldChange();
 
     if (!sithBot_navBuilt)
-        sithBot_PrepareNavigation();
+        sithBot_PrepareNavigation(NULL);
 
     tickStartMs = stdPlatform_GetTimeMsec();
     sithBot_EnsureBots();
@@ -14907,7 +15237,7 @@ void sithBot_TickAll(flex_t deltaSeconds, int deltaMs)
     }
 }
 
-void sithBot_PrepareNavigation(void)
+void sithBot_PrepareNavigation(SithBotNavStatusCallback statusCallback)
 {
     if (!sithWorld_pCurrentWorld || !sithNet_isMulti || !sithNet_isServer || Main_numBots <= 0)
         return;
@@ -14917,6 +15247,6 @@ void sithBot_PrepareNavigation(void)
         return;
 
     sithWorld_UpdateLoadPercent(92.0);
-    sithBot_BuildNav();
+    sithBot_BuildNav(statusCallback);
     sithWorld_UpdateLoadPercent(100.0);
 }
