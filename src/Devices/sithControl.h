@@ -49,7 +49,6 @@ void sithControl_AddInputHandler(sithControl_handler_t a1);
 MATH_FUNC int sithControl_HandlePlayer(sithThing *player_, flex_t a2);
 MATH_FUNC void sithControl_PlayerLook(sithThing *player, flex_t deltaSecs);
 MATH_FUNC void sithControl_PlayerMovement(sithThing *player);
-MATH_FUNC void sithControl_PlayerMovementMots(sithThing *player);
 MATH_FUNC void sithControl_FreeCam(sithThing *player);
 
 stdControlKeyInfoEntry* sithControl_MapFunc(int funcIdx, int keyNum, int flags);
@@ -76,6 +75,22 @@ void sithControl_KeyboardInputInitDefaults();
 void sithControl_JoyInputInit();
 
 void sithControl_MapDefaultsJoystick();
+
+#ifdef TARGET_XBOX
+typedef struct sithControlXboxLocalState
+{
+    flex_t lookScale;
+    int forwardActive;
+    int yawActive;
+    int slideActive;
+    int crouchActive;
+    int jumpActive;
+} sithControlXboxLocalState;
+
+void sithControl_XboxResetLocalState(sithControlXboxLocalState *state);
+void sithControl_XboxSaveLocalState(sithControlXboxLocalState *state);
+void sithControl_XboxRestoreLocalState(const sithControlXboxLocalState *state);
+#endif
 
 #ifdef QOL_IMPROVEMENTS
 void sithControl_SetLastSelected(int which);

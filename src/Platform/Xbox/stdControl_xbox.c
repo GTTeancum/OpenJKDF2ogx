@@ -91,6 +91,10 @@ typedef struct XboxControllerState
 static XboxControllerState g_pads[XBOX_MAX_CONTROLLERS];
 static int g_activeController = 0;
 static int g_pollController = 0;
+static int g_smokeInputProbeLoaded = 0;
+static int g_smokeInputProbeEnabled = 0;
+static unsigned int g_smokeInputProbeStartMs = 0;
+static int g_smokeInputProbeLogged[4][5];
 
 #define g_axisValues    (g_pads[g_pollController].axisValues)
 #define g_prevAnalog    (g_pads[g_pollController].prevAnalog)
@@ -106,11 +110,11 @@ static int g_pollController = 0;
 #define g_keyPress      (g_pads[g_pollController].keyPress)
 /* Right-stick sensitivity multipliers.  These compound with the engine's
  * own binaryAxisVal (1.5 for TURN, 1.25 for PITCH set in
- * sithControl_MapDefaultsJoystick).  Halved from the previous 2.5/2.0
- * which felt too twitchy on hardware. */
+ * sithControl_MapDefaultsJoystick). */
 static float g_lookSensX = 1.25f;
-static float g_lookSensY = 1.2f;
-static int   g_lookSensitivity = 50;
+static float g_lookSensY = 1.8f;
+static int   g_lookSensitivityX = 50;
+static int   g_lookSensitivityY = 75;
 static int   g_invertLookY = 0;
 static int   g_vibrationEnabled = 1;
 static int   g_deadzonePercent = 12;
@@ -134,6 +138,7 @@ static int   g_stickDeadzone = STICK_DEADZONE;
 void stdControl_ReadControls(void);
 void stdControl_XboxSetLookOptions(int sensitivity, int invertLook, int vibration);
 void stdControl_XboxSetLookOptionsEx(int sensitivity, int invertLook, int vibration, int deadzonePercent);
+void stdControl_XboxSetLookOptionsAxesEx(int sensitivityX, int sensitivityY, int invertLook, int vibration, int deadzonePercent);
 
 void stdControl_SetKeydown(int keyNum, int bDown, unsigned int readTime)
 {
@@ -150,6 +155,85 @@ void stdControl_SetKeydown(int keyNum, int bDown, unsigned int readTime)
 void stdControl_SetSDLKeydown(int keyNum, int bDown, unsigned int readTime)
 {
     stdControl_SetKeydown(keyNum, bDown, readTime);
+}
+
+int stdControl_XboxSmokeInputProbeEnabled(void)
+{
+    if (!g_smokeInputProbeLoaded)
+    {
+        HANDLE h = CreateFileA("D:\\xbox_smoke_input_probe.txt",
+                               GENERIC_READ,
+                               FILE_SHARE_READ,
+                               NULL,
+                               OPEN_EXISTING,
+                               FILE_ATTRIBUTE_NORMAL,
+                               NULL);
+        g_smokeInputProbeEnabled = (h != INVALID_HANDLE_VALUE) ? 1 : 0;
+        if (h != INVALID_HANDLE_VALUE)
+            CloseHandle(h);
+        g_smokeInputProbeLoaded = 1;
+        if (g_smokeInputProbeEnabled)
+            XDBG("SplitScreenInputProbe: enabled\n");
+    }
+    return g_smokeInputProbeEnabled;
+}
+
+static void stdControl_XboxSmokeInputProbeLogPhase(int port, int phase, unsigned int elapsed)
+{
+    if (port < 0 || port >= XBOX_MAX_CONTROLLERS || phase < 0 || phase >= 5)
+        return;
+    if (g_smokeInputProbeLogged[port][phase])
+        return;
+    g_smokeInputProbeLogged[port][phase] = 1;
+    XDBGF("SplitScreenInputProbe: inject port=%d phase=%d elapsedMs=%u\n", port, phase, elapsed);
+}
+
+static void stdControl_XboxSmokeInputProbeApply(int port, unsigned int tick, int gameplay)
+{
+    unsigned int elapsed;
+
+    if (!stdControl_XboxSmokeInputProbeEnabled())
+        return;
+
+    if (!gameplay || !xboxSplitScreen_IsEnabled())
+    {
+        if (g_smokeInputProbeStartMs)
+            XDBG("SplitScreenInputProbe: reset outside split gameplay\n");
+        g_smokeInputProbeStartMs = 0;
+        memset(g_smokeInputProbeLogged, 0, sizeof(g_smokeInputProbeLogged));
+        return;
+    }
+
+    if (!g_smokeInputProbeStartMs)
+    {
+        g_smokeInputProbeStartMs = tick ? tick : 1;
+        memset(g_smokeInputProbeLogged, 0, sizeof(g_smokeInputProbeLogged));
+        XDBGF("SplitScreenInputProbe: start tick=%u activeSlotController=%d\n", tick, port);
+    }
+
+    elapsed = tick - g_smokeInputProbeStartMs;
+    memset(g_axisValues, 0, sizeof(g_axisValues));
+    stdControl_SetKeydown(DIK_F1, 0, tick);
+
+    if (port == 0 && elapsed >= 2000 && elapsed < 6000)
+    {
+        g_axisValues[XBOX_AXIS_FORWARD] = 1.0f;
+        stdControl_XboxSmokeInputProbeLogPhase(port, 1, elapsed);
+    }
+    else if (port == 1 && elapsed >= 6000 && elapsed < 10000)
+    {
+        g_axisValues[XBOX_AXIS_TURN] = 1.0f;
+        stdControl_XboxSmokeInputProbeLogPhase(port, 2, elapsed);
+    }
+    else if (port == 1 && elapsed >= 10000 && elapsed < 10500)
+    {
+        stdControl_SetKeydown(DIK_F1, 1, tick);
+        stdControl_XboxSmokeInputProbeLogPhase(port, 3, elapsed);
+    }
+    else if (elapsed >= 12000)
+    {
+        stdControl_XboxSmokeInputProbeLogPhase(port, 4, elapsed);
+    }
 }
 
 static float xbox_NormalizeStick(SHORT raw)
@@ -198,15 +282,15 @@ int stdControl_Startup(void)
     memset(g_pads, 0, sizeof(g_pads));
     g_activeController = 0;
     g_pollController = 0;
-    stdControl_XboxSetLookOptions(
-        wuRegistry_GetInt("xboxLookSensitivity", 50),
-        wuRegistry_GetBool("xboxInvertLook", 0),
-        wuRegistry_GetBool("xboxVibration", 1));
-    stdControl_XboxSetLookOptionsEx(
-        g_lookSensitivity,
-        g_invertLookY,
-        g_vibrationEnabled,
-        wuRegistry_GetInt("xboxDeadzone", 12));
+    {
+        int legacySensitivity = wuRegistry_GetInt("xboxLookSensitivity", 50);
+        stdControl_XboxSetLookOptionsAxesEx(
+            wuRegistry_GetInt("xboxLookSensitivityX", legacySensitivity),
+            wuRegistry_GetInt("xboxLookSensitivityY", 75),
+            wuRegistry_GetBool("xboxInvertLook", 0),
+            wuRegistry_GetBool("xboxVibration", 1),
+            wuRegistry_GetInt("xboxDeadzone", 12));
+    }
 
     /* Mark our 4 joystick axes as enabled in stdControl_aJoysticks[].
      * Without this, sithControl_MapAxisFunc silently rejects every
@@ -260,6 +344,7 @@ static void stdControl_ReadController(int port)
     int i, cur, prev;
     int gameplay;
     int wheelOpen;
+    int smokeProbe;
 
     /* Reset the press-edge accumulator at the top of every poll, matching
      * SDL2/stdControl.c:597 which `_memset(stdControl_aInput2, 0, ...)`
@@ -269,6 +354,26 @@ static void stdControl_ReadController(int port)
     memset(g_keyPress, 0, sizeof(g_keyPress));
 
     tick = (unsigned int)GetTickCount();
+    gameplay = (jkSmack_GetCurrentGuiState() == JK_GAMEMODE_GAMEPLAY);
+    smokeProbe = stdControl_XboxSmokeInputProbeEnabled();
+
+    if (smokeProbe)
+    {
+        static int smokePollLogCount[XBOX_MAX_CONTROLLERS];
+        if (port >= 0 && port < XBOX_MAX_CONTROLLERS && smokePollLogCount[port] < 16)
+        {
+            smokePollLogCount[port]++;
+            XDBGF("SplitScreenInputProbe: poll port=%d count=%d gameplay=%d split=%d handle=%p connected=%d active=%d state=%d\n",
+                  port,
+                  smokePollLogCount[port],
+                  gameplay,
+                  xboxSplitScreen_IsEnabled(),
+                  (void*)g_hController,
+                  g_connected,
+                  g_activeController,
+                  jkSmack_GetCurrentGuiState());
+        }
+    }
 
     /* Lazy-open controller, but keep retrying slowly.  Retail Xbox code
      * checks the present-device mask before XInputOpen and handles removals
@@ -292,7 +397,14 @@ static void stdControl_ReadController(int port)
     }
 
     if (g_hController == NULL)
+    {
+        if (smokeProbe)
+        {
+            g_connected = 1;
+            stdControl_XboxSmokeInputProbeApply(port, tick, gameplay);
+        }
         return;  /* controller not present */
+    }
 
     if (XInputGetState(g_hController, &state) != ERROR_SUCCESS)
     {
@@ -310,7 +422,6 @@ static void stdControl_ReadController(int port)
     /* Digital buttons */
     buttons = pad->wButtons;
     changed = buttons ^ g_prevButtons;
-    gameplay = (jkSmack_GetCurrentGuiState() == JK_GAMEMODE_GAMEPLAY);
     wheelOpen = xbox_wheels_IsOpenForPort(port);
 
     if (gameplay)
@@ -438,7 +549,7 @@ static void stdControl_ReadController(int port)
                             pad->bAnalogButtons[XB_BTN_Y] > ANALOG_THRESHOLD,
                             pad->bAnalogButtons[XB_BTN_B] > ANALOG_THRESHOLD,
                             xbox_NormalizeStick(pad->sThumbRX),
-                            -xbox_NormalizeStick(pad->sThumbRY));
+                            xbox_NormalizeStick(pad->sThumbRY));
 
     if (xbox_wheels_ShouldSuppressLook(port))
     {
@@ -452,6 +563,9 @@ static void stdControl_ReadController(int port)
     }
     if (g_invertLookY)
         g_axisValues[XBOX_AXIS_LOOK_UD] = -g_axisValues[XBOX_AXIS_LOOK_UD];
+
+    if (smokeProbe)
+        stdControl_XboxSmokeInputProbeApply(port, tick, gameplay);
 
     /* Per-call axis log: first 3 calls only, just for boot sanity.  No
      * periodic spam — it floods D:\debug_openjkdf2.txt over time. */
@@ -503,7 +617,7 @@ int  stdControl_ShowCursor(int a)
 }
 void stdControl_ToggleMouse(void)       { }
 void stdControl_ReadMouse(void)         { }
-void stdControl_SetMouseSensitivity(float x, float y) { g_lookSensX=x*2.5f; g_lookSensY=y*2.0f; }
+void stdControl_SetMouseSensitivity(float x, float y) { g_lookSensX=x*1.25f; g_lookSensY=y*1.8f; }
 
 void stdControl_InitAxis(int idx, int mn, int mx, float mult) { (void)mn;(void)mx;(void)mult; if(idx>=0&&idx<XBOX_NUM_AXES) g_pads[g_activeController].axisValues[idx]=0.0f; }
 int  stdControl_EnableAxis(unsigned int idx) { (void)idx; return 1; }
@@ -520,20 +634,30 @@ void stdControl_XboxSetLookOptions(int sensitivity, int invertLook, int vibratio
 
 void stdControl_XboxSetLookOptionsEx(int sensitivity, int invertLook, int vibration, int deadzonePercent)
 {
-    float scale;
-    if (sensitivity < 1) sensitivity = 1;
-    if (sensitivity > 100) sensitivity = 100;
+    stdControl_XboxSetLookOptionsAxesEx(sensitivity, sensitivity, invertLook, vibration, deadzonePercent);
+}
+
+void stdControl_XboxSetLookOptionsAxesEx(int sensitivityX, int sensitivityY, int invertLook, int vibration, int deadzonePercent)
+{
+    float scaleX;
+    float scaleY;
+    if (sensitivityX < 1) sensitivityX = 1;
+    if (sensitivityX > 100) sensitivityX = 100;
+    if (sensitivityY < 1) sensitivityY = 1;
+    if (sensitivityY > 100) sensitivityY = 100;
     if (deadzonePercent < 0) deadzonePercent = 0;
     if (deadzonePercent > 30) deadzonePercent = 30;
-    g_lookSensitivity = sensitivity;
+    g_lookSensitivityX = sensitivityX;
+    g_lookSensitivityY = sensitivityY;
     g_invertLookY = invertLook ? 1 : 0;
     g_vibrationEnabled = vibration ? 1 : 0;
     g_deadzonePercent = deadzonePercent;
     g_stickDeadzone = (32767 * g_deadzonePercent) / 100;
 
-    scale = (float)g_lookSensitivity / 50.0f;
-    g_lookSensX = 1.25f * scale;
-    g_lookSensY = 1.2f * scale;
+    scaleX = (float)g_lookSensitivityX / 50.0f;
+    scaleY = (float)g_lookSensitivityY / 50.0f;
+    g_lookSensX = 1.25f * scaleX;
+    g_lookSensY = 1.2f * scaleY;
 }
 
 void stdControl_ReadControls(void)
@@ -578,7 +702,9 @@ void stdControl_ReadControls(void)
         xboxSplitScreen_RestoreContext();
 }
 
-int stdControl_XboxGetLookSensitivity(void) { return g_lookSensitivity; }
+int stdControl_XboxGetLookSensitivity(void) { return g_lookSensitivityX; }
+int stdControl_XboxGetLookSensitivityX(void) { return g_lookSensitivityX; }
+int stdControl_XboxGetLookSensitivityY(void) { return g_lookSensitivityY; }
 int stdControl_XboxGetInvertLook(void) { return g_invertLookY; }
 int stdControl_XboxGetVibration(void) { return g_vibrationEnabled; }
 int stdControl_XboxGetDeadzone(void) { return g_deadzonePercent; }
@@ -599,6 +725,8 @@ int stdControl_XboxGetConnectedMask(void)
         if (g_pads[i].connected)
             mask |= (1 << i);
     }
+    if (stdControl_XboxSmokeInputProbeEnabled())
+        mask |= 0x0F;
     return mask;
 }
 

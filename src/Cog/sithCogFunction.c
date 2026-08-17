@@ -913,6 +913,22 @@ void sithCogFunction_SetCameraZoom(sithCog *ctx)
     cog_flex_t zoomScale = sithCogExec_PopFlex(ctx);
     int camIdx = sithCogExec_PopInt(ctx);
 
+#ifdef TARGET_XBOX
+    if (Main_bMotsCompat)
+    {
+        static int s_motsZoomVerbLogCount = 0;
+        if (s_motsZoomVerbLogCount < 24)
+        {
+            xbox_debug_Printf("MotSMode: SetCameraZoom cog=%p cam=%d scale=%.3f speed=%.3f\n",
+                              (void*)ctx,
+                              camIdx,
+                              (double)zoomScale,
+                              (double)zoomSpeed);
+            s_motsZoomVerbLogCount++;
+        }
+    }
+#endif
+
     if ((-1 < camIdx) && (camIdx < 7)) {
         sithCamera_SetZoom(sithCamera_cameras + camIdx, zoomScale, zoomSpeed);
     }
@@ -1296,10 +1312,17 @@ void sithCogFunction_SelectWeapon(sithCog *ctx)
         binIdx = sithInventory_SelectWeaponFollowing(binIdx);
     }
 
-#if defined(TARGET_XBOX) && defined(XBOX_VERBOSE_FORMAT_LOGS)
-    { static int _sw=0; if(_sw<16){
-        xbox_debug_Printf("CogVerb SelectWeapon: cog=%p thing=%p bin=%d\n",
-                          (void*)ctx, (void*)player, binIdx); _sw++; }}
+#ifdef TARGET_XBOX
+    if (Main_bMotsCompat)
+    {
+        static int _sw = 0;
+        if (_sw < 24)
+        {
+            xbox_debug_Printf("MotSMode: CogVerb SelectWeapon cog=%p thing=%p bin=%d\n",
+                              (void*)ctx, (void*)player, binIdx);
+            _sw++;
+        }
+    }
 #endif
 
     if ( player )

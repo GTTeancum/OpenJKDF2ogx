@@ -12,6 +12,10 @@
 #include "Win95/Windows.h"
 #include "Win95/std.h"
 #include "Main/sithMain.h"
+#include "Main/jkHudInv.h"
+#include "Cog/sithCog.h"
+#include "Cog/jkCog.h"
+#include "World/sithWorld.h"
 #include "General/util.h"
 #include "Gui/jkGUIDialog.h"
 #include "Main/jkStrings.h"
@@ -19,6 +23,10 @@
 #include "General/stdHashTable.h"
 
 static int jkRes_bInit;
+
+static void jkRes_ApplyMotsCompatRuntimeState()
+{
+}
 
 int jkRes_Startup(HostServices *a1)
 {
@@ -82,6 +90,134 @@ void jkRes_FreeGobs(int idx)
         stdGob_Free(jkRes_gCtx.aGobDirectories[idx].gobs[i]);
     } }
     jkRes_gCtx.aGobDirectories[idx].numGobs = 0;
+}
+
+static int jkRes_RebuildCogTablesForMotsMode()
+{
+    int isStarted;
+
+    if (!sithMain_bInitialized)
+        return 1;
+
+    if (sithMain_bOpened || sithCog_bOpened)
+    {
+#ifdef TARGET_XBOX
+        XDBG("MotSMode: refused COG table rebuild while gameplay is open\n");
+#endif
+        return 0;
+    }
+
+#ifdef TARGET_XBOX
+    XDBG("MotSMode: rebuilding COG tables\n");
+#endif
+
+    sithCog_Shutdown();
+    isStarted = sithCog_Startup();
+    if (isStarted)
+    {
+        jkCog_RegisterVerbs();
+        isStarted = sithCog_StartupEnhanced() & isStarted;
+    }
+
+#ifdef TARGET_XBOX
+    if (isStarted)
+        XDBG("MotSMode: COG tables rebuilt\n");
+    else
+        XDBG("MotSMode: COG table rebuild failed\n");
+#endif
+
+    return isStarted;
+}
+
+static int jkRes_ReloadStaticWorldForMotsMode(int forceReload)
+{
+    if (!sithMain_bInitialized)
+        return 1;
+
+    if (sithMain_bOpened || sithCog_bOpened)
+    {
+#ifdef TARGET_XBOX
+        XDBG("MotSMode: refused static reload while gameplay is open\n");
+#endif
+        return 0;
+    }
+
+    if (sithWorld_pStatic || forceReload)
+    {
+#ifdef TARGET_XBOX
+        XDBG("MotSMode: reloading static.jkl for active mode\n");
+#endif
+        if (sithWorld_pStatic)
+            sithMain_Free();
+
+        if (!sithMain_Load("static.jkl"))
+        {
+#ifdef TARGET_XBOX
+            XDBG("MotSMode: static.jkl reload failed\n");
+#endif
+            return 0;
+        }
+    }
+
+    return jkHudInv_ReloadItemDescriptors();
+}
+
+static void jkRes_RestoreMotsCompatMode(int oldMode, int hadStaticWorld)
+{
+    Main_bMotsCompat = oldMode;
+    jkRes_ApplyMotsCompatRuntimeState();
+    jkRes_RebuildCogTablesForMotsMode();
+
+    if (!jkRes_bInit)
+        return;
+
+    jkRes_FreeGobs(3);
+    jkRes_LoadNew(&jkRes_gCtx.aGobDirectories[3], "resource", 1);
+    jkRes_ReloadStaticWorldForMotsMode(hadStaticWorld);
+}
+
+int jkRes_SetMotsCompat(int bMotsCompat)
+{
+    int newMode = bMotsCompat ? 1 : 0;
+    int oldMode = Main_bMotsCompat ? 1 : 0;
+    int hadStaticWorld = sithWorld_pStatic != 0;
+
+    if (oldMode == newMode)
+        return 1;
+
+#ifdef TARGET_XBOX
+    if (newMode)
+        XDBG("MotSMode: switching resources JK -> MotS\n");
+    else
+        XDBG("MotSMode: switching resources MotS -> JK\n");
+#endif
+
+    Main_bMotsCompat = newMode;
+    jkRes_ApplyMotsCompatRuntimeState();
+
+    if (!jkRes_RebuildCogTablesForMotsMode())
+    {
+        jkRes_RestoreMotsCompatMode(oldMode, hadStaticWorld);
+        return 0;
+    }
+
+    if (!jkRes_bInit)
+        return 1;
+
+    jkRes_FreeGobs(3);
+    if (!jkRes_LoadNew(&jkRes_gCtx.aGobDirectories[3], "resource", 1))
+    {
+        jkRes_RestoreMotsCompatMode(oldMode, hadStaticWorld);
+        return 0;
+    }
+
+    if (!jkRes_ReloadStaticWorldForMotsMode(0))
+    {
+        jkRes_RestoreMotsCompatMode(oldMode, hadStaticWorld);
+        return 0;
+    }
+
+    return 1;
 }
 
 void jkRes_LoadGob(char *a1)

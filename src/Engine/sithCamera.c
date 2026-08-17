@@ -23,6 +23,25 @@ static rdVector3 sithCamera_trans2 = {0.0, 0.2, 0.0};
 static rdVector3 sithCamera_trans3 = {0.0, 1.0, 1.0};
 static int sithCamera_camIdxToGlobalIdx[2] = {0,1};
 
+static void sithCamera_ResetEntryForOpen(sithCamera *camera, uint32_t perspective, flex_t fov, flex_t aspect)
+{
+    camera->cameraPerspective = perspective;
+    camera->fov = fov;
+    camera->aspectRatio = aspect;
+    camera->rdCam.fov = fov;
+#ifdef JKM_CAMERA
+    camera->bZoomed = 0;
+    camera->zoomScale = 1.0;
+    camera->invZoomScale = 1.0;
+    camera->zoomFov = fov;
+    camera->zoomSpeed = 0.0;
+#ifdef QOL_IMPROVEMENTS
+    camera->zoomScaleOrig = 1.0;
+    camera->zoomFov = 1.0;
+#endif
+#endif
+}
+
 int sithCamera_Startup()
 {
     sithCamera_NewEntry(&sithCamera_cameras[0], 0, 0x1, SITHCAMERA_FOV, SITHCAMERA_ASPECT, NULL, NULL, NULL);
@@ -64,28 +83,25 @@ int sithCamera_Open(rdCanvas *canvas, flex_t aspect)
     if ( sithCamera_bOpen )
         return 0;
 
+    /* Gameplay can reopen cameras after menus, cutscenes, and previous levels.
+     * Reset the baseline camera fields here so MotS first-person zoom logic
+     * never inherits a stale rdCam FOV from the previous screen. */
+    sithCamera_ResetEntryForOpen(&sithCamera_cameras[0], 0x01, SITHCAMERA_FOV, aspect);
+    sithCamera_ResetEntryForOpen(&sithCamera_cameras[1], 0x04, SITHCAMERA_FOV, aspect);
+    sithCamera_ResetEntryForOpen(&sithCamera_cameras[2], 0x08, SITHCAMERA_FOV, aspect);
+    sithCamera_ResetEntryForOpen(&sithCamera_cameras[4], 0x20, SITHCAMERA_FOV, aspect);
+    sithCamera_ResetEntryForOpen(&sithCamera_cameras[5], 0x40, SITHCAMERA_FOV, aspect);
+    sithCamera_ResetEntryForOpen(&sithCamera_cameras[6], 0x80, SITHCAMERA_FOV, aspect);
+    sithCamera_cameras[1].collisionOffset.x = 0.0;
+    sithCamera_cameras[1].collisionOffset.y = -0.2;
+    sithCamera_cameras[1].collisionOffset.z = 0.06;
+#ifdef DW_CAMERA
+    if (Main_bDwCompat) {
+        sithCamera_ResetEntryForOpen(&sithCamera_cameras[7], 0x100, SITHCAMERA_FOV, aspect);
+    }
+#endif
+
     if ( !sithCamera_bInitted ) {
-        /* sithCamera_Shutdown() zeroed cameras[] via memset and freed rdCam
-           slots via rdCamera_FreeEntry. Calling sithCamera_Startup() here
-           would double-allocate those slots and crash. Instead restore only
-           the two fields sithCamera_Open reads before rdCamera_NewEntry:
-           cameraPerspective (for FollowFocus switch) and rdCam.fov (passed
-           directly into rdCamera_NewEntry below). */
-        sithCamera_cameras[0].cameraPerspective = 0x01;
-        sithCamera_cameras[0].rdCam.fov = SITHCAMERA_FOV;
-        sithCamera_cameras[1].cameraPerspective = 0x04;
-        sithCamera_cameras[1].rdCam.fov = SITHCAMERA_FOV;
-        sithCamera_cameras[1].collisionOffset.x = 0.0;
-        sithCamera_cameras[1].collisionOffset.y = -0.2;
-        sithCamera_cameras[1].collisionOffset.z = 0.06;
-        sithCamera_cameras[2].cameraPerspective = 0x08;
-        sithCamera_cameras[2].rdCam.fov = SITHCAMERA_FOV;
-        sithCamera_cameras[4].cameraPerspective = 0x20;
-        sithCamera_cameras[4].rdCam.fov = SITHCAMERA_FOV;
-        sithCamera_cameras[5].cameraPerspective = 0x40;
-        sithCamera_cameras[5].rdCam.fov = SITHCAMERA_FOV;
-        sithCamera_cameras[6].cameraPerspective = 0x80;
-        sithCamera_cameras[6].rdCam.fov = SITHCAMERA_FOV;
         sithCamera_bInitted = 1;
     }
 
@@ -678,6 +694,22 @@ void sithCamera_SetZoom(sithCamera *pCamera, flex_t zoomScale, flex_t zoomSpeed)
 {
     if (!pCamera) return;
     if (!pCamera->rdCam.canvas) return;
+
+#ifdef TARGET_XBOX
+    if (Main_bMotsCompat)
+    {
+        static int s_motsCameraZoomLogCount = 0;
+        if (s_motsCameraZoomLogCount < 24)
+        {
+            xbox_debug_Printf("MotSMode: sithCamera_SetZoom cam=%p scale=%.3f speed=%.3f currentFov=%.2f\n",
+                              (void*)pCamera,
+                              (double)zoomScale,
+                              (double)zoomSpeed,
+                              (double)pCamera->rdCam.fov);
+            s_motsCameraZoomLogCount++;
+        }
+    }
+#endif
 
 #ifdef JKM_CAMERA
 #ifdef QOL_IMPROVEMENTS

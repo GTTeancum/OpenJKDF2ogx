@@ -25,6 +25,7 @@
 #include "engine_config.h"
 #include "stdPlatform.h"
 #include "jk.h"
+#include "Main/Main.h"
 
 #ifdef TARGET_XBOX
 #include "Platform/Xbox/xbox_debug.h"
@@ -140,6 +141,10 @@ void jkGame_SetDefaultSettings()
 {
     jkPlayer_setFullSubtitles = 0;
     jkPlayer_setDisableCutscenes = 0;
+#ifdef TARGET_XBOX
+    if (Main_xboxSmokeDisableCutscenes)
+        jkPlayer_setDisableCutscenes = 1;
+#endif
     jkPlayer_setRotateOverlayMap = 1;
     jkPlayer_setDrawStatus = 1;
 #ifdef TARGET_XBOX
@@ -147,7 +152,7 @@ void jkGame_SetDefaultSettings()
 #else
     jkPlayer_setCrosshair = 0;
 #endif
-    jkPlayer_setSaberCam = 0;
+    jkPlayer_setSaberCam = 1;
 }
 
 int jkGame_Update()
@@ -267,12 +272,12 @@ int jkGame_Update()
 #ifdef TARGET_XBOX
     {
         static int s_xboxCameraDbg = 0;
-        if (s_xboxCameraDbg < 12 || (s_xboxCameraDbg % 120) == 0)
+        if (Main_bMotsCompat && s_xboxCameraDbg < 24)
         {
             sithCamera *cam = sithCamera_currentCamera;
             rdClipFrustum *fr = cam ? cam->rdCam.pClipFrustum : NULL;
             sithThing *focus = cam ? cam->primaryFocus : NULL;
-            XDBGF("XboxFrame: cam n=%d cam=%p persp=0x%X focus=%p worldFocus=%p sector=%p fov=%.2f aspect=%.4f rdFov=%.2f rdAspect=%.4f fr=%p zn=%.6f zf=%.2f l/r/t/b=(%.4f,%.4f,%.4f,%.4f) canvas=%p half=(%.1f,%.1f)\n",
+            xbox_debug_Printf("XboxFrame: cam n=%d cam=%p persp=0x%X focus=%p worldFocus=%p sector=%p fov=%.2f aspect=%.4f rdFov=%.2f rdAspect=%.4f fr=%p zn=%.6f zf=%.2f l/r/t/b=(%.4f,%.4f,%.4f,%.4f) canvas=%p half=(%.1f,%.1f)\n",
                   s_xboxCameraDbg,
                   (void*)cam,
                   cam ? (unsigned)cam->cameraPerspective : 0,

@@ -207,6 +207,13 @@ int stdConffile_Read(void* out, int len)
         return 0;
 }
 
+int stdConffile_ReadRaw(void* out, int len)
+{
+    if (stdConffile_bOpen && openFile)
+        return stdConffile_pHS->fileRead(openFile, out, len);
+    return 0;
+}
+
 int stdConffile_ReadArgsFromStr(char *str)
 {
   int i;

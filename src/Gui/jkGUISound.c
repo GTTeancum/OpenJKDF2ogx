@@ -127,6 +127,12 @@ int jkGuiSound_Show()
     jkGuiSetup_sub_412EF0(&jkGuiSound_menu, 0);
     jkGuiRend_MenuSetReturnKeyShortcutElement(&jkGuiSound_menu, &jkGuiSound_elements[22]);
     jkGuiRend_MenuSetEscapeKeyShortcutElement(&jkGuiSound_menu, &jkGuiSound_elements[23]);
+#ifdef TARGET_XBOX
+    jkGuiRend_XboxFooterBegin(&jkGuiSound_menu);
+    jkGuiRend_XboxFooterAddAction(&jkGuiSound_menu, JKGUI_XBOX_BTN_A, 0, L"Select");
+    jkGuiRend_XboxFooterAddElementAction(&jkGuiSound_menu, JKGUI_XBOX_BTN_B, &jkGuiSound_elements[23], L"Back");
+    jkGuiRend_XboxFooterAddElementAction(&jkGuiSound_menu, JKGUI_XBOX_BTN_START, &jkGuiSound_elements[22], L"Done");
+#endif
     v1 = jkGuiRend_DisplayAndReturnClicked(&jkGuiSound_menu);
     if ( v1 != -1 )
     {

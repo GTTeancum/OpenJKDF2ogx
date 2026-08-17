@@ -5,12 +5,18 @@ param(
     [int]$MonitorPort = 4477,
     [int]$FmvLimitSeconds = 0,
     [string]$AutoStartLevel = "",
+    [string]$AutoStartArgs = "",
     [switch]$DisableMusic,
+    [switch]$DisableCutscenes,
+    [string]$AlwaysOnSoakPlanPath = "",
+    [int]$OpenEscapeAfterSeconds = 0,
     [int]$ScreenshotEverySeconds = 0,
+    [switch]$InputProbe,
     [switch]$KeepIso,
     [string]$RuntimeSource = "C:\Games\Emulators\CXBX\openJKDF2x",
     [string]$XemuRoot = "C:\Games\Emulators\Xemu",
-    [string]$HddPath = "C:\Games\Emulators\Xemu\HDD\xbox_hdd.qcow2"
+    [string]$HddPath = "C:\Games\Emulators\Xemu\HDD\xbox_hdd.qcow2",
+    [string]$WorkRoot = ""
 )
 
 $ErrorActionPreference = "Stop"
@@ -18,10 +24,14 @@ $ErrorActionPreference = "Stop"
 $RepoRoot = (Resolve-Path (Join-Path $PSScriptRoot "..")).Path
 $BuildRoot = Join-Path $RepoRoot "build\xbox"
 $ReleaseRoot = Join-Path $BuildRoot "release"
-$StagePath = Join-Path $BuildRoot "xemu_smoke_stage_current"
-$IsoPath = Join-Path $BuildRoot "openjkdf2_xemu_smoke_current.iso"
-$NewIsoPath = Join-Path $BuildRoot "openjkdf2_xemu_smoke_current.new.iso"
-$OutRoot = Join-Path $BuildRoot "xemu_smoke_runs"
+$ArtifactRoot = $BuildRoot
+if (![string]::IsNullOrWhiteSpace($WorkRoot)) {
+    $ArtifactRoot = [System.IO.Path]::GetFullPath($WorkRoot)
+}
+$StagePath = Join-Path $ArtifactRoot "xemu_smoke_stage_current"
+$IsoPath = Join-Path $ArtifactRoot "openjkdf2_xemu_smoke_current.iso"
+$NewIsoPath = Join-Path $ArtifactRoot "openjkdf2_xemu_smoke_current.new.iso"
+$OutRoot = Join-Path $ArtifactRoot "xemu_smoke_runs"
 $Timestamp = Get-Date -Format "yyyyMMdd_HHmmss"
 $SafeLabel = $RunLabel -replace '[^A-Za-z0-9_.-]', '_'
 $RunDir = Join-Path $OutRoot "$Timestamp-$SafeLabel"
@@ -70,7 +80,7 @@ function Remove-SafeGeneratedPath([string]$Path) {
     if (!(Test-Path -LiteralPath $Path)) {
         return
     }
-    Assert-UnderPath $BuildRoot $Path
+    Assert-UnderPath $ArtifactRoot $Path
     Remove-Item -LiteralPath $Path -Recurse -Force
 }
 
@@ -225,8 +235,24 @@ function New-Stage {
     if (![string]::IsNullOrWhiteSpace($AutoStartLevel)) {
         Set-Content -LiteralPath (Join-Path $StagePath "xbox_smoke_autostart_level.txt") -Value $AutoStartLevel -Encoding ASCII
     }
+    if (![string]::IsNullOrWhiteSpace($AutoStartArgs)) {
+        Set-Content -LiteralPath (Join-Path $StagePath "xbox_smoke_autostart_args.txt") -Value $AutoStartArgs -Encoding ASCII
+    }
+    if (![string]::IsNullOrWhiteSpace($AlwaysOnSoakPlanPath)) {
+        Require-Path $AlwaysOnSoakPlanPath "Always-on soak plan"
+        Copy-Item -LiteralPath $AlwaysOnSoakPlanPath -Destination (Join-Path $StagePath "xbox_soak_always_on.txt") -Force
+    }
+    if ($OpenEscapeAfterSeconds -gt 0) {
+        Set-Content -LiteralPath (Join-Path $StagePath "xbox_smoke_escape_after_seconds.txt") -Value ([string]$OpenEscapeAfterSeconds) -Encoding ASCII
+    }
+    if ($InputProbe) {
+        Set-Content -LiteralPath (Join-Path $StagePath "xbox_smoke_input_probe.txt") -Value "1" -Encoding ASCII
+    }
     if ($DisableMusic) {
         Set-Content -LiteralPath (Join-Path $StagePath "xbox_smoke_disable_music.txt") -Value "1" -Encoding ASCII
+    }
+    if ($DisableCutscenes) {
+        Set-Content -LiteralPath (Join-Path $StagePath "xbox_smoke_disable_cutscenes.txt") -Value "1" -Encoding ASCII
     }
 }
 
@@ -327,20 +353,29 @@ function Test-AnyPattern([string[]]$Paths, [string]$Pattern) {
 function Get-ReachedStates([string[]]$Paths) {
     $states = New-Object System.Collections.Generic.List[string]
     if (Test-AnyPattern $Paths "main: entering game loop") { $states.Add("game-loop") }
+    if (Test-AnyPattern $Paths "MotSMode: switching resources .*MotS") { $states.Add("mots-switch") }
+    if (Test-AnyPattern $Paths "MotSMode: reload item descriptors done") { $states.Add("mots-items") }
     if (Test-AnyPattern $Paths "CutsceneTrace:|XmvDbg|XMV") { $states.Add("fmv") }
     if (Test-AnyPattern $Paths "XMV finished, releasing movie state only") { $states.Add("xmv-finished") }
     if (Test-AnyPattern $Paths "MenuFlickerDbg: Paint") { $states.Add("menu-paint") }
+    if (Test-AnyPattern $Paths "Smoke: AlwaysSoak start") { $states.Add("always-soak-start") }
+    if (Test-AnyPattern $Paths "Smoke: AlwaysSoak menu-touch") { $states.Add("always-soak-menu") }
+    if (Test-AnyPattern $Paths "Smoke: AlwaysSoak load") { $states.Add("always-soak-load") }
+    if (Test-AnyPattern $Paths "Smoke: AlwaysSoak gameplay-ready") { $states.Add("always-soak-gameplay") }
+    if (Test-AnyPattern $Paths "Smoke: AlwaysSoak phase-complete") { $states.Add("always-soak-transition") }
+    if (Test-AnyPattern $Paths "SmokeInputProbe:|SplitScreenInputProbe:") { $states.Add("input-probe") }
     if (Test-AnyPattern $Paths "jkGuiMain_Show: smoke autostart") { $states.Add("autostart") }
-    if (Test-AnyPattern $Paths "GameplayShow:.*loading level|sithWorld_Load: opened OK 'jkl\\01narshadda\.jkl'|MPLoadTrace: sithMain_Open begin|MPLoadTrace: GameplayShow after LoadingFinalize") { $states.Add("level-load") }
+    if (Test-AnyPattern $Paths "GameplayShow:.*loading level|sithWorld_Load: opened OK 'jkl\\[^']+\.jkl'|MPLoadTrace: sithMain_Open begin|MPLoadTrace: GameplayShow after LoadingFinalize") { $states.Add("level-load") }
     if (Test-AnyPattern $Paths "sithWorld_Load: section end things") { $states.Add("level-things") }
     if (Test-AnyPattern $Paths "GameplayShow: done|MPLoadTrace: GameplayShow done") { $states.Add("gameplay-show-done") }
-    if (Test-AnyPattern $Paths "GameplayTick: enter|sithTick: enter|XboxFrame: begin n=|TickAll: exit|PerfHW:") { $states.Add("gameplay-frames") }
+    if (Test-AnyPattern $Paths "GameplayTick: enter|sithTick: enter|XboxFrame: begin n=|XboxFrame: cam n=|TickAll: exit|PerfHW:") { $states.Add("gameplay-frames") }
     if ($states.Count -eq 0) {
         return "none"
     }
     return ($states -join ",")
 }
 
+New-Item -ItemType Directory -Force -Path $ArtifactRoot | Out-Null
 New-Item -ItemType Directory -Force -Path $RunDir | Out-Null
 New-Item -ItemType Directory -Force -Path $LatestPollDir | Out-Null
 
@@ -458,6 +493,7 @@ $screenshotCount = @(
 $summary = @(
     "runLabel=$RunLabel",
     "runDir=$RunDir",
+    "workRoot=$ArtifactRoot",
     "start=$($start.ToString('s'))",
     "durationSeconds=$duration",
     "targetDurationSeconds=$DurationSeconds",
@@ -465,7 +501,12 @@ $summary = @(
     "monitorPort=$MonitorPort",
     "fmvLimitSeconds=$FmvLimitSeconds",
     "autoStartLevel=$AutoStartLevel",
+    "autoStartArgs=$AutoStartArgs",
     "disableMusic=$([bool]$DisableMusic)",
+    "disableCutscenes=$([bool]$DisableCutscenes)",
+    "alwaysOnSoakPlanPath=$AlwaysOnSoakPlanPath",
+    "openEscapeAfterSeconds=$OpenEscapeAfterSeconds",
+    "inputProbe=$([bool]$InputProbe)",
     "runtimeSource=$RuntimeSource",
     "xbe=$XbePath",
     "map=$MapPath",

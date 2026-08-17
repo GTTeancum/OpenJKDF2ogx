@@ -1997,6 +1997,21 @@ int sithThing_LoadThingParam(stdConffileArg *arg, sithThing* pThing, int param)
             }
 
             pThing->thingflags |= SITH_TF_CAPTURED;
+#ifdef TARGET_XBOX
+            if (Main_bMotsCompat && pThing->type == SITH_THING_PLAYER)
+            {
+                xbox_debug_Printf("MotSMode: Thing class cog thing=%p type=%d cogArg=%s cog=%p name=%s script=%s flags=0x%X self=%d numTrig=%u\n",
+                                  (void*)pThing,
+                                  (int)pThing->type,
+                                  arg->value,
+                                  (void*)pCog,
+                                  pCog->cogscript_fpath,
+                                  pCog->cogscript ? pCog->cogscript->cog_fpath : "",
+                                  (unsigned)pCog->flags,
+                                  pCog->selfCog,
+                                  pCog->cogscript ? (unsigned)pCog->cogscript->num_triggers : 0);
+            }
+#endif
             result = 1;
             break;
         case THINGPARAM_PARTICLE:

@@ -215,14 +215,28 @@ int sithComm_Sync()
     int v4; // eax
     int v12; // ecx
     int v13; // [esp+4h] [ebp-4h]
+    int recvResult;
+#ifdef TARGET_XBOX
+    int recvDrainCount;
+#endif
 
     v13 = 0;
+#ifdef TARGET_XBOX
+    recvDrainCount = 0;
+#endif
     sithComm_needsSync = 0;
     if ( !sithComm_bSyncMultiplayer )
         return 0;
-    while ( stdComm_Recv(&sithComm_netMsgTmp) == 1 )
+    while ( 1 )
     {
+        recvResult = stdComm_Recv(&sithComm_netMsgTmp);
+        if (recvResult != 1)
+            break;
         ++v13;
+#ifdef TARGET_XBOX
+        if (++recvDrainCount >= 256)
+            break;
+#endif
         if ( sithComm_netMsgTmp.netMsg.thingIdx )
         {
             v1 = sithPlayer_ThingIdxToPlayerIdx(sithComm_netMsgTmp.netMsg.thingIdx);

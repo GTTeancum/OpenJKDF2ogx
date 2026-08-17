@@ -72,6 +72,28 @@ void sithWeapon_Syncunused1(sithThing* player);
 void sithWeapon_Syncunused2(sithThing* player);
 void sithWeapon_SetFireRate(sithThing *weapon, flex32_t fireRate);
 
+#ifdef TARGET_XBOX
+typedef struct sithWeaponXboxLocalState
+{
+    flex32_t activeStarted[2];
+    int activeLatched[2];
+    flex32_t lastFireTimeSecs;
+    flex32_t pendingDeselectTime;
+    flex32_t mountWait;
+    flex32_t fireWait;
+    flex32_t fireRate;
+    int mountReactivatePending;
+    int curWeaponMode;
+    int pendingWeaponBin;
+    int senderIndex;
+    int motsPriorWeapon;
+} sithWeaponXboxLocalState;
+
+void sithWeapon_XboxResetLocalState(sithWeaponXboxLocalState *state);
+void sithWeapon_XboxSaveLocalState(sithWeaponXboxLocalState *state);
+void sithWeapon_XboxRestoreLocalState(const sithWeaponXboxLocalState *state);
+#endif
+
 
 //static void (*sithWeapon_sub_4D35E0)(sithThing *a1) = (void*)sithWeapon_sub_4D35E0_ADDR;
 //static void (*sithWeapon_sub_4D3920)(sithThing *a1) = (void*)sithWeapon_sub_4D3920_ADDR;

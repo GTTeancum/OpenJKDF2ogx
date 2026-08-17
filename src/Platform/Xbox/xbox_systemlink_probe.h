@@ -62,6 +62,10 @@ typedef struct XboxSystemLinkProbeStatus
     int localPlayerCount;
     int readyMask;
     int confirmed;
+    int sessionRegistered;
+    int hasLocalXnAddr;
+    unsigned long localXnAddrStatus;
+    int hasSecureHostAddress;
     int groupMachineCount;
     int allConfirmed;
     int localFirstPlayerIndex;

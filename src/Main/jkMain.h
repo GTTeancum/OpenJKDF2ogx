@@ -120,6 +120,11 @@ void jkMain_UnkLeave(int a1, int a2);
 int jkMain_LoadFile(char *a1);
 int jkMain_loadFile2(char *pGobPath, char *pEpisodeName);
 int jkMain_LoadLevelSingleplayer(char *pGobPath, char *pEpisodeName);
+#ifdef TARGET_XBOX
+int jkMain_XboxAlwaysSoakStartFromMenu(void);
+void jkMain_XboxAlwaysSoakOnGameplayReady(void);
+void jkMain_XboxAlwaysSoakTickGameplay(void);
+#endif
 
 int jkMain_sub_403470(char *a1);
 int jkMain_StartNextLevelInEpisode(int a1, int bIsAPath);

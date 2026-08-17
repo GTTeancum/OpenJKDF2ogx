@@ -230,6 +230,7 @@ int jkGuiSingleplayer_Show()
                     jkGuiRend_DarrayFree(&array);
                     if ( clicked == 1 )
                     {
+                        jkEpisode_SetMotsCompatForEpisodeName(a1);
                         jkRes_LoadGob(a1);
                         if ( !jkEpisode_Load(&jkGui_episodeLoad) )
                         {

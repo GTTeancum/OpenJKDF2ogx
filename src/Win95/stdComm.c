@@ -165,10 +165,19 @@ int stdComm_DoReceive()
     int result; // eax
     int v1; // [esp+0h] [ebp-8h] BYREF
     int v2; // [esp+4h] [ebp-4h] BYREF
+#ifdef TARGET_XBOX
+    int drainCount = 0;
+#endif
 
     v1 = 2048;
     do {
         result = DirectPlay_Receive(&v2, (int*)sithComm_netMsgTmp.pktData, &v1);
+#ifdef TARGET_XBOX
+        if (result != -1 && ++drainCount >= 256)
+        {
+            break;
+        }
+#endif
     }
     while ( result != -1 );
     return result;

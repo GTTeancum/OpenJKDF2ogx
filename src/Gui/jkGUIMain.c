@@ -78,6 +78,35 @@ static int jkGuiMain_XboxReadSmokeAutostartLevel(char *out, size_t outSize)
     return len != 0;
 }
 
+static int jkGuiMain_XboxSmokeStartLevel(const char *spec)
+{
+    char episode[128];
+    char level[128];
+    char *separator;
+
+    if (!spec || !spec[0])
+        return 0;
+
+    stdString_SafeStrCopy(episode, spec, sizeof(episode));
+    separator = strchr(episode, '|');
+    if (separator)
+    {
+        *separator = 0;
+        stdString_SafeStrCopy(level, separator + 1, sizeof(level));
+        XDBGF("jkGuiMain_Show: smoke autostart episode '%s' level '%s'\n", episode, level);
+        return jkMain_LoadLevelSingleplayer(episode, level);
+    }
+
+    if (strstr(episode, ".jkl") || strstr(episode, ".JKL"))
+    {
+        XDBGF("jkGuiMain_Show: smoke autostart JK1 level '%s'\n", episode);
+        return jkMain_LoadLevelSingleplayer("JK1", episode);
+    }
+
+    XDBGF("jkGuiMain_Show: smoke autostart episode '%s'\n", episode);
+    return jkMain_LoadFile(episode);
+}
+
 static int jkGuiMain_XboxMarkerExists(const char *path)
 {
     FILE *f;
@@ -641,8 +670,19 @@ static void jkGuiMain_XboxReadyTick(jkGuiMenu *menu)
         {
             if (slot == 0 && jkGuiMain_XboxReadyCount() > 0)
             {
+                XDBGF("SplitReady: P1 Start advance joined=%d\n", jkGuiMain_XboxReadyCount());
                 jkGuiMain_xboxReadyStartRequested = 1;
                 menu->lastClicked = 20;
+            }
+            else if (slot == 0)
+            {
+                XDBG("SplitReady: P1 Start ignored no joined players\n");
+            }
+            else
+            {
+                XDBGF("SplitReady: non-P1 Start ignored slot=%d joined=%d\n",
+                      slot,
+                      jkGuiMain_XboxReadyCount());
             }
             continue;
         }
@@ -650,18 +690,30 @@ static void jkGuiMain_XboxReadyTick(jkGuiMenu *menu)
         if (!jkGuiMain_xboxReadyJoined[slot])
         {
             if (jkGuiMain_XboxReadyReadEdge(slot, KEY_JOY1_B1, &jkGuiMain_xboxReadyPrevA[slot]))
+            {
+                XDBGF("SplitReady: slot=%d A join\n", slot);
                 jkGuiMain_XboxReadySetJoined(menu, slot, 1);
+            }
             if (slot == 0 && jkGuiMain_XboxReadyReadEdge(slot, KEY_JOY1_B2, &jkGuiMain_xboxReadyPrevB[slot]))
+            {
+                XDBG("SplitReady: P1 B back from empty ready menu\n");
                 menu->lastClicked = -1;
+            }
             continue;
         }
 
         if (jkGuiMain_XboxReadyReadEdge(slot, KEY_JOY1_B2, &jkGuiMain_xboxReadyPrevB[slot]))
         {
             if (slot == 0)
+            {
+                XDBG("SplitReady: P1 B back from joined ready menu\n");
                 menu->lastClicked = -1;
+            }
             else
+            {
+                XDBGF("SplitReady: slot=%d B leave\n", slot);
                 jkGuiMain_XboxReadySetJoined(menu, slot, 0);
+            }
             continue;
         }
         if (jkGuiMain_XboxReadyReadEdge(slot, KEY_JOY1_HUP, &jkGuiMain_xboxReadyPrevUp[slot]))
@@ -1090,7 +1142,9 @@ static void jkGuiMain_XboxSystemLinkTick(jkGuiMenu *menu)
     if (!jkGuiMain_xboxSystemLinkPendingLaunch
         && jkGuiMain_xboxSystemLinkAutoMapSelect
         && status.role == XBOX_SYSTEMLINK_ROLE_HOST
-        && status.allConfirmed)
+        && status.allConfirmed
+        && status.sessionRegistered
+        && status.hasLocalXnAddr)
     {
         jkGuiMain_xboxSystemLinkMapSelectRequested = 1;
         menu->lastClicked = 20;
@@ -1467,7 +1521,13 @@ void jkGuiMain_Show()
 #ifdef TARGET_XBOX
     {
         char smokeLevel[128];
-        if (jkGuiMain_XboxSystemLinkSmokeEnabled())
+        if (jkMain_XboxAlwaysSoakStartFromMenu())
+        {
+            XDBG("Smoke: AlwaysSoak scheduled from main menu\n");
+            jkGui_SetModeGame();
+            return;
+        }
+        else if (jkGuiMain_XboxSystemLinkSmokeEnabled())
         {
             XDBG("Smoke: XSL autostart from main menu\n");
             if (jkGuiMain_XboxStartSystemLink() == 1)
@@ -1479,8 +1539,7 @@ void jkGuiMain_Show()
         }
         else if (jkGuiMain_XboxReadSmokeAutostartLevel(smokeLevel, sizeof(smokeLevel)))
         {
-            XDBGF("jkGuiMain_Show: smoke autostart level '%s'\n", smokeLevel);
-            if (jkMain_LoadLevelSingleplayer("JK1", smokeLevel))
+            if (jkGuiMain_XboxSmokeStartLevel(smokeLevel))
             {
                 XDBG("jkGuiMain_Show: smoke autostart scheduled\n");
                 jkGui_SetModeGame();

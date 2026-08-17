@@ -144,6 +144,12 @@ int jkGuiGameplay_Show()
     jkGuiRend_MenuSetReturnKeyShortcutElement(&jkGuiGameplay_menu, &jkGuiGameplay_buttons[36]);
     jkGuiRend_MenuSetEscapeKeyShortcutElement(&jkGuiGameplay_menu, &jkGuiGameplay_buttons[37]);
     jkGuiSetup_sub_412EF0(&jkGuiGameplay_menu, 0);
+#ifdef TARGET_XBOX
+    jkGuiRend_XboxFooterBegin(&jkGuiGameplay_menu);
+    jkGuiRend_XboxFooterAddAction(&jkGuiGameplay_menu, JKGUI_XBOX_BTN_A, 0, L"Select");
+    jkGuiRend_XboxFooterAddElementAction(&jkGuiGameplay_menu, JKGUI_XBOX_BTN_B, &jkGuiGameplay_buttons[37], L"Back");
+    jkGuiRend_XboxFooterAddElementAction(&jkGuiGameplay_menu, JKGUI_XBOX_BTN_START, &jkGuiGameplay_buttons[36], L"Done");
+#endif
     v0 = jkGuiRend_DisplayAndReturnClicked(&jkGuiGameplay_menu);
     if ( v0 != -1 )
     {

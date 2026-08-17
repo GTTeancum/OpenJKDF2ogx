@@ -274,8 +274,12 @@ void* stdHashTable_GetKeyVal(stdHashTable *hashmap, const char *key)
 {
     tHashLink *i;
     tHashLink *foundKey;
+    int guard;
+    int guardLimit;
 
     if (!hashmap || !key) // Added: key nullptr check
+        return NULL;
+    if (!hashmap->buckets || !hashmap->keyHashToIndex || hashmap->numBuckets <= 0)
         return NULL;
 
 #ifdef STDHASHTABLE_CRC32_KEYS
@@ -283,8 +287,22 @@ void* stdHashTable_GetKeyVal(stdHashTable *hashmap, const char *key)
 #endif
 
     foundKey = 0;
+    guard = 0;
+    guardLimit = hashmap->numBuckets + 4096;
     for ( i = &hashmap->buckets[hashmap->keyHashToIndex(key, hashmap->numBuckets)]; i; i = i->next )
     {
+        if (++guard > guardLimit)
+        {
+#ifdef TARGET_XBOX
+            xbox_debug_Printf("HashTable: lookup guard key=%s buckets=%d limit=%d\n",
+                              key,
+                              hashmap->numBuckets,
+                              guardLimit);
+#endif
+            foundKey = 0;
+            break;
+        }
+
 #ifdef STDHASHTABLE_CRC32_KEYS
         if (!i->keyCrc32) {
             foundKey = 0;

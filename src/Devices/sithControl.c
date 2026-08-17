@@ -41,6 +41,39 @@ static int sithControl_008d7f54 = 0;
 static int sithControl_008d7f58 = 0;
 static int sithControl_008d7f5c = 0;
 
+#ifdef TARGET_XBOX
+void sithControl_XboxResetLocalState(sithControlXboxLocalState *state)
+{
+    if (!state)
+        return;
+    _memset(state, 0, sizeof(*state));
+}
+
+void sithControl_XboxSaveLocalState(sithControlXboxLocalState *state)
+{
+    if (!state)
+        return;
+    state->lookScale = sithControl_008d7f44;
+    state->forwardActive = sithControl_008d7f4c;
+    state->yawActive = sithControl_008d7f50;
+    state->slideActive = sithControl_008d7f54;
+    state->crouchActive = sithControl_008d7f58;
+    state->jumpActive = sithControl_008d7f5c;
+}
+
+void sithControl_XboxRestoreLocalState(const sithControlXboxLocalState *state)
+{
+    if (!state)
+        return;
+    sithControl_008d7f44 = state->lookScale;
+    sithControl_008d7f4c = state->forwardActive;
+    sithControl_008d7f50 = state->yawActive;
+    sithControl_008d7f54 = state->slideActive;
+    sithControl_008d7f58 = state->crouchActive;
+    sithControl_008d7f5c = state->jumpActive;
+}
+#endif
+
 static const char *sithControl_aFunctionStrs[INPUT_FUNC_MAX+1] =
 {
     "FORWARD",
@@ -1356,212 +1389,8 @@ LABEL_20:
 }
 
 
-void sithControl_PlayerMovementMots(sithThing *player)
-{
-    uint32_t uVar1;
-    int iVar2;
-    flex_t fVar3;
-    flex_t fVar4;
-    flex_t local_8;
-    int local_4;
-    sithThing *thing;
-    
-    thing = player;
-    flex_t move_multiplier = 1.0;
-    if (((sithWeapon_controlOptions & 2) != 0) ||
-       (iVar2 = sithControl_ReadFunctionMap(INPUT_FUNC_FAST,(int *)0x0), iVar2 != 0)) {
-        move_multiplier = 2.0;
-    }
-    iVar2 = sithControl_ReadFunctionMap(7,(int *)0x0);
-    if (iVar2 != 0) {
-        move_multiplier *= 0.5;
-    }
-    thing->physicsParams.physflags =
-         thing->physicsParams.physflags & ~SITH_PF_CROUCHING;
-    iVar2 = sithControl_ReadFunctionMap(INPUT_FUNC_DUCK,(int *)0x0);
-    if (iVar2 == 0) {
-        if (sithControl_008d7f58 != 0) {
-            sithThing_MotsTick(1,0,0.0);
-        }
-        sithControl_008d7f58 = 0;
-    }
-    else {
-        local_8 = 1.0;
-        if (sithControl_008d7f58 != 0) {
-            local_8 = 2.0;
-        }
-        sithControl_008d7f58 = 1;
-        iVar2 = sithThing_MotsTick(1,0,local_8);
-        if ((iVar2 != 0) && ((thing->actorParams.typeflags & SITH_AF_COMBO_FREEZE) == 0)) {
-            move_multiplier = 0.5;
-            thing->physicsParams.physflags =
-                 thing->physicsParams.physflags | SITH_PF_CROUCHING;
-        }
-    }
-    if ((thing->physicsParams.physflags & SITH_PF_200000) != 0) {
-        move_multiplier = 0.5;
-    }
-    if (((thing->attach_flags & SITH_ATTACH_WORLDSURFACE) != 0) &&
-       (player->attachedSurface->surfaceFlags & (SITH_SURFACE_VERYDEEPWATER|SITH_SURFACE_WATER))) {
-        move_multiplier *= 0.5;
-    }
-    if ((thing->type != 2) && (thing->type != 10)) {
-        return;
-    }
-    iVar2 = sithControl_ReadFunctionMap(INPUT_FUNC_SLIDETOGGLE,&local_4);
-    if (iVar2 == 0) {
-        fVar4 = sithControl_GetAxisNonTimeCorrectedRaw(INPUT_FUNC_TURN);
-#ifdef QOL_IMPROVEMENTS
-        // Scale appropriately to high framerates
-        fVar4 = fVar4 * sithTime_TickHz;
-#else
-        fVar4 = fVar4 * sithTime_TickHz;
-#endif
-        if (1.0 <= move_multiplier) {
-            local_8 = 1.0;
-        }
-        else {
-            local_8 = move_multiplier;
-        }
-        fVar3 = sithControl_GetAxisNonRaw(INPUT_FUNC_TURN);
-#ifdef QOL_IMPROVEMENTS
-        // Scale appropriately to high framerates
-        //fVar3 *= (sithTime_TickHz / 25.0) * 2.0;
-#endif
-
-        fVar4 += fVar3 * thing->actorParams.maxRotThrust * local_8;
-
-        if (fVar4 == 0.0) {
-            if (sithControl_008d7f50 != 0) {
-                sithThing_MotsTick(5,0,fVar4);
-                sithControl_008d7f50 = 0;
-            }
-            thing->physicsParams.angVel.y = fVar4;
-            fVar4 = sithControl_GetAxisTimeCorrected(INPUT_FUNC_SLIDE);
-            fVar4 = (thing->actorParams.maxThrust +
-                    thing->actorParams.extraSpeed) * -fVar4 * 0.7;
-            if (fVar4 == 0.0) goto joined_r0x00527cfa;
-            sithControl_008d7f54 = 1;
-            iVar2 = sithThing_MotsTick(4,0,fVar4 * move_multiplier);
-            if (iVar2 != 0) {
-                thing->physicsParams.acceleration.x = fVar4;
-                goto LAB_00527d1c;
-            }
-        }
-        else {
-            fVar4 = fVar4 * sithControl_008d7f44;
-            sithControl_008d7f50 = 1;
-            iVar2 = sithThing_MotsTick(5,0,fVar4);
-            if (iVar2 == 0) {
-                thing->physicsParams.angVel.y = 0.0;
-            }
-            else {
-                thing->physicsParams.angVel.y = fVar4;
-                fVar4 = sithControl_GetAxisTimeCorrected(INPUT_FUNC_SLIDE);
-                fVar4 = (thing->actorParams.maxThrust +
-                        thing->actorParams.extraSpeed) * -fVar4 * 0.7;
-                if (fVar4 == 0.0) goto joined_r0x00527cfa;
-                sithControl_008d7f54 = 1;
-                iVar2 = sithThing_MotsTick(4,0,fVar4 * move_multiplier);
-                if (iVar2 != 0) {
-                    thing->physicsParams.acceleration.x = fVar4;
-                    goto LAB_00527d1c;
-                }
-            }
-        }
-    }
-    else {
-        fVar3 = sithControl_GetAxisTimeCorrected(INPUT_FUNC_TURN);
-        fVar4 = sithControl_GetAxisTimeCorrected(INPUT_FUNC_SLIDE);
-        fVar4 = -fVar4 - fVar3;
-        if (fVar4 < -1.0) {
-            fVar4 = -1.0;
-        }
-        else if (1.0 < fVar4) {
-            fVar4 = 1.0;
-        }
-        fVar4 = (thing->actorParams.maxThrust +
-                thing->actorParams.extraSpeed) * fVar4 * 0.7;
-        if (fVar4 != 0.0) {
-            sithControl_008d7f54 = 1;
-            iVar2 = sithThing_MotsTick(4,0,fVar4 * move_multiplier);
-            if (iVar2 == 0) {
-                thing->physicsParams.acceleration.x = 0.0;
-                thing->physicsParams.angVel.y = 0.0;
-            }
-            else {
-                thing->physicsParams.angVel.y = 0.0;
-                thing->physicsParams.acceleration.x = fVar4;
-            }
-            goto LAB_00527d1c;
-        }
-joined_r0x00527cfa:
-        if (sithControl_008d7f54 != 0) {
-            sithThing_MotsTick(4,0,0.0);
-        }
-        sithControl_008d7f54 = 0;
-    }
-    thing->physicsParams.acceleration.x = 0.0;
-LAB_00527d1c:
-    if (((sithWeapon_controlOptions & 4) == 0) &&
-       (iVar2 = sithControl_ReadFunctionMap(0x24,(int *)0x0), iVar2 != 0)) {
-        local_8 = 0.0;
-    }
-    else {
-        local_8 = sithControl_GetAxisTimeCorrected(INPUT_FUNC_FORWARD);
-    }
-    fVar4 = (thing->actorParams.maxThrust + thing->actorParams.extraSpeed)
-            * local_8;
-    if (local_8 <= 0.0) {
-        fVar4 = fVar4 * 0.5;
-    }
-    if (fVar4 == 0.0) {
-        thing->physicsParams.acceleration.y = fVar4;
-        if (sithControl_008d7f4c != 0) {
-            sithThing_MotsTick(6,0,fVar4 * move_multiplier);
-            sithControl_008d7f4c = 0;
-        }
-    }
-    else {
-        iVar2 = sithThing_MotsTick(6,0,fVar4 * move_multiplier);
-        if (iVar2 != 0) {
-            thing->physicsParams.acceleration.y = fVar4;
-        }
-        sithControl_008d7f4c = 1;
-    }
-    if (((0.2 < local_8) && ((sithWeapon_controlOptions & 0x10) != 0)) &&
-       (uVar1 = thing->actorParams.typeflags, (uVar1 & SITH_AF_HEAD_IS_CENTERED) == 0)) {
-        thing->actorParams.typeflags = uVar1 | SITH_AF_CENTER_VIEW;
-    }
-    thing->physicsParams.acceleration.z = 0.0;
-    if (move_multiplier != 1.0) {
-        fVar4 = thing->physicsParams.acceleration.x;
-        thing->physicsParams.acceleration.y =
-             thing->physicsParams.acceleration.y * move_multiplier;
-        thing->physicsParams.acceleration.x = fVar4 * move_multiplier;
-    }
-    iVar2 = sithControl_ReadFunctionMap(4,&local_4);
-    if (iVar2 == 0) {
-        if (sithControl_008d7f5c != 0) {
-            sithThing_MotsTick(0,0,0.0);
-        }
-        sithControl_008d7f5c = 0;
-    }
-    else {
-        sithControl_008d7f5c = 1;
-    }
-    if ((local_4 != 0) && (iVar2 = sithThing_MotsTick(0,0,1.0), iVar2 != 0)) {
-        sithPlayerActions_JumpWithVel(thing,1.0);
-    }
-}
-
 void sithControl_PlayerMovement(sithThing *player)
 {
-    if (Main_bMotsCompat) {
-        sithControl_PlayerMovementMots(player);
-        return;
-    }
-
     int new_state; // eax
     flex_d_t v6; // st7
     flex_d_t v7; // st6
@@ -1580,14 +1409,27 @@ void sithControl_PlayerMovement(sithThing *player)
     if ( sithControl_ReadFunctionMap(INPUT_FUNC_SLOW, 0) )
         move_multiplier = move_multiplier * 0.5;
     int old_state = player->physicsParams.physflags;
-    if ( !sithControl_ReadFunctionMap(INPUT_FUNC_DUCK, 0) )
+    int wantsDuck = sithControl_ReadFunctionMap(INPUT_FUNC_DUCK, 0);
+    if ( !wantsDuck )
     {
         new_state = old_state & ~SITH_PF_CROUCHING;
+        if (sithControl_008d7f58)
+            sithThing_MotsTick(1, 0, 0.0);
+        sithControl_008d7f58 = 0;
     }
     else
     {
-        new_state = old_state | SITH_PF_CROUCHING;
-        move_multiplier = 0.5;
+        flex_t crouchAction = sithControl_008d7f58 ? 2.0 : 1.0;
+        sithControl_008d7f58 = 1;
+        if (sithThing_MotsTick(1, 0, crouchAction))
+        {
+            new_state = old_state | SITH_PF_CROUCHING;
+            move_multiplier = 0.5;
+        }
+        else
+        {
+            new_state = old_state & ~SITH_PF_CROUCHING;
+        }
     }
     player->physicsParams.physflags = new_state;
     if ( (player->physicsParams.physflags & SITH_PF_200000) != 0 )
@@ -1618,6 +1460,21 @@ void sithControl_PlayerMovement(sithThing *player)
             v7 = player->actorParams.maxThrust + player->actorParams.extraSpeed;
             player->physicsParams.angVel.y = 0.0;
             player->physicsParams.acceleration.x = v7 * v6 * 0.7;
+            if (player->physicsParams.acceleration.x != 0.0)
+            {
+                sithControl_008d7f54 = 1;
+                if (!sithThing_MotsTick(4, 0, player->physicsParams.acceleration.x * move_multiplier))
+                    player->physicsParams.acceleration.x = 0.0;
+            }
+            else
+            {
+                if (sithControl_008d7f54)
+                    sithThing_MotsTick(4, 0, 0.0);
+                sithControl_008d7f54 = 0;
+            }
+            if (sithControl_008d7f50)
+                sithThing_MotsTick(5, 0, 0.0);
+            sithControl_008d7f50 = 0;
         }
         else
         {
@@ -1642,15 +1499,51 @@ void sithControl_PlayerMovement(sithThing *player)
 #else
             player->physicsParams.angVel.y += sithControl_GetAxisNonRaw(INPUT_FUNC_TURN) * player->actorParams.maxRotThrust * move_multiplier_;
 #endif
+            if (player->physicsParams.angVel.y != 0.0)
+            {
+                sithControl_008d7f50 = 1;
+                if (!sithThing_MotsTick(5, 0, player->physicsParams.angVel.y))
+                    player->physicsParams.angVel.y = 0.0;
+            }
+            else
+            {
+                if (sithControl_008d7f50)
+                    sithThing_MotsTick(5, 0, 0.0);
+                sithControl_008d7f50 = 0;
+            }
 
             player->physicsParams.acceleration.x = sithControl_GetAxisTimeCorrected(INPUT_FUNC_SLIDE)
                                                             * (player->actorParams.maxThrust + player->actorParams.extraSpeed)
                                                             * 0.7;
+            if (player->physicsParams.acceleration.x != 0.0)
+            {
+                sithControl_008d7f54 = 1;
+                if (!sithThing_MotsTick(4, 0, player->physicsParams.acceleration.x * move_multiplier))
+                    player->physicsParams.acceleration.x = 0.0;
+            }
+            else
+            {
+                if (sithControl_008d7f54)
+                    sithThing_MotsTick(4, 0, 0.0);
+                sithControl_008d7f54 = 0;
+            }
         }
         v11 = sithControl_GetAxisTimeCorrected(0);
         y_vel = (player->actorParams.maxThrust + player->actorParams.extraSpeed) * v11;
         if ( v11 < 0.0 )
             y_vel = y_vel * 0.5;
+        if (y_vel != 0.0)
+        {
+            if (!sithThing_MotsTick(6, 0, y_vel * move_multiplier))
+                y_vel = 0.0;
+            sithControl_008d7f4c = 1;
+        }
+        else
+        {
+            if (sithControl_008d7f4c)
+                sithThing_MotsTick(6, 0, 0.0);
+            sithControl_008d7f4c = 0;
+        }
         player->physicsParams.acceleration.y = y_vel;
         if ( v11 > 0.2 && (sithWeapon_controlOptions & 0x10) != 0 )
         {
@@ -1665,7 +1558,18 @@ void sithControl_PlayerMovement(sithThing *player)
             player->physicsParams.acceleration.y = player->physicsParams.acceleration.y * move_multiplier;
             player->physicsParams.acceleration.x = player->physicsParams.acceleration.x * move_multiplier;
         }
-        sithControl_ReadFunctionMap(INPUT_FUNC_JUMP, &v20);
+        int jumpMapped = sithControl_ReadFunctionMap(INPUT_FUNC_JUMP, &v20);
+        if (!jumpMapped)
+        {
+            v20 = 0;
+            if (sithControl_008d7f5c)
+                sithThing_MotsTick(0, 0, 0.0);
+            sithControl_008d7f5c = 0;
+        }
+        else
+        {
+            sithControl_008d7f5c = 1;
+        }
 #ifdef TARGET_XBOX
         /* Log JUMP read every time it's non-zero so we can see whether
            the A button (via DIK_X) is reaching this read site in
@@ -1679,7 +1583,7 @@ void sithControl_PlayerMovement(sithThing *player)
             }
         }
 #endif
-        if ( v20 )
+        if ( v20 && sithThing_MotsTick(0, 0, 1.0) )
             sithPlayerActions_JumpWithVel(player, 1.0);
     }
 }
@@ -1732,10 +1636,6 @@ void sithControl_FreeCam(sithThing *player)
         {
             v15 = sithControl_GetAxisTimeCorrected(INPUT_FUNC_SLIDE);
 
-            // Why did MoTS do this lol
-            if (Main_bMotsCompat)
-                v15 = -v15;
-
             v11 = v15 - sithControl_GetAxisTimeCorrected(INPUT_FUNC_TURN);
             if ( v11 < -1.0 )
             {
@@ -1751,8 +1651,7 @@ void sithControl_FreeCam(sithThing *player)
         }
         else
         {
-            // Why did MoTS do this lol
-            v7->x = (Main_bMotsCompat ? -1 : 1) * sithControl_GetAxisTimeCorrected(INPUT_FUNC_SLIDE) * (v1->actorParams.extraSpeed + v1->actorParams.maxThrust) * 0.7;
+            v7->x = sithControl_GetAxisTimeCorrected(INPUT_FUNC_SLIDE) * (v1->actorParams.extraSpeed + v1->actorParams.maxThrust) * 0.7;
             
 #ifdef QOL_IMPROVEMENTS
             // Scale appropriately to high framerates
@@ -1810,7 +1709,7 @@ void sithControl_FreeCam(sithThing *player)
 
                 rdMatrix_BuildRotate34(&a, &v1->actorParams.eyePYR);
                 rdVector_Zero3(&addVec);
-                rdVector_MultAcc3(&addVec, &rdroid_xVector3, (Main_bMotsCompat ? -1.0 : 1.0) * sithControl_GetAxisNonRaw(INPUT_FUNC_SLIDE));
+                rdVector_MultAcc3(&addVec, &rdroid_xVector3, sithControl_GetAxisNonRaw(INPUT_FUNC_SLIDE));
 
                 rdMatrix_TransformVector34Acc(&addVec, &a);
                 rdMatrix_TransformVector34Acc(&addVec, &v1->lookOrientation);
@@ -1883,18 +1782,10 @@ void sithControl_MapDefaults()
 
     sithControl_MapFunc(INPUT_FUNC_FORWARD, DIK_NUMPAD2, 4);
 
-    if (Main_bMotsCompat) {
-        sithControl_MapFunc(INPUT_FUNC_SLIDE, DIK_A, 0);
-        sithControl_MapFunc(INPUT_FUNC_SLIDE, DIK_D, 4);
-        sithControl_MapFunc(INPUT_FUNC_SLIDE, DIK_NUMPAD1, 0);
-        sithControl_MapFunc(INPUT_FUNC_SLIDE, DIK_NUMPAD3, 4);
-    }
-    else {
-        sithControl_MapFunc(INPUT_FUNC_SLIDE, DIK_A, 4);
-        sithControl_MapFunc(INPUT_FUNC_SLIDE, DIK_D, 0);
-        sithControl_MapFunc(INPUT_FUNC_SLIDE, DIK_NUMPAD1, 4);
-        sithControl_MapFunc(INPUT_FUNC_SLIDE, DIK_NUMPAD3, 0);
-    }
+    sithControl_MapFunc(INPUT_FUNC_SLIDE, DIK_A, 4);
+    sithControl_MapFunc(INPUT_FUNC_SLIDE, DIK_D, 0);
+    sithControl_MapFunc(INPUT_FUNC_SLIDE, DIK_NUMPAD1, 4);
+    sithControl_MapFunc(INPUT_FUNC_SLIDE, DIK_NUMPAD3, 0);
     
     sithControl_MapFunc(INPUT_FUNC_JUMP, DIK_ADD, 0);
     sithControl_MapFunc(INPUT_FUNC_JUMP, DIK_X, 0);
@@ -2353,12 +2244,7 @@ void sithControl_MapDefaultsJoystick() {
         mapped->binaryAxisVal = 1.0;
     }
 
-    if (Main_bMotsCompat) {
-        mapped = sithControl_MapAxisFunc(INPUT_FUNC_SLIDE, AXIS_JOY1_X, 4u);
-    }
-    else {
-        mapped = sithControl_MapAxisFunc(INPUT_FUNC_SLIDE, AXIS_JOY1_X, 0u);
-    }
+    mapped = sithControl_MapAxisFunc(INPUT_FUNC_SLIDE, AXIS_JOY1_X, 0u);
     if (mapped) {
         mapped->binaryAxisVal = 1.0;
     }

@@ -1,0 +1,21 @@
+OpenJKDF2x Cutscene Converter - Third-Party Notices
+
+This package may bundle ffmpeg.exe and ffprobe.exe from the Gyan.dev FFmpeg
+full build. That build reports FFmpeg 8.1.1 full_build-www.gyan.dev and is
+configured with --enable-gpl and --enable-version3.
+
+When ffmpeg.exe and ffprobe.exe are bundled, distribute this notice together
+with:
+
+- third_party/ffmpeg/FFMPEG_LICENSE.txt
+- third_party/ffmpeg/FFMPEG_GYAN_README.txt
+
+The built release folder also copies those files beside
+OpenJKDF2xCutsceneConverter.exe as:
+
+- FFMPEG_LICENSE.txt
+- FFMPEG_GYAN_README.txt
+
+FFmpeg source and license information:
+https://ffmpeg.org/
+https://www.gyan.dev/ffmpeg/builds/

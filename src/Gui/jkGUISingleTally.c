@@ -59,6 +59,11 @@ int jkGuiSingleTally_Show()
     do
     {
         v7 = 1;
+#ifdef TARGET_XBOX
+        jkGuiRend_XboxFooterBegin(&jkGuiSingleTally_menu);
+        jkGuiRend_XboxFooterAddAction(&jkGuiSingleTally_menu, JKGUI_XBOX_BTN_A, 1, L"Continue");
+        jkGuiRend_XboxFooterAddAction(&jkGuiSingleTally_menu, JKGUI_XBOX_BTN_B, -1, L"Quit");
+#endif
         ret = jkGuiRend_DisplayAndReturnClicked(&jkGuiSingleTally_menu);
         if ( ret == -1 )
         {

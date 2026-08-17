@@ -212,10 +212,10 @@ static void jkGuiNetHost_ApplyXboxLayout(void)
     jkGuiNetHost_aElements[NETHOST_TIMELIMIT_SLIDER].bIsVisible = 1;
     jkGuiNetHost_aElements[NETHOST_TEAMMODE_CHECKBOX].bIsVisible = !splitMode;
     jkGuiNetHost_aElements[NETHOST_SINGLELEVEL_CHECKBOX].bIsVisible = !splitMode;
-    jkGuiNetHost_aElements[12].bIsVisible = 1;
-    jkGuiNetHost_aElements[NETHOST_STARS_TEXT].bIsVisible = 1;
-    jkGuiNetHost_aElements[14].bIsVisible = 1;
-    jkGuiNetHost_aElements[15].bIsVisible = 1;
+    jkGuiNetHost_aElements[12].bIsVisible = !splitMode;
+    jkGuiNetHost_aElements[NETHOST_STARS_TEXT].bIsVisible = !splitMode;
+    jkGuiNetHost_aElements[14].bIsVisible = !splitMode;
+    jkGuiNetHost_aElements[15].bIsVisible = !splitMode;
 #ifdef QOL_IMPROVEMENTS
     jkGuiNetHost_aElements[25].bIsVisible = 0;
     jkGuiNetHost_aElements[NETHOST_PORT_TEXTBOX].bIsVisible = 0;
@@ -223,19 +223,15 @@ static void jkGuiNetHost_ApplyXboxLayout(void)
 
     if (splitMode)
     {
-        jkGuiNetHost_SetRect(&jkGuiNetHost_aElements[NETHOST_SCORELIMIT_LABEL], 55, 92, 250, 24);
-        jkGuiNetHost_SetRect(&jkGuiNetHost_aElements[NETHOST_SCORELIMIT_SLIDER], 55, 117, 245, 30);
-        jkGuiNetHost_SetRect(&jkGuiNetHost_aElements[NETHOST_TIMELIMIT_LABEL], 55, 156, 250, 24);
-        jkGuiNetHost_SetRect(&jkGuiNetHost_aElements[NETHOST_TIMELIMIT_SLIDER], 55, 181, 245, 30);
-        jkGuiNetHost_SetRect(&jkGuiNetHost_aElements[12], 55, 224, 230, 28);
-        jkGuiNetHost_SetRect(&jkGuiNetHost_aElements[14], 55, 254, 30, 30);
-        jkGuiNetHost_SetRect(&jkGuiNetHost_aElements[15], 90, 254, 30, 30);
-        jkGuiNetHost_SetRect(&jkGuiNetHost_aElements[NETHOST_STARS_TEXT], 135, 256, 170, 30);
+        jkGuiNetHost_SetRect(&jkGuiNetHost_aElements[NETHOST_SCORELIMIT_LABEL], 52, 120, 270, 24);
+        jkGuiNetHost_SetRect(&jkGuiNetHost_aElements[NETHOST_SCORELIMIT_SLIDER], 52, 148, 255, 30);
+        jkGuiNetHost_SetRect(&jkGuiNetHost_aElements[NETHOST_TIMELIMIT_LABEL], 52, 214, 270, 24);
+        jkGuiNetHost_SetRect(&jkGuiNetHost_aElements[NETHOST_TIMELIMIT_SLIDER], 52, 242, 255, 30);
 
-        jkGuiNetHost_SetRect(&jkGuiNetHost_aElements[18], 330, 92, 250, 24);
-        jkGuiNetHost_SetRect(&jkGuiNetHost_aElements[NETHOST_EPISODE_LISTBOX], 330, 122, 270, 100);
-        jkGuiNetHost_SetRect(&jkGuiNetHost_aElements[20], 330, 244, 250, 24);
-        jkGuiNetHost_SetRect(&jkGuiNetHost_aElements[NETHOST_LEVEL_LISTBOX], 330, 274, 270, 118);
+        jkGuiNetHost_SetRect(&jkGuiNetHost_aElements[18], 338, 82, 250, 24);
+        jkGuiNetHost_SetRect(&jkGuiNetHost_aElements[NETHOST_EPISODE_LISTBOX], 338, 112, 270, 112);
+        jkGuiNetHost_SetRect(&jkGuiNetHost_aElements[20], 338, 244, 250, 24);
+        jkGuiNetHost_SetRect(&jkGuiNetHost_aElements[NETHOST_LEVEL_LISTBOX], 338, 274, 270, 126);
         return;
     }
 
@@ -788,6 +784,7 @@ int jkGuiNetHost_sub_4119D0(jkGuiElement *pElement, jkGuiMenu *pMenu, int32_t mo
     if ( mouseX != -1 || mouseY != -1 )
         jkGuiRend_ClickSound(pElement, pMenu, mouseX, mouseY, redraw);
 
+    jkEpisode_SetMotsCompatForEpisodeName(pElement->unistr[pElement->selectedTextEntry].c_str);
     jkRes_LoadGob(pElement->unistr[pElement->selectedTextEntry].c_str);
 
     if ( jkEpisode_Load(&jkGui_episodeLoad) )

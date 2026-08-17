@@ -13,6 +13,7 @@
 #include "World/sithThing.h"
 #include "World/jkPlayer.h"
 #include "World/sithActor.h"
+#include "World/sithWeapon.h"
 #include "Main/sithCommand.h"
 #include "Main/Main.h"
 #include "Main/jkMain.h"
@@ -1026,6 +1027,87 @@ int jkDev_CmdHeal(stdDebugConsoleCmd *pCmd, const char *pArgStr)
         sithInventory_SetBinAmount(sithPlayer_pLocalPlayerThing, SITHBIN_SHIELDS, 200.0);
         sithConsole_PrintUniStr(jkStrings_GetUniStringWithFallback("GAME_HEAL"));
     }
+    return 1;
+}
+
+static void jkDev_GiveForceBins(const int *bins, int count)
+{
+    int i;
+    for (i = 0; i < count; i++)
+    {
+        sithInventory_SetAvailable(sithPlayer_pLocalPlayerThing, bins[i], 1);
+        sithInventory_SetBinAmount(sithPlayer_pLocalPlayerThing, bins[i], 4.0);
+    }
+}
+
+int jkDev_GiveAllCurrentMode(void)
+{
+    static const int jkForceBins[] =
+    {
+        SITHBIN_F_JUMP,
+        SITHBIN_F_SPEED,
+        SITHBIN_F_SEEING,
+        SITHBIN_F_PULL,
+        SITHBIN_F_HEALING,
+        SITHBIN_F_PERSUASION,
+        SITHBIN_F_BLINDING,
+        SITHBIN_F_ABSORB,
+        SITHBIN_F_PROTECTION,
+        SITHBIN_F_THROW,
+        SITHBIN_F_GRIP,
+        SITHBIN_F_LIGHTNING,
+        SITHBIN_F_DESTRUCTION,
+        SITHBIN_F_DEADLYSIGHT
+    };
+    static const int motsForceBins[] =
+    {
+        SITHBIN_F_JUMP,
+        SITHBIN_F_SPEED,
+        SITHBIN_F_SEEING,
+        SITHBIN_F_PROJECT,
+        SITHBIN_F_PUSH,
+        SITHBIN_F_PULL,
+        SITHBIN_F_GRIP,
+        SITHBIN_F_FARSIGHT,
+        SITHBIN_F_SABERTHROW,
+        SITHBIN_F_HEALING,
+        SITHBIN_F_PERSUASION,
+        SITHBIN_F_BLINDING,
+        SITHBIN_F_CHAINLIGHT,
+        SITHBIN_F_ABSORB,
+        SITHBIN_F_PROTECTION,
+        SITHBIN_F_DESTRUCTION,
+        SITHBIN_F_DEADLYSIGHT,
+        SITHBIN_F_DEFENSE
+    };
+
+    if (sithNet_isMulti || !sithPlayer_pLocalPlayerThing)
+        return 0;
+
+    jkDev_CmdAllWeapons(NULL, NULL);
+    jkDev_CmdAllItems(NULL, NULL);
+    jkDev_CmdHeal(NULL, NULL);
+
+    sithInventory_SetBinAmount(sithPlayer_pLocalPlayerThing, SITHBIN_JEDI_RANK, 8.0);
+    jkPlayer_SetRank(8);
+    sithInventory_SetBinAmount(sithPlayer_pLocalPlayerThing, SITHBIN_FORCEMANA, 400.0);
+
+    if (Main_bMotsCompat)
+    {
+        sithInventory_SetBinAmount(sithPlayer_pLocalPlayerThing, SITHBIN_MOTS_FISTS, 1.0);
+        sithInventory_SetBinAmount(sithPlayer_pLocalPlayerThing, SITHBIN_MOTS_BRYARPISTOL, 1.0);
+        jkDev_GiveForceBins(motsForceBins, (int)(sizeof(motsForceBins) / sizeof(motsForceBins[0])));
+        sithWeapon_SelectWeapon(sithPlayer_pLocalPlayerThing, SITHBIN_MOTS_BRYARPISTOL, 0);
+    }
+    else
+    {
+        sithInventory_SetBinAmount(sithPlayer_pLocalPlayerThing, SITHBIN_FISTS, 1.0);
+        sithInventory_SetBinAmount(sithPlayer_pLocalPlayerThing, SITHBIN_BRYARPISTOL, 1.0);
+        jkDev_GiveForceBins(jkForceBins, (int)(sizeof(jkForceBins) / sizeof(jkForceBins[0])));
+        sithWeapon_SelectWeapon(sithPlayer_pLocalPlayerThing, SITHBIN_BRYARPISTOL, 0);
+    }
+
+    stdPlatform_Printf("XboxCheat: give all mode=%s\n", Main_bMotsCompat ? "MotS" : "JK");
     return 1;
 }
 

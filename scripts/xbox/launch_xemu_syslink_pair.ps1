@@ -266,8 +266,8 @@ function Rebuild-SourceIso()
 {
     Require-Path $RuntimeSource 'OpenJKDF2 runtime source'
     Require-Path (Join-Path $RuntimeSource 'Episode\JK1MP.GOB') 'OpenJKDF2 JK1MP episode'
-    Require-Path (Join-Path $RuntimeSource 'JKE.gob') 'OpenJKDF2 JKE.gob'
-    Require-Path (Join-Path $RuntimeSource 'JKR.gob') 'OpenJKDF2 JKR.gob'
+    Require-Path (Join-Path $RuntimeSource 'Resource\Res1hi.gob') 'OpenJKDF2 Res1hi.gob'
+    Require-Path (Join-Path $RuntimeSource 'Resource\Res2.gob') 'OpenJKDF2 Res2.gob'
     Require-Path (Join-Path $ReleaseRoot 'default.xbe') 'Release default.xbe'
 
     Remove-KnownArtifacts

@@ -261,8 +261,11 @@ def poll_port(port, symbols, args):
             "magic0": read_u32(sock, symbols["g_XboxDebugMirrorMagic0"], phys_delta),
             "magic1": read_u32(sock, symbols["g_XboxDebugMirrorMagic1"], phys_delta),
         }
-        raw = read_bytes(sock, symbols["g_XboxLogMirror"], MIRROR_BYTES, phys_delta)
-        text = decode_mirror(raw, values.get("offset") or 0, values.get("wrapped") or 0)
+        if args.header_only:
+            text = ""
+        else:
+            raw = read_bytes(sock, symbols["g_XboxLogMirror"], MIRROR_BYTES, phys_delta)
+            text = decode_mirror(raw, values.get("offset") or 0, values.get("wrapped") or 0)
         return phys_delta, values, text
     finally:
         sock.close()
@@ -276,6 +279,7 @@ def main():
     parser.add_argument("--out-dir", default=DEFAULT_OUT, help="Folder for per-port RAM log dumps.")
     parser.add_argument("--phys-delta", default="auto", help="'auto', '0' for virtual x/ reads, or a hex VA-physical delta.")
     parser.add_argument("--timeout", type=float, default=8.0, help="Seconds to wait for each monitor port.")
+    parser.add_argument("--header-only", action="store_true", help="Read counters only; skip the slow RAM log mirror copy.")
     args = parser.parse_args()
 
     if not os.path.exists(args.map):

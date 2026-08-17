@@ -20,6 +20,7 @@
 #include "Win95/Video.h"
 #include "Win95/stdDisplay.h"
 #include "World/jkPlayer.h"
+#include "World/sithActor.h"
 #include "World/sithModel.h"
 #include "World/sithSoundClass.h"
 #include "World/sithTemplate.h"
@@ -30,6 +31,7 @@
 #include "Engine/rdroid.h"
 #include "Engine/rdColormap.h"
 #include "Engine/sithCamera.h"
+#include "Engine/sithPhysics.h"
 #include "Engine/sithRender.h"
 #include "Main/sithMain.h"
 #include "stdPlatform.h"
@@ -60,6 +62,8 @@ static int g_xboxSplitScreenLoggedSlots = 0;
 static unsigned int g_xboxSplitScreenFrameCount = 0;
 static unsigned int g_xboxSplitScreenRespawnAt[XBOX_SPLITSCREEN_MAX_LOCAL_PLAYERS] = {0};
 static int g_xboxSplitScreenCameraIdx[XBOX_SPLITSCREEN_MAX_LOCAL_PLAYERS] = {0};
+static sithControlXboxLocalState g_xboxSplitScreenControlStates[XBOX_SPLITSCREEN_MAX_LOCAL_PLAYERS];
+static sithWeaponXboxLocalState g_xboxSplitScreenWeaponStates[XBOX_SPLITSCREEN_MAX_LOCAL_PLAYERS];
 static int g_xboxSplitScreenCurrentSlot = 0;
 static int g_xboxSplitScreenInControlTick = 0;
 
@@ -118,6 +122,27 @@ static void xboxSplitScreen_SaveCameraForSlot(int slot)
 {
     slot = xboxSplitScreen_ClampSlot(slot);
     g_xboxSplitScreenCameraIdx[slot] = (sithCamera_curCameraIdx != 0) ? 1 : 0;
+}
+
+static void xboxSplitScreen_ResetTransientStateForSlot(int slot)
+{
+    slot = xboxSplitScreen_ClampSlot(slot);
+    sithControl_XboxResetLocalState(&g_xboxSplitScreenControlStates[slot]);
+    sithWeapon_XboxResetLocalState(&g_xboxSplitScreenWeaponStates[slot]);
+}
+
+static void xboxSplitScreen_ApplyTransientStateForSlot(int slot)
+{
+    slot = xboxSplitScreen_ClampSlot(slot);
+    sithControl_XboxRestoreLocalState(&g_xboxSplitScreenControlStates[slot]);
+    sithWeapon_XboxRestoreLocalState(&g_xboxSplitScreenWeaponStates[slot]);
+}
+
+static void xboxSplitScreen_SaveTransientStateForSlot(int slot)
+{
+    slot = xboxSplitScreen_ClampSlot(slot);
+    sithControl_XboxSaveLocalState(&g_xboxSplitScreenControlStates[slot]);
+    sithWeapon_XboxSaveLocalState(&g_xboxSplitScreenWeaponStates[slot]);
 }
 
 static void xboxSplitScreen_SendJoinForSlot(int slot)
@@ -209,6 +234,26 @@ static void xboxSplitScreen_SeedPlayerWeapon(sithThing *player)
                       info->curWeapon,
                       info->iteminfo[SITHBIN_FISTS].state,
                       info->iteminfo[SITHBIN_BRYARPISTOL].state);
+}
+
+static void xboxSplitScreen_ResetPlayerForMpCogSpawn(sithThing *player)
+{
+    if (!player || !player->templateBase)
+        return;
+
+    player->actorParams.msUnderwater = 0;
+    player->actorParams.health = player->templateBase->actorParams.health;
+    player->thingflags &= ~(SITH_TF_DEAD | SITH_TF_WILLBEREMOVED);
+    player->actorParams.typeflags &= ~SITH_AF_FALLING_TO_DEATH;
+    player->lifeLeftMs = 0;
+    if (player->templateBase->physicsParams.physflags & SITH_PF_800)
+    {
+        player->physicsParams.physflags &= ~(SITH_PF_100 | SITH_PF_SURFACEALIGN);
+        player->physicsParams.physflags |= SITH_PF_800;
+    }
+    sithActor_MoveJointsForEyePYR(player, &rdroid_zeroVector3);
+    sithPhysics_ThingStop(player);
+    sithWeapon_SyncPuppet(player);
 }
 
 static void xboxSplitScreen_PrimePlayerWeaponBins(sithThing *player)
@@ -378,6 +423,7 @@ void xboxSplitScreen_Disable(void)
         g_xboxSplitScreenControllerForSlot[i] = i;
         g_xboxSplitScreenPendingMpcSet[i] = 0;
         g_xboxSplitScreenPendingMpcNames[i][0] = 0;
+        xboxSplitScreen_ResetTransientStateForSlot(i);
     }
 
     stdControl_XboxSetActiveController(0);
@@ -422,6 +468,7 @@ void xboxSplitScreen_OnMultiplayerServerStarted(void)
         int playerIdx = xboxSplitScreen_GetPlayerIndexForSlot(i);
         jkPlayerMpcInfo mpcInfo;
         g_xboxSplitScreenCameraIdx[i] = 0;
+        xboxSplitScreen_ResetTransientStateForSlot(i);
 
         xbox_debug_Printf("MPLoadTrace: SplitScreen slot %d player=%d begin thing=%p sector=%p pendingMpc=%d\n",
                           i,
@@ -598,13 +645,15 @@ void xboxSplitScreen_PostLoadInitializeLocals(void)
 
         sithPlayer_sub_4C87C0(playerIdx, playerIdx + 1);
         xboxSplitScreen_SetContextForLocalSlot(i);
+        xboxSplitScreen_ResetTransientStateForSlot(i);
+        xboxSplitScreen_ApplyTransientStateForSlot(i);
         sithInventory_ClearInventory(player);
         jkPlayer_MpcInitBins(&jkPlayer_playerInfos[playerIdx]);
         sithCamera_SetsFocus();
         if (sithNet_isServer)
             xboxSplitScreen_SendJoinForSlot(i);
-        sithPlayer_debug_ToNextCheckpoint(player);
         xboxSplitScreen_SeedPlayerWeapon(player);
+        xboxSplitScreen_SaveTransientStateForSlot(i);
         if (sithNet_isServer)
         {
             sithMulti_SendWelcome(stdComm_dplayIdSelf, playerIdx, -1);
@@ -650,6 +699,22 @@ void xboxSplitScreen_TickControls(float deltaSecs, int deltaMs)
     int i;
     int connectedMask = stdControl_XboxGetConnectedMask();
 
+    if (stdControl_XboxSmokeInputProbeEnabled())
+    {
+        static unsigned int s_probeTickLogCount = 0;
+        if (s_probeTickLogCount < 20 || (s_probeTickLogCount % 120) == 0)
+        {
+            XDBGF("SplitScreenInputProbe: tick count=%u locals=%d enabled=%d mask=0x%X activeSlot=%d deltaMs=%d\n",
+                  s_probeTickLogCount,
+                  g_xboxSplitScreenLocalCount,
+                  g_xboxSplitScreenEnabled,
+                  connectedMask,
+                  g_xboxSplitScreenCurrentSlot,
+                  deltaMs);
+        }
+        s_probeTickLogCount++;
+    }
+
     for (i = 0; i < g_xboxSplitScreenLocalCount; i++)
     {
         int playerIdx = xboxSplitScreen_GetPlayerIndexForSlot(i);
@@ -672,8 +737,12 @@ void xboxSplitScreen_TickControls(float deltaSecs, int deltaMs)
             else if (sithTime_curMs >= g_xboxSplitScreenRespawnAt[i])
             {
                 xboxSplitScreen_SetContextForLocalSlot(i);
-                sithPlayer_debug_ToNextCheckpoint(jkPlayer_playerInfos[playerIdx].playerThing);
+                xboxSplitScreen_ApplyTransientStateForSlot(i);
+                xboxSplitScreen_ResetPlayerForMpCogSpawn(jkPlayer_playerInfos[playerIdx].playerThing);
+                if (sithNet_isServer)
+                    xboxSplitScreen_SendJoinForSlot(i);
                 xboxSplitScreen_SeedPlayerWeapon(jkPlayer_playerInfos[playerIdx].playerThing);
+                xboxSplitScreen_SaveTransientStateForSlot(i);
                 XDBGF("SplitScreenRespawn: slot=%d player=%d respawned thing=%p flags=0x%X sector=%p\n",
                       i,
                       playerIdx,
@@ -706,16 +775,19 @@ void xboxSplitScreen_TickControls(float deltaSecs, int deltaMs)
 
             stdControl_XboxSetActiveController(controllerPort);
             xboxSplitScreen_SetContextForLocalSlot(i);
+            xboxSplitScreen_ApplyTransientStateForSlot(i);
             g_xboxSplitScreenInControlTick = 1;
             sithControl_Tick(deltaSecs, deltaMs);
             g_xboxSplitScreenInControlTick = 0;
             xboxSplitScreen_SaveCameraForSlot(i);
+            xboxSplitScreen_SaveTransientStateForSlot(i);
         }
     }
 
     g_xboxSplitScreenInControlTick = 0;
     stdControl_XboxSetActiveController(0);
     xboxSplitScreen_RestoreContext();
+    xboxSplitScreen_ApplyTransientStateForSlot(0);
 }
 
 void xboxSplitScreen_EndControlFrame(void)
@@ -831,6 +903,8 @@ static void xboxSplitScreen_ApplyColorEffects(void)
     }
 }
 
+#define XBOX_SPLIT_XSL_TRACE(label) do { } while (0)
+
 int xboxSplitScreen_RenderGameplayFrame(void)
 {
     int i;
@@ -843,6 +917,8 @@ int xboxSplitScreen_RenderGameplayFrame(void)
 
     frameStartMs = stdPlatform_GetTimeMsec();
     g_xboxSplitScreenFrameCount++;
+    i = -1;
+    XBOX_SPLIT_XSL_TRACE("begin");
 
     if (g_xboxSplitScreenFrameCount <= 12 || (g_xboxSplitScreenFrameCount % 120) == 0)
     {
@@ -876,13 +952,18 @@ int xboxSplitScreen_RenderGameplayFrame(void)
     }
 
     Video_modeStruct.b3DAccel = (HKEY)1;
+    XBOX_SPLIT_XSL_TRACE("before clear");
     stdDisplay_VBufferFill(Video_pMenuBuffer, Video_fillColor, 0);
+    XBOX_SPLIT_XSL_TRACE("after clear before devlog");
     jkDev_DrawLog();
     jkHudInv_ClearRects();
     jkHud_ClearRects(0);
 
+    XBOX_SPLIT_XSL_TRACE("before color effects");
     xboxSplitScreen_ApplyColorEffects();
+    XBOX_SPLIT_XSL_TRACE("after color effects before advance");
     rdAdvanceFrame();
+    XBOX_SPLIT_XSL_TRACE("after advance frame");
 
     for (i = 0; i < g_xboxSplitScreenLocalCount; i++)
     {
@@ -894,7 +975,9 @@ int xboxSplitScreen_RenderGameplayFrame(void)
             continue;
 
         xboxSplitScreen_SetContextForLocalSlot(i);
+        xboxSplitScreen_ApplyTransientStateForSlot(i);
         xboxSplitScreen_GetViewport(i, &vx, &vy, &vw, &vh);
+        XBOX_SPLIT_XSL_TRACE("slot before viewport");
         std3D_XboxSetViewport(vx, vy, vw, vh);
         if (!sithCamera_currentCamera || !sithCamera_currentCamera->primaryFocus)
         {
@@ -907,7 +990,9 @@ int xboxSplitScreen_RenderGameplayFrame(void)
                   jkPlayer_playerInfos[playerIdx].playerThing ? (void*)jkPlayer_playerInfos[playerIdx].playerThing->sector : 0);
             continue;
         }
+        XBOX_SPLIT_XSL_TRACE("slot before update camera");
         sithMain_UpdateCamera();
+        XBOX_SPLIT_XSL_TRACE("slot after update camera");
 
         if (g_xboxSplitScreenLoggedSlots < g_xboxSplitScreenLocalCount
             || g_xboxSplitScreenFrameCount <= 4
@@ -936,18 +1021,42 @@ int xboxSplitScreen_RenderGameplayFrame(void)
                 g_xboxSplitScreenLoggedSlots++;
         }
 
+        if (stdControl_XboxSmokeInputProbeEnabled()
+            && (g_xboxSplitScreenFrameCount <= 12 || (g_xboxSplitScreenFrameCount % 60) == 0))
+        {
+            sithThing *player = jkPlayer_playerInfos[playerIdx].playerThing;
+            XDBGF("SplitScreenInputProbe: slot=%d controller=%d frame=%u pos=(%.3f,%.3f,%.3f) curW=%d persp=0x%X\n",
+                  i,
+                  (i >= 0 && i < XBOX_SPLITSCREEN_MAX_LOCAL_PLAYERS) ? g_xboxSplitScreenControllerForSlot[i] : -1,
+                  g_xboxSplitScreenFrameCount,
+                  player ? (double)player->position.x : 0.0,
+                  player ? (double)player->position.y : 0.0,
+                  player ? (double)player->position.z : 0.0,
+                  player ? sithInventory_GetCurWeapon(player) : -1,
+                  sithCamera_currentCamera ? (unsigned)sithCamera_currentCamera->cameraPerspective : 0);
+        }
+
+        XBOX_SPLIT_XSL_TRACE("slot before pov");
         jkPlayer_DrawPov();
+        XBOX_SPLIT_XSL_TRACE("slot after pov before ui");
         std3D_XboxBeginViewportUI(vx, vy, vw, vh);
         xboxSplitScreen_DrawHudForCurrentPlayer();
         jkHudInv_Draw();
         std3D_XboxEndViewportUI();
+        XBOX_SPLIT_XSL_TRACE("slot after ui");
     }
 
+    i = -1;
+    XBOX_SPLIT_XSL_TRACE("before restore");
     xboxSplitScreen_RestoreContext();
+    xboxSplitScreen_ApplyTransientStateForSlot(0);
     xboxSplitScreen_ResetViewport();
+    XBOX_SPLIT_XSL_TRACE("after restore before blitlog");
     jkDev_BlitLogToScreen();
 
+    XBOX_SPLIT_XSL_TRACE("before flip");
     result = stdDisplay_DDrawGdiSurfaceFlip();
+    XBOX_SPLIT_XSL_TRACE("after flip");
     frameEndMs = stdPlatform_GetTimeMsec();
     if (g_xboxSplitScreenFrameCount <= 5 || (g_xboxSplitScreenFrameCount % 120) == 0)
     {

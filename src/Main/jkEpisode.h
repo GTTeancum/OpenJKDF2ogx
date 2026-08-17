@@ -24,6 +24,8 @@ int jkEpisode_EndLevel(jkEpisodeLoad *pEpisode, int levelNum);
 int jkEpisode_UpdateExtra(sithThing *thing);
 int jkEpisode_idk4(jkEpisodeLoad *pEpisodeLoad, char *pEpisodeName);
 int jkEpisode_idk6(const char *pName);
+int jkEpisode_IsMotsEpisodeName(const char *pName);
+int jkEpisode_SetMotsCompatForEpisodeName(const char *pName);
 
 MATH_FUNC void jkEpisode_CreateBubble(sithThing *pThing,flex_t radius,uint32_t type); // MOTS added
 void jkEpisode_DestroyBubble(sithThing *pThing); // MOTS added

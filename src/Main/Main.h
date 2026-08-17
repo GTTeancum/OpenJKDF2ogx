@@ -18,6 +18,10 @@ extern int32_t Main_bDwCompat;
 extern int32_t Main_bEnhancedCogVerbs;
 #endif
 
+#ifdef TARGET_XBOX
+extern int32_t Main_xboxSmokeDisableCutscenes;
+#endif
+
 int Main_ShouldUseMotsForcePowers(void);
 
 int Main_Startup(const char *cmdline);

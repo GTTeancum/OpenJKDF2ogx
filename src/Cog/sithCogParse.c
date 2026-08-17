@@ -9,6 +9,7 @@
 #include "Win95/std.h"
 #include "General/stdConffile.h"
 #include "General/stdString.h"
+#include "Main/Main.h"
 
 #include "jk.h"
 #ifdef TARGET_XBOX
@@ -32,14 +33,61 @@ extern int yyparse();
 // Added: debug
 char* sithCogParse_lastParsedFile = "INVALID";
 
+#ifdef TARGET_XBOX
+static int sithCogParse_XboxIsMotsPlayerCog(void)
+{
+    const char *fpath = sithCogParse_lastParsedFile;
+    const char *fname;
+
+    if (!fpath)
+        return 0;
+
+    fname = _strrchr((char*)fpath, '\\');
+    fname = fname ? fname + 1 : fpath;
+    return !__strcmpi(fname, "kyle_m.cog") || !__strcmpi(fname, "mara_m.cog");
+}
+
+static int sithCogParse_XboxShouldLogMotsCog(void)
+{
+    const char *fpath = sithCogParse_lastParsedFile;
+    const char *fname;
+
+    if (!Main_bMotsCompat || !fpath)
+        return 0;
+
+    fname = _strrchr((char*)fpath, '\\');
+    fname = fname ? fname + 1 : fpath;
+    return !__strcmpi(fname, "kyle_m.cog")
+        || !__strcmpi(fname, "mara_m.cog")
+        || !_strnicmp(fname, "weap_", 5);
+}
+
+static void sithCogParse_XboxLogMotsPlayerCog(const char *tag, sithCogScript *script)
+{
+    if (!sithCogParse_XboxIsMotsPlayerCog())
+        return;
+
+    xbox_debug_Printf("MotSMode: CogParse %s file=%s trig=%u idk=%u code=%u sym=%u line=%d\n",
+                      tag,
+                      sithCogParse_lastParsedFile ? sithCogParse_lastParsedFile : "",
+                      script ? (unsigned)script->num_triggers : 0,
+                      script ? (unsigned)script->numIdk : 0,
+                      script ? (unsigned)script->codeSize : 0,
+                      (script && script->pSymbolTable) ? (unsigned)script->pSymbolTable->entry_cnt : 0,
+                      stdConffile_linenum);
+}
+#endif
+
 void sithCogParse_Reset()
 {
     if ( cogparser_nodes_alloc )
     {
         pSithHS->free(cogparser_nodes_alloc);
-        cogparser_num_nodes = 0;
-        cogparser_current_nodeidx = 0;
     }
+    cogparser_nodes_alloc = 0;
+    cogparser_num_nodes = 0;
+    cogparser_current_nodeidx = 0;
+    cogparser_topnode = 0;
 
     // Added
     sithCogParse_lastParsedFile = "INVALID";
@@ -51,6 +99,10 @@ int sithCogParse_Load(char *cog_fpath, sithCogScript *cogscript, int unk)
     unsigned int v6; // ecx
     int v8; // edx
 
+#ifdef TARGET_XBOX
+    if (Main_bMotsCompat)
+        xbox_debug_Printf("MotSMode: CogParse open begin file=%s\n", cog_fpath ? cog_fpath : "");
+#endif
     if (!stdConffile_OpenRead(cog_fpath))
         return 0;
 
@@ -58,6 +110,10 @@ int sithCogParse_Load(char *cog_fpath, sithCogScript *cogscript, int unk)
 
     // Added
     sithCogParse_lastParsedFile = cog_fpath;
+#ifdef TARGET_XBOX
+    if (sithCogParse_XboxShouldLogMotsCog())
+        xbox_debug_Printf("MotSMode: CogParse open done file=%s\n", cog_fpath ? cog_fpath : "");
+#endif
 
     _memset(cogscript, 0, sizeof(sithCogScript));
 #ifdef STDHASHTABLE_CRC32_KEYS
@@ -72,16 +128,35 @@ int sithCogParse_Load(char *cog_fpath, sithCogScript *cogscript, int unk)
 
     if ( !stdConffile_ReadArgs() )
         goto fail_cleanup;
+#ifdef TARGET_XBOX
+    if (sithCogParse_XboxShouldLogMotsCog())
+        xbox_debug_Printf("MotSMode: CogParse first args file=%s value=%s key=%s line=%d\n",
+                          cog_fpath ? cog_fpath : "",
+                          stdConffile_entry.numArgs ? stdConffile_entry.args[0].value : "",
+                          stdConffile_entry.numArgs ? stdConffile_entry.args[0].key : "",
+                          stdConffile_linenum);
+#endif
 
     if ( !_strcmp(stdConffile_entry.args[0].key, "flags") )
     {
         _sscanf(stdConffile_entry.args[0].value, "%x", cogscript);
         if ( !stdConffile_ReadArgs() )
             goto fail_cleanup;
+#ifdef TARGET_XBOX
+        if (sithCogParse_XboxShouldLogMotsCog())
+            xbox_debug_Printf("MotSMode: CogParse after flags file=%s value=%s line=%d\n",
+                              cog_fpath ? cog_fpath : "",
+                              stdConffile_entry.numArgs ? stdConffile_entry.args[0].value : "",
+                              stdConffile_linenum);
+#endif
     }
 
     if ( _strcmp(stdConffile_entry.args[0].value, "symbols") )
         goto fail_cleanup;
+#ifdef TARGET_XBOX
+    if (sithCogParse_XboxShouldLogMotsCog())
+        xbox_debug_Printf("MotSMode: CogParse symbols begin file=%s line=%d\n", cog_fpath ? cog_fpath : "", stdConffile_linenum);
+#endif
 
     symboltable = sithCogParse_NewSymboltable(SITHCOG_LINKED_SYMBOL_LIMIT);
     cogscript->pSymbolTable = symboltable;
@@ -153,13 +228,35 @@ int sithCogParse_Load(char *cog_fpath, sithCogScript *cogscript, int unk)
             }
         }
     }
-    if ( stdConffile_ReadArgs() && !_strcmp(stdConffile_entry.args[0].value, "code") && sithCogParse_LoadEntry(cogscript) )
+#ifdef TARGET_XBOX
+    if (sithCogParse_XboxShouldLogMotsCog())
+        xbox_debug_Printf("MotSMode: CogParse symbols done file=%s sym=%u line=%d\n",
+                          cog_fpath ? cog_fpath : "",
+                          cogscript->pSymbolTable ? (unsigned)cogscript->pSymbolTable->entry_cnt : 0,
+                          stdConffile_linenum);
+#endif
+    if ( stdConffile_ReadArgs() && !_strcmp(stdConffile_entry.args[0].value, "code") )
+    {
+#ifdef TARGET_XBOX
+        if (sithCogParse_XboxShouldLogMotsCog())
+            xbox_debug_Printf("MotSMode: CogParse code begin file=%s line=%d\n", cog_fpath ? cog_fpath : "", stdConffile_linenum);
+#endif
+    }
+    else
+    {
+        goto fail_cleanup;
+    }
+
+    if ( sithCogParse_LoadEntry(cogscript) )
     {
         for (v6 = 0; v6 < cogscript->num_triggers; v6++)
         {
             v8 = cogscript->triggers[v6].field_8;
             cogscript->triggers[v6].trigPc = cog_parser_node_stackpos[v8];
         }
+#ifdef TARGET_XBOX
+        sithCogParse_XboxLogMotsPlayerCog("load-success", cogscript);
+#endif
 #ifdef TARGET_XBOX
         if (cogscript->pSymbolTable)
         {
@@ -194,6 +291,9 @@ int sithCogParse_Load(char *cog_fpath, sithCogScript *cogscript, int unk)
     }
 
 fail_cleanup:
+#ifdef TARGET_XBOX
+    sithCogParse_XboxLogMotsPlayerCog("load-fail", cogscript);
+#endif
     if ( cogscript->pSymbolTable )
     {
         sithCogParse_FreeSymboltable(cogscript->pSymbolTable);
@@ -231,11 +331,28 @@ int sithCogParse_LoadEntry(sithCogScript *script)
     parsing_script = script;
     yyin = (stdFile_t)fhand;
     sithCogParse_pSymbolTable = script->pSymbolTable;
+#ifdef TARGET_XBOX
+    if (sithCogParse_XboxShouldLogMotsCog())
+        xbox_debug_Printf("MotSMode: CogParse LoadEntry begin file=%s fhand=%p sym=%u\n",
+                          sithCogParse_lastParsedFile ? sithCogParse_lastParsedFile : "",
+                          (void*)fhand,
+                          script && script->pSymbolTable ? (unsigned)script->pSymbolTable->entry_cnt : 0);
+#endif
     if ( parsing_script_idk )
         parsing_script_idk = 0;
     else
         yyrestart((FILE*)fhand);
+#ifdef TARGET_XBOX
+    if (sithCogParse_XboxShouldLogMotsCog())
+        xbox_debug_Printf("MotSMode: CogParse yyrestart done file=%s\n",
+                          sithCogParse_lastParsedFile ? sithCogParse_lastParsedFile : "");
+#endif
     yacc_linenum = 1;
+#ifdef TARGET_XBOX
+    if (sithCogParse_XboxShouldLogMotsCog())
+        xbox_debug_Printf("MotSMode: CogParse yyparse begin file=%s\n",
+                          sithCogParse_lastParsedFile ? sithCogParse_lastParsedFile : "");
+#endif
     if (yyparse())
     {
 LABEL_19:
@@ -249,6 +366,12 @@ LABEL_19:
     }
     else
     {
+#ifdef TARGET_XBOX
+        if (sithCogParse_XboxShouldLogMotsCog())
+            xbox_debug_Printf("MotSMode: CogParse yyparse done file=%s top=%p\n",
+                              sithCogParse_lastParsedFile ? sithCogParse_lastParsedFile : "",
+                              (void*)cogparser_topnode);
+#endif
         v2 = cogparser_topnode;
         cogvm_stackpos = 0;
         v3 = cogparser_topnode;
@@ -484,6 +607,9 @@ void sithCogParse_FreeSymboltable(sithCogSymboltable *table)
     unsigned int v2; // ebx
     int v3; // esi
 
+    if (!table)
+        return;
+
     if ( table->hashtable )
     {
         stdHashTable_Free(table->hashtable);
@@ -580,12 +706,31 @@ void sithCogParse_SetSymbolVal(sithCogSymbol *a1, sithCogStackvar *a2)
 sithCogSymbol* sithCogParse_GetSymbolVal(sithCogSymboltable *pSymbolTable, char *a2)
 {
     sithCogSymbol *result; // eax
+    unsigned int i;
 
-    if (!pSymbolTable->hashtable)
+    if (!pSymbolTable || !a2)
         return NULL;
     
-    if (result = (sithCogSymbol*)stdHashTable_GetKeyVal(pSymbolTable->hashtable, a2))
-        return result;
+    if (pSymbolTable->hashtable)
+    {
+        if (result = (sithCogSymbol*)stdHashTable_GetKeyVal(pSymbolTable->hashtable, a2))
+            return result;
+    }
+
+    /* The table owns the authoritative symbols; the hash table is only an
+       accelerator.  During Xbox MotS mode switches, losing a hash entry here
+       means message declarations such as startup:/touched:/taken: silently
+       parse without triggers, which disables player startup and map COGs. */
+    for (i = 0; i < pSymbolTable->entry_cnt; i++)
+    {
+#ifndef COG_CRC32_SYMBOL_NAMES
+        if (pSymbolTable->buckets[i].pName && !_strcmp(pSymbolTable->buckets[i].pName, a2))
+            return &pSymbolTable->buckets[i];
+#else
+        if (pSymbolTable->buckets[i].nameCrc == stdCrc32(a2, strlen(a2)))
+            return &pSymbolTable->buckets[i];
+#endif
+    }
 
     if (pSymbolTable == sithCog_pSymbolTable) {
         //jk_printf("OpenJKDF2: Missing symbol `%s` in `%s`!\n", a2, sithCogParse_lastParsedFile);
@@ -619,6 +764,70 @@ int sithCogParse_GetSymbolScriptIdx(unsigned int idx)
     return sithCogParse_GetSymbol(sithCogParse_pSymbolTable, idx)->field_14;
 }
 
+static int sithCogParse_EnsureNodeCapacity(void)
+{
+    sith_cog_parser_node *newNodes;
+    int newCount;
+
+    if (!cogparser_nodes_alloc || cogparser_num_nodes <= 0)
+    {
+        newCount = 8096;
+        newNodes = (sith_cog_parser_node *)pSithHS->alloc(newCount * sizeof(sith_cog_parser_node));
+        if (!newNodes)
+        {
+#ifdef TARGET_XBOX
+            if (sithCogParse_XboxShouldLogMotsCog())
+                xbox_debug_Printf("MotSMode: CogParse node alloc failed file=%s count=%d\n",
+                                  sithCogParse_lastParsedFile ? sithCogParse_lastParsedFile : "",
+                                  newCount);
+#endif
+            return 0;
+        }
+
+        cogparser_nodes_alloc = newNodes;
+        cogparser_num_nodes = newCount;
+#ifdef TARGET_XBOX
+        if (sithCogParse_XboxShouldLogMotsCog())
+            xbox_debug_Printf("MotSMode: CogParse node alloc file=%s ptr=%p count=%d\n",
+                              sithCogParse_lastParsedFile ? sithCogParse_lastParsedFile : "",
+                              (void*)cogparser_nodes_alloc,
+                              cogparser_num_nodes);
+#endif
+    }
+    
+    if ( cogparser_current_nodeidx >= cogparser_num_nodes )
+    {
+        newCount = cogparser_num_nodes * 2;
+        if (newCount <= cogparser_num_nodes)
+            return 0;
+
+        newNodes = (sith_cog_parser_node*)pSithHS->realloc(cogparser_nodes_alloc, newCount * sizeof(sith_cog_parser_node));
+        if (!newNodes)
+        {
+#ifdef TARGET_XBOX
+            if (sithCogParse_XboxShouldLogMotsCog())
+                xbox_debug_Printf("MotSMode: CogParse node realloc failed file=%s old=%d new=%d\n",
+                                  sithCogParse_lastParsedFile ? sithCogParse_lastParsedFile : "",
+                                  cogparser_num_nodes,
+                                  newCount);
+#endif
+            return 0;
+        }
+
+        cogparser_nodes_alloc = newNodes;
+        cogparser_num_nodes = newCount;
+#ifdef TARGET_XBOX
+        if (sithCogParse_XboxShouldLogMotsCog())
+            xbox_debug_Printf("MotSMode: CogParse node realloc file=%s ptr=%p count=%d\n",
+                              sithCogParse_lastParsedFile ? sithCogParse_lastParsedFile : "",
+                              (void*)cogparser_nodes_alloc,
+                              cogparser_num_nodes);
+#endif
+    }
+
+    return 1;
+}
+
 sith_cog_parser_node* sithCogParse_AddLeaf(int op, int val)
 {
     return sithCogParse_AddLinkingNode(NULL, NULL, op, (int)val);
@@ -626,17 +835,8 @@ sith_cog_parser_node* sithCogParse_AddLeaf(int op, int val)
 
 sith_cog_parser_node* sithCogParse_AddLeafVector(int opcode, cog_flex_t* vector)
 {
-    if (!cogparser_nodes_alloc)
-    {
-        cogparser_nodes_alloc = (sith_cog_parser_node *)malloc(8096 * sizeof(sith_cog_parser_node));
-        cogparser_num_nodes = 8096;
-    }
-    
-    if ( cogparser_current_nodeidx == cogparser_num_nodes )
-    {
-        cogparser_nodes_alloc = (sith_cog_parser_node*)realloc(cogparser_nodes_alloc, 2 * cogparser_num_nodes * sizeof(sith_cog_parser_node));
-        cogparser_num_nodes *= 2;
-    }
+    if (!sithCogParse_EnsureNodeCapacity())
+        return NULL;
     
     sith_cog_parser_node* node = &cogparser_nodes_alloc[cogparser_current_nodeidx++];
     _memset(node, 0, sizeof(sith_cog_parser_node));
@@ -653,17 +853,8 @@ sith_cog_parser_node* sithCogParse_AddLeafVector(int opcode, cog_flex_t* vector)
 
 sith_cog_parser_node* sithCogParse_AddLinkingNode(sith_cog_parser_node* parent, sith_cog_parser_node* child, int opcode, int val)
 {
-    if (!cogparser_nodes_alloc)
-    {
-        cogparser_nodes_alloc = (sith_cog_parser_node *)malloc(8096 * sizeof(sith_cog_parser_node));
-        cogparser_num_nodes = 8096;
-    }
-    
-    if ( cogparser_current_nodeidx == cogparser_num_nodes )
-    {
-        cogparser_nodes_alloc = (sith_cog_parser_node*)realloc(cogparser_nodes_alloc, 2 * cogparser_num_nodes * sizeof(sith_cog_parser_node));
-        cogparser_num_nodes *= 2;
-    }
+    if (!sithCogParse_EnsureNodeCapacity())
+        return NULL;
     
     sith_cog_parser_node* node = &cogparser_nodes_alloc[cogparser_current_nodeidx++];
     _memset(node, 0, sizeof(sith_cog_parser_node));
@@ -1055,6 +1246,26 @@ int sithCogParse_ParseMessage(sithCogScript *cogScript)
         return 0;
 
     sithCogSymbol* symbolGet = sithCogParse_GetSymbolVal(sithCog_pSymbolTable, stdConffile_entry.args[1].value);
+#ifdef TARGET_XBOX
+    if (!symbolGet && Main_bMotsCompat)
+    {
+        xbox_debug_Printf("MotSMode: CogParse message-missing file=%s name=%s line=%d\n",
+                          sithCogParse_lastParsedFile ? sithCogParse_lastParsedFile : "",
+                          stdConffile_entry.numArgs > 1 ? stdConffile_entry.args[1].value : "",
+                          stdConffile_linenum);
+    }
+    if (sithCogParse_XboxIsMotsPlayerCog())
+    {
+        xbox_debug_Printf("MotSMode: CogParse message file=%s name=%s global=%p beforeTrig=%u sym=%u max=%u line=%d\n",
+                          sithCogParse_lastParsedFile ? sithCogParse_lastParsedFile : "",
+                          stdConffile_entry.numArgs > 1 ? stdConffile_entry.args[1].value : "",
+                          (void*)symbolGet,
+                          (unsigned)cogScript->num_triggers,
+                          cogScript->pSymbolTable ? (unsigned)cogScript->pSymbolTable->entry_cnt : 0,
+                          cogScript->pSymbolTable ? (unsigned)cogScript->pSymbolTable->max_entries : 0,
+                          stdConffile_linenum);
+    }
+#endif
     if (!symbolGet) return 0;
 
     sithCogSymbol* symbol = sithCogParse_AddSymbol(cogScript->pSymbolTable, stdConffile_entry.args[1].key);
@@ -1072,5 +1283,16 @@ int sithCogParse_ParseMessage(sithCogScript *cogScript)
     cogScript->triggers[cogScript->num_triggers].field_8 = symbol->field_14;
     
     cogScript->num_triggers++;
+#ifdef TARGET_XBOX
+    if (sithCogParse_XboxIsMotsPlayerCog())
+    {
+        xbox_debug_Printf("MotSMode: CogParse message-added file=%s name=%s trigId=%d afterTrig=%u field=%d\n",
+                          sithCogParse_lastParsedFile ? sithCogParse_lastParsedFile : "",
+                          stdConffile_entry.numArgs > 1 ? stdConffile_entry.args[1].value : "",
+                          symbolGet->val.data[0],
+                          (unsigned)cogScript->num_triggers,
+                          symbol->field_14);
+    }
+#endif
     return 1;
 }

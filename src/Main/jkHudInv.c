@@ -12,12 +12,76 @@
 #include "Main/Main.h"
 #include "Platform/std3D.h"
 #include "World/jkPlayer.h"
+#include "World/sithWorld.h"
 #include "jk.h"
+
+#ifdef TARGET_XBOX
+#include "xbox_debug.h"
+#endif
 
 void jkHudInv_DrawGPU();
 
 // MOTS added
 flex_t jkHud_aBinMaxAmt[SITHBIN_NUMBINS] = {0};
+
+static void jkHudInv_FreeItemList()
+{
+    if (jkHudInv_aItems)
+    {
+#ifdef TARGET_XBOX
+        xbox_debug_Printf("MotSMode: free item list ptr=%p count=%d\n", (void*)jkHudInv_aItems, jkHudInv_numItems);
+#endif
+        pHS->free(jkHudInv_aItems);
+        jkHudInv_aItems = NULL;
+    }
+    jkHudInv_numItems = 0;
+}
+
+static void jkHudInv_FreeDescriptorHudBitmaps()
+{
+    for (int i = 0; i < SITHBIN_NUMBINS; i++)
+    {
+        if (sithInventory_aDescriptors[i].hudBitmap)
+        {
+            stdBitmap_Free(sithInventory_aDescriptors[i].hudBitmap);
+            sithInventory_aDescriptors[i].hudBitmap = NULL;
+        }
+    }
+}
+
+static void jkHudInv_ClearItemDescriptors()
+{
+#ifdef TARGET_XBOX
+    XDBG("MotSMode: clear item descriptors begin\n");
+#endif
+    jkHudInv_FreeDescriptorHudBitmaps();
+    _memset(sithInventory_aDescriptors, 0, sizeof(sithItemDescriptor) * SITHBIN_NUMBINS);
+    _memset(jkHud_aBinMaxAmt, 0, sizeof(jkHud_aBinMaxAmt));
+#ifdef TARGET_XBOX
+    XDBG("MotSMode: clear item descriptors done\n");
+#endif
+}
+
+#ifdef TARGET_XBOX
+static void jkHudInv_LogItemDescriptor(int binIdx)
+{
+    sithItemDescriptor *desc;
+
+    if (binIdx < 0 || binIdx >= SITHBIN_NUMBINS)
+        return;
+
+    desc = &sithInventory_aDescriptors[binIdx];
+    xbox_debug_Printf(
+        "MotSMode: item bin=%d name=%.7s flags=0x%X min=%.1f max=%.1f cog=%p hud=%p\n",
+        binIdx,
+        desc->fpath,
+        desc->flags,
+        (double)desc->ammoMin,
+        (double)desc->ammoMax,
+        (void*)desc->cog,
+        (void*)desc->hudBitmap);
+}
+#endif
 
 // MOTS altered
 int jkHudInv_ItemDatLoad(char *fpath)
@@ -30,11 +94,16 @@ int jkHudInv_ItemDatLoad(char *fpath)
     flex_t min; // [esp+1Ch] [ebp-4h]
     int flags;
 
+#ifdef TARGET_XBOX
+    xbox_debug_Printf("MotSMode: ItemDatLoad open '%s'\n", fpath);
+#endif
     if (!stdConffile_OpenRead(fpath))
         return 0;
 
+    unsigned int lineCount = 0;
     while ( stdConffile_ReadArgs() )
     {
+        lineCount++;
         flags = 0;
         cog = 0;
         if ( !_strcmp(stdConffile_entry.args[0].value, "end") )
@@ -52,7 +121,19 @@ int jkHudInv_ItemDatLoad(char *fpath)
         {
             if ( !_strcmp(stdConffile_entry.args[v3].key, "cog") )
             {
+#ifdef TARGET_XBOX
+                xbox_debug_Printf("MotSMode: ItemDatLoad cog begin line=%u bin=%u cog='%s'\n",
+                                  lineCount,
+                                  binNum,
+                                  stdConffile_entry.args[v3].value);
+#endif
                 cog_ = sithCog_LoadCogscript(stdConffile_entry.args[v3].value);
+#ifdef TARGET_XBOX
+                xbox_debug_Printf("MotSMode: ItemDatLoad cog done line=%u bin=%u cog=%p\n",
+                                  lineCount,
+                                  binNum,
+                                  (void*)cog_);
+#endif
                 if ( cog_ )
                     cog_->flags |= SITH_COG_LOCAL;
                 cog = cog_;
@@ -62,6 +143,9 @@ int jkHudInv_ItemDatLoad(char *fpath)
         jkHud_aBinMaxAmt[binNum] = max; // MOTS added
     }
     stdConffile_Close();
+#ifdef TARGET_XBOX
+    xbox_debug_Printf("MotSMode: ItemDatLoad done lines=%u\n", lineCount);
+#endif
     return 1;
 }
 
@@ -768,11 +852,32 @@ int jkHudInv_InitItems()
     int v4; // ecx
     sithItemDescriptor *v5; // eax
 
+#ifdef TARGET_XBOX
+    XDBG("MotSMode: InitItems begin\n");
+#endif
+    jkHudInv_FreeItemList();
+#ifdef TARGET_XBOX
+    XDBG("MotSMode: InitItems after free list\n");
+#endif
+    jkHudInv_ClearItemDescriptors();
+#ifdef TARGET_XBOX
+    XDBG("MotSMode: InitItems after clear descriptors\n");
+#endif
+
     _sprintf(std_genBuffer, "misc\\%s", "items.dat");
+#ifdef TARGET_XBOX
+    xbox_debug_Printf("MotSMode: InitItems load dat '%s'\n", std_genBuffer);
+#endif
     if (!jkHudInv_ItemDatLoad(std_genBuffer))
         return 0;
+#ifdef TARGET_XBOX
+    XDBG("MotSMode: InitItems after dat load\n");
+#endif
 
     sithInventory_KeybindInit();
+#ifdef TARGET_XBOX
+    XDBG("MotSMode: InitItems after keybind init\n");
+#endif
     v1 = 0;
     v2 = sithInventory_aDescriptors;
     jkHudInv_numItems = 0;
@@ -784,6 +889,9 @@ int jkHudInv_InitItems()
     }
 
     jkHudInv_numItems = v1;
+#ifdef TARGET_XBOX
+    xbox_debug_Printf("MotSMode: InitItems counted powers=%d\n", jkHudInv_numItems);
+#endif
     if ( v1 > 0 )
     {
         jkHudInv_aItems = (int*)pHS->alloc(sizeof(int) * v1);
@@ -803,6 +911,57 @@ int jkHudInv_InitItems()
             ++v4;
         }
     }
+#ifdef TARGET_XBOX
+    XDBG("MotSMode: InitItems done\n");
+#endif
+    return 1;
+}
+
+int jkHudInv_ReloadItemDescriptors()
+{
+#ifdef TARGET_XBOX
+    xbox_debug_Printf("MotSMode: reload item descriptors begin mode=%s\n",
+                      Main_bMotsCompat ? "MotS" : "JK");
+#endif
+
+    jkHudInv_FreeItemList();
+#ifdef TARGET_XBOX
+    XDBG("MotSMode: reload item descriptors after free list\n");
+#endif
+
+    if (!sithWorld_pLoading)
+    {
+        jkHudInv_ClearItemDescriptors();
+#ifdef TARGET_XBOX
+        XDBG("MotSMode: reload item descriptors deferred (no loading world)\n");
+#endif
+        return 1;
+    }
+
+    if (!jkHudInv_InitItems())
+    {
+#ifdef TARGET_XBOX
+        XDBG("MotSMode: reload item descriptors failed\n");
+#endif
+        return 0;
+    }
+
+    std3D_bReinitHudElements = 1;
+
+#ifdef TARGET_XBOX
+    xbox_debug_Printf("MotSMode: reload item descriptors done powers=%d\n", jkHudInv_numItems);
+    jkHudInv_LogItemDescriptor(1);
+    jkHudInv_LogItemDescriptor(2);
+    jkHudInv_LogItemDescriptor(10);
+    jkHudInv_LogItemDescriptor(11);
+    jkHudInv_LogItemDescriptor(121);
+    jkHudInv_LogItemDescriptor(122);
+    jkHudInv_LogItemDescriptor(123);
+    jkHudInv_LogItemDescriptor(130);
+    jkHudInv_LogItemDescriptor(131);
+    jkHudInv_LogItemDescriptor(133);
+#endif
+
     return 1;
 }
 
@@ -968,8 +1127,11 @@ void jkHudInv_Close()
         return;
 #endif
 
-    stdFont_Free(jkHudInv_font);
-    jkHudInv_font = 0;
+    if (jkHudInv_font)
+    {
+        stdFont_Free(jkHudInv_font);
+        jkHudInv_font = 0;
+    }
 }
 
 int jkHudInv_Startup()
@@ -986,8 +1148,7 @@ int jkHudInv_Shutdown()
 
     jkHudInv_Close(); // Added: memleak
 
-    if ( jkHudInv_aItems )
-        pHS->free(jkHudInv_aItems);
+    jkHudInv_FreeItemList();
 
     if ( jkHudInv_aBitmaps[0] )
     {
@@ -1007,14 +1168,7 @@ int jkHudInv_Shutdown()
         jkHudInv_aBitmaps[2] = 0;
     }
 
-    for (int i = 0; i < 100; i++)
-    {
-        if ( (sithInventory_aDescriptors[i].flags & 0xA) != 0 && sithInventory_aDescriptors[i].hudBitmap )
-        {
-            stdBitmap_Free(sithInventory_aDescriptors[i].hudBitmap);
-            sithInventory_aDescriptors[i].hudBitmap = NULL;
-        }
-    }
+    jkHudInv_ClearItemDescriptors();
     return 1;
 }
 

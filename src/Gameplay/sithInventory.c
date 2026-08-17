@@ -337,11 +337,21 @@ void sithInventory_SetCurWeapon(sithThing *player, int idx)
     if (!player || !player->actorParams.playerinfo) return; // Added: Prevent nullptr deref
 
     player->actorParams.playerinfo->curWeapon = idx;
-#if defined(TARGET_XBOX) && defined(XBOX_VERBOSE_FORMAT_LOGS)
+#ifdef TARGET_XBOX
+    if (Main_bMotsCompat)
     {
         static int _scw = 0;
-        if (_scw < 16) {
-            xbox_debug_Printf("SetCurWeapon: player=%p bin=%d\n", (void*)player, idx);
+        if (_scw < 24)
+        {
+            sithItemDescriptor *desc = NULL;
+            if (idx >= 0 && idx < SITHBIN_NUMBINS)
+                desc = &sithInventory_aDescriptors[idx];
+            xbox_debug_Printf("MotSMode: SetCurWeapon player=%p bin=%d desc=%p name=%.7s flags=0x%X\n",
+                              (void*)player,
+                              idx,
+                              (void*)desc,
+                              desc ? desc->fpath : "",
+                              desc ? desc->flags : 0);
             _scw++;
         }
     }

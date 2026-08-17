@@ -7,6 +7,12 @@
 #define FLEX_SCANNER
 
 #include "globals.h"
+#include "General/stdConffile.h"
+#ifdef TARGET_XBOX
+#include "Main/Main.h"
+#include "Platform/Xbox/xbox_debug.h"
+extern char* sithCogParse_lastParsedFile;
+#endif
 
 #include <stdio.h>
 
@@ -94,9 +100,38 @@ int read();
 /* gets input and stuffs it into "buf".  number of characters read, or YY_NULL,
  * is returned in "result".
  */
+#ifdef TARGET_XBOX
+static int yy_xbox_input(char *buf, int max_size)
+{
+	int result = stdConffile_ReadRaw(buf, max_size);
+	static int logCount = 0;
+
+	if (Main_bMotsCompat && logCount < 32)
+	{
+		xbox_debug_Printf("MotSMode: Lex input file=%s max=%d result=%d first=%02X%02X%02X%02X\n",
+		                  sithCogParse_lastParsedFile ? sithCogParse_lastParsedFile : "",
+		                  max_size,
+		                  result,
+		                  result > 0 ? (unsigned char)buf[0] : 0,
+		                  result > 1 ? (unsigned char)buf[1] : 0,
+		                  result > 2 ? (unsigned char)buf[2] : 0,
+		                  result > 3 ? (unsigned char)buf[3] : 0);
+		logCount++;
+	}
+
+	return result;
+}
+#endif
+
+#ifdef TARGET_XBOX
 #define YY_INPUT(buf,result,max_size) \
-	if ( (result = pSithHS->fileRead((stdFile_t)yyin, (char *) buf, max_size )) < 0 ) \
+	if ( (result = yy_xbox_input((char *) buf, max_size )) < 0 ) \
 	    YY_FATAL_ERROR( "read() in flex scanner failed" );
+#else
+#define YY_INPUT(buf,result,max_size) \
+	if ( (result = stdConffile_ReadRaw((char *) buf, max_size )) < 0 ) \
+	    YY_FATAL_ERROR( "read() in flex scanner failed" );
+#endif
 #define YY_NULL 0
 
 /* no semi-colon after return; correct usage is to write "yyterminate();" -
@@ -473,6 +508,21 @@ YY_DECL
     /*register*/ yy_state_type yy_current_state;
     /*register*/ YY_CHAR *yy_cp, *yy_bp;
     /*register*/ int yy_act;
+
+#ifdef TARGET_XBOX
+    if (Main_bMotsCompat)
+    {
+	static int lexEnterLogCount = 0;
+	if (lexEnterLogCount < 32)
+	{
+	    xbox_debug_Printf("MotSMode: Lex enter file=%s yy_init=%d buffer=%p\n",
+	                      sithCogParse_lastParsedFile ? sithCogParse_lastParsedFile : "",
+	                      yy_init,
+	                      (void*)yy_current_buffer);
+	    lexEnterLogCount++;
+	}
+    }
+#endif
 
 
 

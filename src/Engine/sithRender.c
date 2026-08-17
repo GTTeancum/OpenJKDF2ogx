@@ -2215,7 +2215,10 @@ void sithRender_RenderLevelGeometry()
             }
 
 #ifndef TARGET_TWL
-            if ( v65->adjoin && surfaceMat && ((v65->surfaceInfo.face.type & 2) != 0 || (v10 && (v10->header.texture_type & 8)) && (v10 && v10->texture_ptr && (v10->texture_ptr->alpha_en & 1))) ) // Added: nullptr checks for v10 and v10->texture_ptr
+            int isAlphaSurface = surfaceMat &&
+                (((v65->surfaceInfo.face.type & RD_FF_TEX_TRANSLUCENT) != 0) ||
+                 ((v10 && (v10->header.texture_type & 8)) && (v10->texture_ptr && (v10->texture_ptr->alpha_en & 1))));
+            if ( isAlphaSurface )
             {
                 if (sithRender_numSurfaces < SITH_MAX_VISIBLE_ALPHA_SURFACES)
                 {

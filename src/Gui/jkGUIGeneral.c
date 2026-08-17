@@ -138,6 +138,12 @@ int jkGuiGeneral_ShowAdvanced()
 
     while (1)
     {
+#ifdef TARGET_XBOX
+        jkGuiRend_XboxFooterBegin(&jkGuiGeneral_menuAdvanced);
+        jkGuiRend_XboxFooterAddAction(&jkGuiGeneral_menuAdvanced, JKGUI_XBOX_BTN_A, 0, L"Select");
+        jkGuiRend_XboxFooterAddElementAction(&jkGuiGeneral_menuAdvanced, JKGUI_XBOX_BTN_B, &jkGuiGeneral_aElementsAdvanced[8], L"Back");
+        jkGuiRend_XboxFooterAddElementAction(&jkGuiGeneral_menuAdvanced, JKGUI_XBOX_BTN_START, &jkGuiGeneral_aElementsAdvanced[7], L"Done");
+#endif
         v0 = jkGuiRend_DisplayAndReturnClicked(&jkGuiGeneral_menuAdvanced);
 
         if ( v0 != -1 )
@@ -180,6 +186,12 @@ int jkGuiGeneral_Show()
 
     while (1)
     {
+#ifdef TARGET_XBOX
+        jkGuiRend_XboxFooterBegin(&jkGuiGeneral_menu);
+        jkGuiRend_XboxFooterAddAction(&jkGuiGeneral_menu, JKGUI_XBOX_BTN_A, 0, L"Select");
+        jkGuiRend_XboxFooterAddElementAction(&jkGuiGeneral_menu, JKGUI_XBOX_BTN_B, &jkGuiGeneral_aElements[11], L"Back");
+        jkGuiRend_XboxFooterAddElementAction(&jkGuiGeneral_menu, JKGUI_XBOX_BTN_START, &jkGuiGeneral_aElements[10], L"Done");
+#endif
         v0 = jkGuiRend_DisplayAndReturnClicked(&jkGuiGeneral_menu);
 #if defined(QOL_IMPROVEMENTS)
         if (v0 == GUI_ADVANCED)

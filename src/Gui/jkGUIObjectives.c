@@ -134,6 +134,11 @@ int jkGuiObjectives_Show()
     }
     jkGuiObjectives_elements[3].wstr = v10;
     jkGuiObjectives_elements[1].wstr = jkGui_sub_412ED0();
+#ifdef TARGET_XBOX
+    jkGuiRend_XboxFooterBegin(&jkGuiObjectives_menu);
+    jkGuiRend_XboxFooterAddAction(&jkGuiObjectives_menu, JKGUI_XBOX_BTN_A, 1, L"Done");
+    jkGuiRend_XboxFooterAddAction(&jkGuiObjectives_menu, JKGUI_XBOX_BTN_B, 1, L"Back");
+#endif
     return jkGuiRend_DisplayAndReturnClicked(&jkGuiObjectives_menu);
 }
 

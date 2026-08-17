@@ -134,6 +134,7 @@ build/xbox/smoke_logs/
 build/xbox/smoke_runs/
 build/xbox/xemu_ram_logs/
 build/xbox/xemu_smoke_runs/
+build/xbox/xemu_soak_runs/
 build/xbox/xemu_syslink_screenshots/
 build/xbox/*xemu*.iso
 build/xbox/xemu_*stage*/

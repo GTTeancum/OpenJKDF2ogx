@@ -13,8 +13,109 @@
 #include "Win95/stdMci.h"
 #include "Cog/jkCog.h"
 #include "World/jkPlayer.h"
-
 #include "../jk.h"
+
+static int jkEpisode_aMotsCompat[64];
+
+static int jkEpisode_InferMotsCompatName(const char *pName)
+{
+    if (!pName || !pName[0])
+        return 0;
+
+    if (!__strnicmp(pName, "JKM", 3))
+        return 1;
+
+    if (!__strnicmp(pName, "MOTS", 4))
+        return 1;
+
+    return 0;
+}
+
+static int jkEpisode_FindIndex(const char *pName)
+{
+    if (!pName)
+        return -1;
+
+    for (uint32_t i = 0; i < jkEpisode_var2 && i < 64; i++)
+    {
+        if (!__strnicmp(pName, jkEpisode_aEpisodes[i].name, 0x20u))
+            return i;
+    }
+
+    return -1;
+}
+
+static int jkEpisode_AddCandidate(const char *pName, int bMotsCompat)
+{
+    uint32_t idx;
+
+    if (!pName || pName[0] == '.' || jkEpisode_var2 >= 0x40)
+        return 0;
+
+    if (jkEpisode_FindIndex(pName) >= 0)
+        return 0;
+
+    idx = jkEpisode_var2++;
+    _memset(&jkEpisode_aEpisodes[idx], 0, sizeof(jkEpisode_aEpisodes[idx]));
+    _strncpy(jkEpisode_aEpisodes[idx].name, pName, 0x1Fu);
+    jkEpisode_aEpisodes[idx].name[31] = 0;
+    jkEpisode_aMotsCompat[idx] = bMotsCompat ? 1 : 0;
+    return 1;
+}
+
+static void jkEpisode_ScanEpisodeDirectories(const char *pPath)
+{
+    stdFileSearch *search;
+    stdFileSearchResult result;
+
+    search = stdFileUtil_NewFind(pPath, 2, "*");
+    if (!search)
+        return;
+
+    while (stdFileUtil_FindNext(search, &result))
+    {
+        if (result.fpath[0] != '.' && result.is_subdirectory)
+            jkEpisode_AddCandidate(result.fpath, jkEpisode_InferMotsCompatName(result.fpath));
+    }
+
+    stdFileUtil_DisposeFind(search);
+}
+
+static void jkEpisode_ScanEpisodeArchives(const char *pPath, const char *pExt, int bMotsCompat)
+{
+    stdFileSearch *search;
+    stdFileSearchResult result;
+
+    search = stdFileUtil_NewFind(pPath, 3, pExt);
+    if (!search)
+        return;
+
+    while (stdFileUtil_FindNext(search, &result))
+    {
+        if (result.fpath[0] != '.')
+        {
+            stdFnames_StripExtAndDot(result.fpath);
+            jkEpisode_AddCandidate(result.fpath, bMotsCompat);
+        }
+    }
+
+    stdFileUtil_DisposeFind(search);
+}
+
+int jkEpisode_IsMotsEpisodeName(const char *pName)
+{
+    int idx = jkEpisode_FindIndex(pName);
+
+    if (idx >= 0)
+        return jkEpisode_aMotsCompat[idx] ? 1 : 0;
+
+    return jkEpisode_InferMotsCompatName(pName);
+}
+
+int jkEpisode_SetMotsCompatForEpisodeName(const char *pName)
+{
+    return jkRes_SetMotsCompat(jkEpisode_IsMotsEpisodeName(pName));
+}
 
 #ifdef JKM_DSS
 int jkEpisode_numBubbles = 0;
@@ -40,15 +141,6 @@ void jkEpisode_Shutdown()
 
 int jkEpisode_LoadVerify()
 {
-    stdFileSearch *v0; // ebp
-    unsigned int v2; // esi
-    jkEpisode *v3; // edi
-    stdFileSearch *v5; // ebp
-    unsigned int v7; // esi
-    jkEpisode *v8; // edi
-    stdFileSearch *v10; // ebp
-    unsigned int v12; // esi
-    jkEpisode *v13; // edi
     int result; // eax
     jkEpisode *v16; // ebx
     int v17; // eax
@@ -62,7 +154,8 @@ int jkEpisode_LoadVerify()
     wchar_t *v27; // eax
     unsigned int v28; // [esp+10h] [ebp-1D0h]
     char v29[64]; // [esp+14h] [ebp-1CCh] BYREF
-    stdFileSearchResult v30; // [esp+54h] [ebp-18Ch] BYREF
+    char previousEpisode[32]; // [esp+54h] [ebp-18Ch] BYREF
+    int previousMotsCompat; // [esp+74h] [ebp-16Ch]
     char v31[64]; // [esp+160h] [ebp-80h] BYREF
     char v32[64]; // [esp+1A0h] [ebp-40h] BYREF
 
@@ -70,113 +163,27 @@ int jkEpisode_LoadVerify()
         jkRes_LoadCD(0);
     jkRes_UnhookHS();
     jkEpisode_var2 = 0;
-    v0 = stdFileUtil_NewFind("episode", 2, "*");
-    while ( stdFileUtil_FindNext(v0, &v30) )
-    {
-        if ( v30.fpath[0] != '.' )
-        {
-            if ( v30.is_subdirectory )
-            {
-                if ( jkEpisode_var2 < 0x40 )
-                {
-                    v2 = 0;
-                    if ( jkEpisode_var2 )
-                    {
-                        v3 = jkEpisode_aEpisodes;
-                        while ( __strnicmp(v30.fpath, v3->name, 0x20u) )
-                        {
-                            ++v2;
-                            ++v3;
-                            if ( v2 >= jkEpisode_var2 )
-                                goto LABEL_11;
-                        }
-                    }
-                    else
-                    {
-LABEL_11:
-                        _strncpy(jkEpisode_aEpisodes[jkEpisode_var2].name, v30.fpath, 0x1Fu);
-                        jkEpisode_aEpisodes[jkEpisode_var2].name[31] = 0;
-                        jkEpisode_var2++;
-                    }
-                }
-            }
-        }
-    }
-    stdFileUtil_DisposeFind(v0);
-    v5 = stdFileUtil_NewFind("episode", 3, JKRES_GOB_EXT);
-    while ( stdFileUtil_FindNext(v5, &v30) )
-    {
-        if ( v30.fpath[0] != '.' )
-        {
-            stdFnames_StripExtAndDot(v30.fpath);
-            if ( jkEpisode_var2 < 0x40 )
-            {
-                v7 = 0;
-                if ( jkEpisode_var2 )
-                {
-                    v8 = jkEpisode_aEpisodes;
-                    while ( __strnicmp(v30.fpath, v8->name, 0x20u) )
-                    {
-                        ++v7;
-                        ++v8;
-                        if ( v7 >= jkEpisode_var2 )
-                            goto LABEL_20;
-                    }
-                }
-                else
-                {
-LABEL_20:
-                    _strncpy(jkEpisode_aEpisodes[jkEpisode_var2].name, v30.fpath, 0x1Fu);
-                    jkEpisode_aEpisodes[jkEpisode_var2].name[31] = 0;
-                    jkEpisode_var2++;
-                }
-            }
-        }
-    }
-    stdFileUtil_DisposeFind(v5);
+    _memset(jkEpisode_aMotsCompat, 0, sizeof(jkEpisode_aMotsCompat));
+    jkEpisode_ScanEpisodeDirectories("episode");
+    jkEpisode_ScanEpisodeArchives("episode", "gob", 0);
+    jkEpisode_ScanEpisodeArchives("episode", "goo", 1);
     if ( jkRes_curDir[0] )
     {
         _sprintf(jkEpisode_var5, "%s\\gamedata\\episode", jkRes_curDir);
-        v10 = stdFileUtil_NewFind(jkEpisode_var5, 3, JKRES_GOB_EXT);
-        while ( stdFileUtil_FindNext(v10, &v30) )
-        {
-            if ( v30.fpath[0] != '.' )
-            {
-                stdFnames_StripExtAndDot(v30.fpath);
-                if ( jkEpisode_var2 < 0x40 )
-                {
-                    v12 = 0;
-                    if ( jkEpisode_var2 )
-                    {
-                        v13 = jkEpisode_aEpisodes;
-                        while ( __strnicmp(v30.fpath, v13->name, 0x20u) )
-                        {
-                            ++v12;
-                            ++v13;
-                            if ( v12 >= jkEpisode_var2 )
-                                goto LABEL_30;
-                        }
-                    }
-                    else
-                    {
-LABEL_30:
-                        _strncpy(jkEpisode_aEpisodes[jkEpisode_var2].name, v30.fpath, 0x1Fu);
-                        jkEpisode_aEpisodes[jkEpisode_var2].name[31] = 0;
-                        jkEpisode_var2++;
-                    }
-                }
-            }
-        }
-        stdFileUtil_DisposeFind(v10);
+        jkEpisode_ScanEpisodeArchives(jkEpisode_var5, "gob", 0);
+        jkEpisode_ScanEpisodeArchives(jkEpisode_var5, "goo", 1);
     }
     jkRes_HookHS();
     result = jkEpisode_var2;
     v28 = 0;
+    previousMotsCompat = Main_bMotsCompat;
+    stdString_SafeStrCopy(previousEpisode, jkRes_episodeGobName, sizeof(previousEpisode));
     if ( jkEpisode_var2 )
     {
         v16 = jkEpisode_aEpisodes;
         do
         {
+            Main_bMotsCompat = jkEpisode_aMotsCompat[v28] ? 1 : 0;
             jkRes_LoadGob(v16->name);
             v17 = pHS->fileOpen("episode.jk", "rt");
             if ( v17 )
@@ -248,6 +255,8 @@ LABEL_50:
         }
         while ( v28 < jkEpisode_var2 );
     }
+    Main_bMotsCompat = previousMotsCompat;
+    jkRes_LoadGob(previousEpisode);
     return result;
 }
 
@@ -555,8 +564,13 @@ int jkEpisode_EndLevel(jkEpisodeLoad *pEpisode, int levelNum)
 // MOTS altered TODO verify
 int jkEpisode_UpdateExtra(sithThing *pPlayerThing)
 {
+    if (!pPlayerThing)
+        return 0;
+
     // HACK: Sometimes when the player is killed, the blade isn't restored?
-    if (sithInventory_GetCurWeapon(pPlayerThing) == SITHBIN_LIGHTSABER && !(pPlayerThing->jkFlags & JKFLAG_SABERON)) {
+    int curWeapon = sithInventory_GetCurWeapon(pPlayerThing);
+    if ((curWeapon == SITHBIN_LIGHTSABER || (Main_bMotsCompat && curWeapon == SITHBIN_MOTS_LIGHTSABER))
+        && !(pPlayerThing->jkFlags & JKFLAG_SABERON)) {
         pPlayerThing->jkFlags |= JKFLAG_SABERON | JKFLAG_SABERFORCEON;
     }
 
@@ -701,6 +715,7 @@ LABEL_7:
         v5 = jkEpisode_var2;
         result = ++jkEpisode_var2;
         jkEpisode_aEpisodes[v5].name[31] = 0;
+        jkEpisode_aMotsCompat[v5] = jkEpisode_InferMotsCompatName(pName);
     }
     return result;
 }

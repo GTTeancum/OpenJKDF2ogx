@@ -88,6 +88,7 @@ int jkDev_CmdHeal(stdDebugConsoleCmd *pCmd, const char *pArgStr);
 int jkDev_CmdAllMap(stdDebugConsoleCmd *pCmd, const char *pArgStr);
 int jkDev_CmdMana(stdDebugConsoleCmd *pCmd, const char *pArgStr);
 int jkDev_CmdTeam(stdDebugConsoleCmd *pCmd, const char *pArgStr);
+int jkDev_GiveAllCurrentMode(void);
 
 int jkDev_UpdateEntries();
 

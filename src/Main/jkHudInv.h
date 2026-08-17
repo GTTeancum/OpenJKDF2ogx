@@ -20,6 +20,7 @@ MATH_FUNC void jkHudInv_Draw();
 MATH_FUNC void jkHudInv_DrawGPU();
 void jkHudInv_InputInit();
 int jkHudInv_InitItems();
+int jkHudInv_ReloadItemDescriptors();
 MATH_FUNC void jkHudInv_LoadItemRes();
 void jkHudInv_Close();
 int jkHudInv_Startup();

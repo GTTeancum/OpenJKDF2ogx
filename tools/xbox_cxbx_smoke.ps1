@@ -14,7 +14,6 @@ $ErrorActionPreference = "Stop"
 
 $xbeSrc = Join-Path $BuildDir "default.xbe"
 $xbeDst = Join-Path $AppDir "default.xbe"
-$loader = Join-Path $CxbxRoot "cxbxr-ldr-project1.exe"
 $gameLog = Join-Path $AppDir "debug_openjkdf2.txt"
 $cxbxDebugLog = Join-Path $AppDir "CxbxDebug.txt"
 $krnlDebugLog = Join-Path $AppDir "KrnlDebug.txt"
@@ -32,11 +31,31 @@ $fmvLimitPath = Join-Path $AppDir "xbox_smoke_fmv_seconds.txt"
 $autoStartPath = Join-Path $AppDir "xbox_smoke_autostart_level.txt"
 $disableMusicPath = Join-Path $AppDir "xbox_smoke_disable_music.txt"
 
+function Find-CxbxLoader {
+    $candidates = @(
+        "cxbxr-ldr-project1.exe",
+        "cxbxr-ldr.exe",
+        "cxbx-project1.exe",
+        "cxbx.exe"
+    )
+
+    foreach ($candidate in $candidates) {
+        $path = Join-Path $CxbxRoot $candidate
+        if (Test-Path -LiteralPath $path) {
+            return $path
+        }
+    }
+
+    throw "Missing CXBX-R loader in $CxbxRoot. Checked: $($candidates -join ', ')"
+}
+
 function Get-CxbxProcesses {
     $root = try { (Resolve-Path -LiteralPath $CxbxRoot -ErrorAction Stop).Path } catch { $CxbxRoot }
     $allowedNames = @(
         "cxbx-project1.exe",
-        "cxbxr-ldr-project1.exe"
+        "cxbxr-ldr-project1.exe",
+        "cxbx.exe",
+        "cxbxr-ldr.exe"
     )
 
     Get-CimInstance Win32_Process |
@@ -96,22 +115,24 @@ function Test-LogPattern($Path, $Pattern) {
 function Get-ReachedStates($Path) {
     $states = New-Object System.Collections.Generic.List[string]
     if (Test-LogPattern $Path "sithWorld_Load: opened OK 'jkl\\static\.jkl'") { $states.Add("static") }
+    if (Test-LogPattern $Path "MotSMode: switching resources .*MotS") { $states.Add("mots-switch") }
+    if (Test-LogPattern $Path "MotSMode: reload item descriptors done") { $states.Add("mots-items") }
     if (Test-LogPattern $Path "CutsceneTrace:|XmvDbg|XMV") { $states.Add("fmv") }
     if (Test-LogPattern $Path "jkGuiMain_Show: smoke autostart") { $states.Add("autostart") }
-    if (Test-LogPattern $Path "GameplayShow:.*loading level|sithWorld_Load: opened OK 'jkl\\01narshadda\.jkl'") { $states.Add("level-load") }
+    if (Test-LogPattern $Path "GameplayShow:.*loading level|sithWorld_Load: opened OK 'jkl\\[^']+\.jkl'|MPLoadTrace: sithMain_Open begin|MPLoadTrace: GameplayShow after LoadingFinalize") { $states.Add("level-load") }
     if (Test-LogPattern $Path "sithWorld_Load: section end things") { $states.Add("level-things") }
-    if (Test-LogPattern $Path "GameplayShow: done") { $states.Add("gameplay-show-done") }
+    if (Test-LogPattern $Path "GameplayShow: done|MPLoadTrace: GameplayShow done") { $states.Add("gameplay-show-done") }
     if (Test-LogPattern $Path "GameplayTick: enter|sithTick: enter") { $states.Add("first-tick") }
-    if (Test-LogPattern $Path "XboxFrame: begin n=") { $states.Add("xbox-frame") }
+    if (Test-LogPattern $Path "XboxFrame: begin n=|XboxFrame: cam n=") { $states.Add("xbox-frame") }
     if ($states.Count -eq 0) { return "none" }
     return ($states -join ",")
 }
 
 if (!(Test-Path -LiteralPath $xbeSrc)) { throw "Missing built XBE: $xbeSrc" }
-if (!(Test-Path -LiteralPath $loader)) { throw "Missing CXBX-R loader: $loader" }
 if (!(Test-Path -LiteralPath $AppDir)) { throw "Missing CXBX-R app directory: $AppDir" }
 
 New-Item -ItemType Directory -Path $runDir -Force | Out-Null
+$loader = Find-CxbxLoader
 
 if (!(Wait-ForCxbxFree -WaitSeconds 180)) {
     "aborted=Existing CXBX-R process still running after wait" |
@@ -238,7 +259,7 @@ $summary.Add("fmvLimitSeconds=$FmvLimitSeconds")
 $summary.Add("autoStartLevel=$AutoStartLevel")
 $summary.Add("disableMusic=$([bool]$DisableMusic)")
 $summary.Add("loader=$loader")
-$summary.Add("managedProcessNames=cxbx-project1.exe,cxbxr-ldr-project1.exe")
+$summary.Add("managedProcessNames=cxbx-project1.exe,cxbxr-ldr-project1.exe,cxbx.exe,cxbxr-ldr.exe")
 $summary.Add("xbeSource=$xbeSrc")
 $summary.Add("xbeDest=$xbeDst")
 $summary.Add("loaderExitCode=$exitCode")

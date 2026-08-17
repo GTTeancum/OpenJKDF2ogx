@@ -929,6 +929,64 @@ void sithWeapon_StartupEntry()
     sithWeapon_8BD024 = -1;
 }
 
+#ifdef TARGET_XBOX
+void sithWeapon_XboxResetLocalState(sithWeaponXboxLocalState *state)
+{
+    if (!state)
+        return;
+    _memset(state, 0, sizeof(*state));
+    state->activeStarted[0] = -1.0f;
+    state->activeStarted[1] = -1.0f;
+    state->lastFireTimeSecs = -1.0f;
+    state->pendingDeselectTime = -1.0f;
+    state->fireWait = -1.0f;
+    state->fireRate = -1.0f;
+    state->curWeaponMode = -1;
+    state->pendingWeaponBin = -1;
+    state->motsPriorWeapon = -1;
+}
+
+void sithWeapon_XboxSaveLocalState(sithWeaponXboxLocalState *state)
+{
+    if (!state)
+        return;
+    state->activeStarted[0] = sithWeapon_8BD0A0[0];
+    state->activeStarted[1] = sithWeapon_8BD0A0[1];
+    state->activeLatched[0] = sithWeapon_a8BD030[0];
+    state->activeLatched[1] = sithWeapon_a8BD030[1];
+    state->lastFireTimeSecs = sithWeapon_LastFireTimeSecs;
+    state->pendingDeselectTime = sithWeapon_8BD060;
+    state->mountWait = sithWeapon_mountWait;
+    state->fireWait = sithWeapon_fireWait;
+    state->fireRate = sithWeapon_fireRate;
+    state->mountReactivatePending = sithWeapon_8BD05C;
+    state->curWeaponMode = sithWeapon_CurWeaponMode;
+    state->pendingWeaponBin = sithWeapon_8BD024;
+    state->senderIndex = sithWeapon_senderIndex;
+    state->motsPriorWeapon = sithWeapon_mots_5a3258;
+}
+
+void sithWeapon_XboxRestoreLocalState(const sithWeaponXboxLocalState *state)
+{
+    if (!state)
+        return;
+    sithWeapon_8BD0A0[0] = state->activeStarted[0];
+    sithWeapon_8BD0A0[1] = state->activeStarted[1];
+    sithWeapon_a8BD030[0] = state->activeLatched[0];
+    sithWeapon_a8BD030[1] = state->activeLatched[1];
+    sithWeapon_LastFireTimeSecs = state->lastFireTimeSecs;
+    sithWeapon_8BD060 = state->pendingDeselectTime;
+    sithWeapon_mountWait = state->mountWait;
+    sithWeapon_fireWait = state->fireWait;
+    sithWeapon_fireRate = state->fireRate;
+    sithWeapon_8BD05C = state->mountReactivatePending;
+    sithWeapon_CurWeaponMode = state->curWeaponMode;
+    sithWeapon_8BD024 = state->pendingWeaponBin;
+    sithWeapon_senderIndex = state->senderIndex;
+    sithWeapon_mots_5a3258 = state->motsPriorWeapon;
+}
+#endif
+
 void sithWeapon_ShutdownEntry()
 {
     ;
@@ -952,6 +1010,45 @@ int sithWeapon_SelectWeapon(sithThing *player, int binIdx, int a3)
     //printf("%x\n", sithWeapon_8BD024);
 
     v4 = sithInventory_GetCurWeapon(player);
+#ifdef TARGET_XBOX
+    if (Main_bMotsCompat)
+    {
+        static int _motsSelectWeaponLogCount = 0;
+        sithItemDescriptor *desc = NULL;
+        if (binIdx >= 0 && binIdx < SITHBIN_NUMBINS)
+            desc = &sithInventory_aDescriptors[binIdx];
+        if (_motsSelectWeaponLogCount < 32)
+        {
+            if (binIdx >= 0 && binIdx < SITHBIN_NUMBINS && player &&
+                player->actorParams.playerinfo &&
+                player->actorParams.playerinfo != (sithPlayerInfo*)-136)
+            {
+                xbox_debug_Printf("MotSMode: SelectWeapon enter bin=%d name=%.7s flags=0x%X curW=%d amt=%.1f avail=%d 8BD024=%d a3=%d\n",
+                                  binIdx,
+                                  desc ? desc->fpath : "",
+                                  desc ? desc->flags : 0,
+                                  v4,
+                                  (double)sithInventory_GetBinAmount(player, binIdx),
+                                  sithInventory_GetAvailable(player, binIdx),
+                                  sithWeapon_8BD024,
+                                  a3);
+            }
+            else
+            {
+                xbox_debug_Printf("MotSMode: SelectWeapon enter bin=%d name=%.7s flags=0x%X player=%p pi=%p curW=%d 8BD024=%d a3=%d\n",
+                                  binIdx,
+                                  desc ? desc->fpath : "",
+                                  desc ? desc->flags : 0,
+                                  (void*)player,
+                                  player ? (void*)player->actorParams.playerinfo : 0,
+                                  v4,
+                                  sithWeapon_8BD024,
+                                  a3);
+            }
+            _motsSelectWeaponLogCount++;
+        }
+    }
+#endif
 #if defined(TARGET_XBOX) && defined(XBOX_VERBOSE_FORMAT_LOGS)
     /* Guard: AutoSelectWeapon can return -1 ("no weapon found"); even
      * though sithCogFunction_SelectWeapon gates that off, defend

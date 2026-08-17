@@ -30,15 +30,48 @@
 #include "General/stdString.h"
 #include "World/sithSector.h"
 #include "World/sithThing.h"
+#include "Gameplay/sithPlayer.h"
 #include "Main/jkGame.h"
 #include "Main/Main.h"
 #include "stdPlatform.h"
+#include "Win95/std.h"
 #include "Dss/sithDSSCog.h"
 #include "Dss/sithMulti.h"
 
 #include "jk.h"
 
 static int32_t sithCog_bInitted = 0;
+
+#ifdef TARGET_XBOX
+static int sithCog_XboxShouldLogMotsCogName(const char *fpath)
+{
+    const char *fname;
+
+    if (!Main_bMotsCompat || !fpath)
+        return 0;
+
+    fname = _strrchr((char*)fpath, '\\');
+    fname = fname ? fname + 1 : fpath;
+    return !__strcmpi(fname, "kyle_m.cog")
+        || !__strcmpi(fname, "mara_m.cog")
+        || !_strnicmp(fname, "weap_", 5);
+}
+
+static void sithCog_XboxLogMotsPlayerCogScript(const char *tag, const char *fpath, sithCogScript *script)
+{
+    if (!sithCog_XboxShouldLogMotsCogName(fpath))
+        return;
+
+    xbox_debug_Printf("MotSMode: %s script=%s ptr=%p trig=%u idk=%u code=%u sym=%u\n",
+                      tag,
+                      fpath ? fpath : "",
+                      (void*)script,
+                      script ? (unsigned)script->num_triggers : 0,
+                      script ? (unsigned)script->numIdk : 0,
+                      script ? (unsigned)script->codeSize : 0,
+                      (script && script->pSymbolTable) ? (unsigned)script->pSymbolTable->entry_cnt : 0);
+}
+#endif
 
 // MOTS altered
 int32_t sithCog_Startup()
@@ -56,6 +89,8 @@ int32_t sithCog_Startup()
     if (!sithCog_pScriptHashtable)
     {
         stdPrintf(pSithHS->errorPrint, ".\\Cog\\sithCog.c", 124, "Could not allocate COG hashtable.");
+        sithCogParse_FreeSymboltable(sithCog_pSymbolTable);
+        sithCog_pSymbolTable = 0;
         return 0;
     }
     sithCog_pSymbolTable->bucket_idx = 0x100;
@@ -104,6 +139,8 @@ int32_t sithCog_Startup()
     sithCogScript_RegisterMessageSymbol(sithCog_pSymbolTable, 35, "newplayer");
     sithCogScript_RegisterMessageSymbol(sithCog_pSymbolTable, 36, "fire");
     sithCogScript_RegisterMessageSymbol(sithCog_pSymbolTable, 37, "join");
+    if (Main_bMotsCompat)
+        sithCogScript_RegisterMessageSymbol(sithCog_pSymbolTable, 37, "joined");
     sithCogScript_RegisterMessageSymbol(sithCog_pSymbolTable, 38, "leave");
     sithCogScript_RegisterMessageSymbol(sithCog_pSymbolTable, 39, "splash");
     sithCogScript_RegisterMessageSymbol(sithCog_pSymbolTable, 40, "trigger");
@@ -394,6 +431,7 @@ int32_t sithCog_StartupEnhanced()
 void sithCog_Shutdown()
 {
     sithCogParse_FreeSymboltable(sithCog_pSymbolTable);
+    sithCog_pSymbolTable = 0;
     if ( sithCog_pScriptHashtable )
     {
         stdHashTable_Free(sithCog_pScriptHashtable);
@@ -607,8 +645,20 @@ sithCog* sithCog_LoadCogscript(const char *fpath)
     sithCogScript *v8; // esi
     uint32_t v9; // eax
     char cog_fpath[128]; // [esp+10h] [ebp-80h] BYREF
+    char *cog_fname; // [esp+90h] [ebp+0h]
 
     cogIdx = sithWorld_pLoading->numCogsLoaded;
+#ifdef TARGET_XBOX
+    if (Main_bMotsCompat)
+    {
+        xbox_debug_Printf("MotSMode: LoadCogscript request fpath=%s cogIdx=%u/%u scriptIdx=%u/%u\n",
+                          fpath ? fpath : "",
+                          cogIdx,
+                          sithWorld_pLoading ? sithWorld_pLoading->numCogs : 0,
+                          sithWorld_pLoading ? sithWorld_pLoading->numCogScriptsLoaded : 0,
+                          sithWorld_pLoading ? sithWorld_pLoading->numCogScripts : 0);
+    }
+#endif
     if ( cogIdx >= sithWorld_pLoading->numCogs )
         return 0;
 
@@ -619,22 +669,56 @@ sithCog* sithCog_LoadCogscript(const char *fpath)
         cog->selfCog |= 0x8000;
     }
     _sprintf(cog_fpath, "%s%c%s", "cog", '\\', fpath);
-    v7 = (sithCogScript *)stdHashTable_GetKeyVal(sithCog_pScriptHashtable, fpath);
+    cog_fname = stdFileFromPath(cog_fpath);
+#ifdef TARGET_XBOX
+    if (sithCog_XboxShouldLogMotsCogName(cog_fname))
+        xbox_debug_Printf("MotSMode: LoadCogscript cache lookup name=%s full=%s\n", cog_fname, cog_fpath);
+#endif
+    v7 = (sithCogScript *)stdHashTable_GetKeyVal(sithCog_pScriptHashtable, cog_fname);
+#ifdef TARGET_XBOX
+    if (sithCog_XboxShouldLogMotsCogName(cog_fname))
+        xbox_debug_Printf("MotSMode: LoadCogscript cache result name=%s ptr=%p\n", cog_fname, (void*)v7);
+#endif
     if ( v7 )
     {
         v8 = v7;
+#ifdef TARGET_XBOX
+        sithCog_XboxLogMotsPlayerCogScript("LoadCogscript cache-hit", cog_fname, v8);
+#endif
     }
     else
     {
         v9 = sithWorld_pLoading->numCogScriptsLoaded;
+#ifdef TARGET_XBOX
+        if (sithCog_XboxShouldLogMotsCogName(cog_fname))
+            xbox_debug_Printf("MotSMode: LoadCogscript parse begin name=%s scriptIdx=%u\n", cog_fname, v9);
+#endif
         if ( v9 < sithWorld_pLoading->numCogScripts && (v8 = &sithWorld_pLoading->cogScripts[v9], sithCogParse_Load(cog_fpath, v8, 0)) )
         {
-            stdHashTable_SetKeyVal(sithCog_pScriptHashtable, cog_fpath, v8); // Added: v8 -> no v8 for cog_fpath
+#ifdef TARGET_XBOX
+            if (sithCog_XboxShouldLogMotsCogName(cog_fname))
+                xbox_debug_Printf("MotSMode: LoadCogscript hash set begin name=%s script=%p\n", cog_fname, (void*)v8);
+#endif
+#ifdef SITH_DEBUG_STRUCT_NAMES
+            stdHashTable_SetKeyVal(sithCog_pScriptHashtable, v8->cog_fpath, v8);
+#else
+            stdHashTable_SetKeyVal(sithCog_pScriptHashtable, cog_fname, v8);
+#endif
+#ifdef TARGET_XBOX
+            if (sithCog_XboxShouldLogMotsCogName(cog_fname))
+                xbox_debug_Printf("MotSMode: LoadCogscript hash set done name=%s\n", cog_fname);
+#endif
             ++sithWorld_pLoading->numCogScriptsLoaded;
+#ifdef TARGET_XBOX
+            sithCog_XboxLogMotsPlayerCogScript("LoadCogscript parsed", cog_fname, v8);
+#endif
         }
         else
         {
             v8 = 0;
+#ifdef TARGET_XBOX
+            sithCog_XboxLogMotsPlayerCogScript("LoadCogscript failed", cog_fname, v8);
+#endif
         }
     }
     if ( !v8 )
@@ -644,7 +728,19 @@ sithCog* sithCog_LoadCogscript(const char *fpath)
 #endif
     cog->cogscript = v8;
     cog->flags = v8->flags;
+#ifdef TARGET_XBOX
+    if (sithCog_XboxShouldLogMotsCogName(cog_fname))
+        xbox_debug_Printf("MotSMode: LoadCogscript copy symbols begin name=%s sym=%u\n",
+                          cog_fname,
+                          v8->pSymbolTable ? (unsigned)v8->pSymbolTable->entry_cnt : 0);
+#endif
     cog->pSymbolTable = sithCogParse_CopySymboltable(v8->pSymbolTable);
+#ifdef TARGET_XBOX
+    if (sithCog_XboxShouldLogMotsCogName(cog_fname))
+        xbox_debug_Printf("MotSMode: LoadCogscript copy symbols done name=%s table=%p\n",
+                          cog_fname,
+                          (void*)cog->pSymbolTable);
+#endif
     if ( cog->pSymbolTable )
     {
         sithWorld_pLoading->numCogsLoaded++;
@@ -1138,9 +1234,11 @@ void sithCog_SendMessageToAll(int32_t cmdid, int32_t senderType, int32_t senderI
        reaches zero cogs, or it reaches them but none has a startup
        handler that equips weapons. */
     if (cmdid == 3 /* SITH_MESSAGE_STARTUP */) {
-        XDBGF("MsgToAll STARTUP: staticCogs=%u worldCogs=%u\n",
-              sithWorld_pStatic ? (unsigned)sithWorld_pStatic->numCogsLoaded : 0,
-              sithWorld_pCurrentWorld ? (unsigned)sithWorld_pCurrentWorld->numCogsLoaded : 0);
+        xbox_debug_Printf("MotSMode: MsgToAll STARTUP staticCogs=%u worldCogs=%u localPlayer=%p classCog=%p\n",
+                          sithWorld_pStatic ? (unsigned)sithWorld_pStatic->numCogsLoaded : 0,
+                          sithWorld_pCurrentWorld ? (unsigned)sithWorld_pCurrentWorld->numCogsLoaded : 0,
+                          (void*)sithPlayer_pLocalPlayerThing,
+                          sithPlayer_pLocalPlayerThing ? (void*)sithPlayer_pLocalPlayerThing->class_cog : NULL);
     }
 #endif
 
@@ -1213,6 +1311,24 @@ void sithCog_SendMessage(sithCog *cog, int32_t msgid, int32_t senderType, int32_
         }
         return;
     }
+
+#ifdef TARGET_XBOX
+    if (msgid == SITH_MESSAGE_STARTUP || msgid == SITH_MESSAGE_CREATED)
+    {
+        int isPlayerClassCog = (sithPlayer_pLocalPlayerThing && cog == sithPlayer_pLocalPlayerThing->class_cog);
+        if (isPlayerClassCog)
+        {
+            xbox_debug_Printf("MotSMode: CogMsg direct msg=%d cog=%p name=%s script=%s flags=0x%X self=%d trig=%u isPlayerClass=1\n",
+                              msgid,
+                              (void*)cog,
+                              cog->cogscript_fpath,
+                              cog->cogscript ? cog->cogscript->cog_fpath : "",
+                              (unsigned)cog->flags,
+                              cog->selfCog,
+                              (unsigned)v10);
+        }
+    }
+#endif
 
     if ( (cog->flags & SITH_COG_PAUSED) != 0 )
     {
@@ -1347,9 +1463,14 @@ cog_flex_t sithCog_SendMessageEx(sithCog *cog, int32_t message, int32_t senderTy
        the level (<200 typically) instead of N-per-frame. */
     if ((message == 3 /* STARTUP */ || message == 1 /* CREATED */) && trigIdx < trigIdxMax) {
         static int _stc = 0;
-        if (_stc < 32) {
-            XDBGF("CogMsg[match]: msg=%d cog=%p numTrig=%u\n",
-                  message, (void*)cog, (unsigned)trigIdxMax);
+        int isPlayerClassCog = (sithPlayer_pLocalPlayerThing && cog == sithPlayer_pLocalPlayerThing->class_cog);
+        if (_stc < 96 || isPlayerClassCog) {
+            xbox_debug_Printf("MotSMode: CogMsg match msg=%d cog=%p name=%s script=%s flags=0x%X self=%d numTrig=%u trig=%u isPlayerClass=%d\n",
+                              message, (void*)cog,
+                              cog->cogscript_fpath,
+                              cog->cogscript ? cog->cogscript->cog_fpath : "",
+                              (unsigned)cog->flags, cog->selfCog,
+                              (unsigned)trigIdxMax, (unsigned)trigIdx, isPlayerClassCog);
             _stc++;
         }
     }

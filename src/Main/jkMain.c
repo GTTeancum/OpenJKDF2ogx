@@ -75,6 +75,64 @@ extern "C"
 #endif
 void std3D_XboxReleaseMenuTextures(void);
 
+static int jkMain_xboxSmokeEscapeLoaded = 0;
+static int jkMain_xboxSmokeEscapeArmed = 0;
+static int jkMain_xboxSmokeEscapeFired = 0;
+static unsigned int jkMain_xboxSmokeEscapeDelayMs = 0;
+static unsigned int jkMain_xboxSmokeEscapeReadyMs = 0;
+
+static void jkMain_XboxSmokeEscapeLoad(void)
+{
+    FILE *f;
+    char buf[32];
+    size_t len;
+    int seconds;
+
+    if (jkMain_xboxSmokeEscapeLoaded)
+        return;
+    jkMain_xboxSmokeEscapeLoaded = 1;
+
+    f = fopen("D:\\xbox_smoke_escape_after_seconds.txt", "rb");
+    if (!f)
+        return;
+
+    len = fread(buf, 1, sizeof(buf) - 1, f);
+    fclose(f);
+    buf[len] = 0;
+
+    seconds = _atoi(buf);
+    if (seconds < 1)
+        seconds = 1;
+    jkMain_xboxSmokeEscapeDelayMs = (unsigned int)seconds * 1000U;
+    jkMain_xboxSmokeEscapeArmed = 1;
+    XPERF("Smoke: escape menu auto-open armed seconds=%d\n", seconds);
+}
+
+static void jkMain_XboxSmokeEscapeOnGameplayReady(void)
+{
+    jkMain_XboxSmokeEscapeLoad();
+    if (!jkMain_xboxSmokeEscapeArmed || jkMain_xboxSmokeEscapeFired)
+        return;
+    jkMain_xboxSmokeEscapeReadyMs = stdPlatform_GetTimeMsec();
+}
+
+static void jkMain_XboxSmokeEscapeTick(void)
+{
+    if (!jkMain_xboxSmokeEscapeArmed || jkMain_xboxSmokeEscapeFired)
+        return;
+    if (!jkMain_xboxSmokeEscapeReadyMs)
+        return;
+    if (stdPlatform_GetTimeMsec() - jkMain_xboxSmokeEscapeReadyMs < jkMain_xboxSmokeEscapeDelayMs)
+        return;
+
+    jkMain_xboxSmokeEscapeFired = 1;
+    XPERF("Smoke: escape menu auto-open fired\n");
+    if (jkGuiRend_thing_five)
+        jkGuiRend_thing_four = 1;
+    jkSmack_stopTick = 1;
+    jkSmack_nextGuiState = JK_GAMEMODE_ESCAPE;
+}
+
 static void jkMain_XboxLogTransitionResources(const char *phase)
 {
     MEMORYSTATUS memStatus;
@@ -117,7 +175,11 @@ static void jkMain_XboxLogTransitionResources(const char *phase)
           world ? world->numSounds : -1,
           jkMain_aLevelJklFname);
 }
+
 #endif
+
+#define XSL_GAMEPLAY_TRACE(label) do { } while (0)
+#define XSL_GUI_TRACE(label) do { } while (0)
 
 #if defined(TARGET_TWL)
 #define TICKRATE_MS (0) // no cap
@@ -197,6 +259,334 @@ static int jkMain_CreateLocalMultiplayerHost(const char *pGobPath, const char *p
           sithNet_isServer,
           jkPlayer_maxPlayers);
     return 1;
+}
+
+#define XBOX_ALWAYS_SOAK_MAX_PHASES 32
+
+typedef enum jkMain_XboxAlwaysSoakPhaseType
+{
+    XBOX_ALWAYS_SOAK_PHASE_NONE = 0,
+    XBOX_ALWAYS_SOAK_PHASE_MENU = 1,
+    XBOX_ALWAYS_SOAK_PHASE_LEVEL = 2
+} jkMain_XboxAlwaysSoakPhaseType;
+
+typedef struct jkMain_XboxAlwaysSoakPhase
+{
+    jkMain_XboxAlwaysSoakPhaseType type;
+    unsigned int seconds;
+    int localPlayers;
+    char episode[64];
+    char level[128];
+} jkMain_XboxAlwaysSoakPhase;
+
+static jkMain_XboxAlwaysSoakPhase jkMain_xboxAlwaysSoakPhases[XBOX_ALWAYS_SOAK_MAX_PHASES];
+static int jkMain_xboxAlwaysSoakLoaded = 0;
+static int jkMain_xboxAlwaysSoakEnabled = 0;
+static int jkMain_xboxAlwaysSoakStarted = 0;
+static int jkMain_xboxAlwaysSoakPhaseCount = 0;
+static int jkMain_xboxAlwaysSoakCurrent = 0;
+static int jkMain_xboxAlwaysSoakWaitingForGameplay = 0;
+static unsigned int jkMain_xboxAlwaysSoakPhaseStartMs = 0;
+static unsigned int jkMain_xboxAlwaysSoakCycle = 0;
+
+static int jkMain_XboxAlwaysSoakIsActive(void)
+{
+    return jkMain_xboxAlwaysSoakEnabled && jkMain_xboxAlwaysSoakStarted;
+}
+
+static char *jkMain_XboxAlwaysSoakTrim(char *s)
+{
+    char *end;
+
+    while (*s == ' ' || *s == '\t' || *s == '\r' || *s == '\n')
+        s++;
+
+    end = s + strlen(s);
+    while (end > s && (end[-1] == ' ' || end[-1] == '\t' || end[-1] == '\r' || end[-1] == '\n'))
+    {
+        end--;
+        *end = 0;
+    }
+    return s;
+}
+
+static int jkMain_XboxAlwaysSoakAddMenu(unsigned int seconds)
+{
+    jkMain_XboxAlwaysSoakPhase *phase;
+
+    if (jkMain_xboxAlwaysSoakPhaseCount >= XBOX_ALWAYS_SOAK_MAX_PHASES)
+        return 0;
+
+    phase = &jkMain_xboxAlwaysSoakPhases[jkMain_xboxAlwaysSoakPhaseCount++];
+    memset(phase, 0, sizeof(*phase));
+    phase->type = XBOX_ALWAYS_SOAK_PHASE_MENU;
+    phase->seconds = seconds;
+    return 1;
+}
+
+static int jkMain_XboxAlwaysSoakAddLevel(unsigned int seconds, int localPlayers, const char *episode, const char *level)
+{
+    jkMain_XboxAlwaysSoakPhase *phase;
+
+    if (jkMain_xboxAlwaysSoakPhaseCount >= XBOX_ALWAYS_SOAK_MAX_PHASES)
+        return 0;
+    if (!episode || !episode[0] || !level || !level[0])
+        return 0;
+
+    phase = &jkMain_xboxAlwaysSoakPhases[jkMain_xboxAlwaysSoakPhaseCount++];
+    memset(phase, 0, sizeof(*phase));
+    phase->type = XBOX_ALWAYS_SOAK_PHASE_LEVEL;
+    phase->seconds = seconds ? seconds : 60;
+    phase->localPlayers = localPlayers;
+    if (phase->localPlayers < 1)
+        phase->localPlayers = 1;
+    if (phase->localPlayers > XBOX_SPLITSCREEN_MAX_LOCAL_PLAYERS)
+        phase->localPlayers = XBOX_SPLITSCREEN_MAX_LOCAL_PLAYERS;
+    stdString_SafeStrCopy(phase->episode, episode, sizeof(phase->episode));
+    stdString_SafeStrCopy(phase->level, level, sizeof(phase->level));
+    return 1;
+}
+
+static void jkMain_XboxAlwaysSoakLoadConfig(void)
+{
+    FILE *f;
+    char line[256];
+
+    if (jkMain_xboxAlwaysSoakLoaded)
+        return;
+    jkMain_xboxAlwaysSoakLoaded = 1;
+
+    f = fopen("D:\\xbox_soak_always_on.txt", "rb");
+    if (!f)
+        return;
+
+    while (fgets(line, sizeof(line), f))
+    {
+        char *trimmed;
+        char *kind;
+        char *secondsText;
+        char *playersText;
+        char *episode;
+        char *level;
+        char *cursor;
+
+        trimmed = jkMain_XboxAlwaysSoakTrim(line);
+        if (!trimmed[0] || trimmed[0] == '#')
+            continue;
+
+        kind = strtok(trimmed, "|");
+        if (!kind)
+            continue;
+        kind = jkMain_XboxAlwaysSoakTrim(kind);
+
+        if (!_stricmp(kind, "MENU"))
+        {
+            secondsText = strtok(NULL, "|");
+            jkMain_XboxAlwaysSoakAddMenu(secondsText ? (unsigned int)_atoi(jkMain_XboxAlwaysSoakTrim(secondsText)) : 0);
+            continue;
+        }
+
+        if (_stricmp(kind, "LEVEL"))
+            continue;
+
+        secondsText = strtok(NULL, "|");
+        playersText = strtok(NULL, "|");
+        episode = strtok(NULL, "|");
+        cursor = strtok(NULL, "");
+        level = cursor;
+
+        if (!secondsText || !playersText || !episode || !level)
+            continue;
+
+        jkMain_XboxAlwaysSoakAddLevel((unsigned int)_atoi(jkMain_XboxAlwaysSoakTrim(secondsText)),
+                                      _atoi(jkMain_XboxAlwaysSoakTrim(playersText)),
+                                      jkMain_XboxAlwaysSoakTrim(episode),
+                                      jkMain_XboxAlwaysSoakTrim(level));
+    }
+
+    fclose(f);
+
+    if (jkMain_xboxAlwaysSoakPhaseCount > 0)
+    {
+        jkMain_xboxAlwaysSoakEnabled = 1;
+        XPERF("Smoke: AlwaysSoak config loaded phases=%d\n", jkMain_xboxAlwaysSoakPhaseCount);
+    }
+}
+
+static int jkMain_XboxAlwaysSoakStartCurrentLevel(void)
+{
+    int i;
+    jkMain_XboxAlwaysSoakPhase *phase;
+    int result;
+
+    if (!jkMain_xboxAlwaysSoakEnabled || jkMain_xboxAlwaysSoakCurrent < 0 || jkMain_xboxAlwaysSoakCurrent >= jkMain_xboxAlwaysSoakPhaseCount)
+        return 0;
+
+    phase = &jkMain_xboxAlwaysSoakPhases[jkMain_xboxAlwaysSoakCurrent];
+    if (phase->type != XBOX_ALWAYS_SOAK_PHASE_LEVEL)
+        return 0;
+
+    if (phase->localPlayers > 1)
+    {
+        xboxSplitScreen_Enable();
+        xboxSplitScreen_SetRequestedLocalPlayerCount(phase->localPlayers);
+        for (i = 0; i < phase->localPlayers; i++)
+        {
+            xboxSplitScreen_SetPendingController(i, i);
+            xboxSplitScreen_SetPendingMpc(i, L"Xbox");
+        }
+    }
+    else
+    {
+        xboxSplitScreen_Disable();
+    }
+
+    XPERF("Smoke: AlwaysSoak load cycle=%u phase=%d/%d seconds=%u players=%d episode='%s' level='%s'\n",
+          jkMain_xboxAlwaysSoakCycle,
+          jkMain_xboxAlwaysSoakCurrent + 1,
+          jkMain_xboxAlwaysSoakPhaseCount,
+          phase->seconds,
+          phase->localPlayers,
+          phase->episode,
+          phase->level);
+    jkMain_XboxLogTransitionResources("always-soak-before-load");
+    jkMain_xboxAlwaysSoakWaitingForGameplay = 1;
+    result = jkMain_LoadLevelSingleplayer(phase->episode, phase->level);
+    if (!result)
+    {
+        XPERF("Smoke: AlwaysSoak load failed phase=%d episode='%s' level='%s'\n",
+              jkMain_xboxAlwaysSoakCurrent + 1,
+              phase->episode,
+              phase->level);
+        jkMain_xboxAlwaysSoakEnabled = 0;
+        jkMain_xboxAlwaysSoakWaitingForGameplay = 0;
+        xboxSplitScreen_Disable();
+    }
+    return result;
+}
+
+int jkMain_XboxAlwaysSoakStartFromMenu(void)
+{
+    jkMain_XboxAlwaysSoakLoadConfig();
+    if (!jkMain_xboxAlwaysSoakEnabled)
+        return 0;
+
+    if (!jkMain_xboxAlwaysSoakStarted)
+    {
+        jkMain_xboxAlwaysSoakStarted = 1;
+        jkMain_xboxAlwaysSoakCurrent = 0;
+        jkMain_xboxAlwaysSoakCycle = 0;
+        XPERF("Smoke: AlwaysSoak start phases=%d\n", jkMain_xboxAlwaysSoakPhaseCount);
+    }
+
+    while (jkMain_xboxAlwaysSoakCurrent >= 0 && jkMain_xboxAlwaysSoakCurrent < jkMain_xboxAlwaysSoakPhaseCount)
+    {
+        jkMain_XboxAlwaysSoakPhase *phase;
+        phase = &jkMain_xboxAlwaysSoakPhases[jkMain_xboxAlwaysSoakCurrent];
+        if (phase->type == XBOX_ALWAYS_SOAK_PHASE_MENU)
+        {
+            XPERF("Smoke: AlwaysSoak menu-touch cycle=%u phase=%d/%d seconds=%u\n",
+                  jkMain_xboxAlwaysSoakCycle,
+                  jkMain_xboxAlwaysSoakCurrent + 1,
+                  jkMain_xboxAlwaysSoakPhaseCount,
+                  phase->seconds);
+            jkMain_XboxLogTransitionResources("always-soak-menu-touch");
+            jkMain_xboxAlwaysSoakCurrent++;
+            if (jkMain_xboxAlwaysSoakCurrent >= jkMain_xboxAlwaysSoakPhaseCount)
+            {
+                jkMain_xboxAlwaysSoakCurrent = 0;
+                jkMain_xboxAlwaysSoakCycle++;
+            }
+            continue;
+        }
+
+        return jkMain_XboxAlwaysSoakStartCurrentLevel();
+    }
+
+    return 0;
+}
+
+void jkMain_XboxAlwaysSoakOnGameplayReady(void)
+{
+    jkMain_XboxAlwaysSoakPhase *phase;
+
+    if (!jkMain_xboxAlwaysSoakEnabled || !jkMain_xboxAlwaysSoakWaitingForGameplay)
+        return;
+
+    if (jkMain_xboxAlwaysSoakCurrent < 0 || jkMain_xboxAlwaysSoakCurrent >= jkMain_xboxAlwaysSoakPhaseCount)
+        return;
+
+    phase = &jkMain_xboxAlwaysSoakPhases[jkMain_xboxAlwaysSoakCurrent];
+    jkMain_xboxAlwaysSoakWaitingForGameplay = 0;
+    jkMain_xboxAlwaysSoakPhaseStartMs = stdPlatform_GetTimeMsec();
+    XPERF("Smoke: AlwaysSoak gameplay-ready cycle=%u phase=%d/%d seconds=%u players=%d episode='%s' level='%s'\n",
+          jkMain_xboxAlwaysSoakCycle,
+          jkMain_xboxAlwaysSoakCurrent + 1,
+          jkMain_xboxAlwaysSoakPhaseCount,
+          phase->seconds,
+          phase->localPlayers,
+          phase->episode,
+          phase->level);
+    jkMain_XboxLogTransitionResources("always-soak-gameplay-ready");
+}
+
+void jkMain_XboxAlwaysSoakTickGameplay(void)
+{
+    jkMain_XboxAlwaysSoakPhase *phase;
+    unsigned int nowMs;
+    unsigned int elapsedMs;
+
+    if (!jkMain_xboxAlwaysSoakEnabled || jkMain_xboxAlwaysSoakWaitingForGameplay)
+        return;
+    if (jkMain_xboxAlwaysSoakCurrent < 0 || jkMain_xboxAlwaysSoakCurrent >= jkMain_xboxAlwaysSoakPhaseCount)
+        return;
+
+    phase = &jkMain_xboxAlwaysSoakPhases[jkMain_xboxAlwaysSoakCurrent];
+    if (phase->type != XBOX_ALWAYS_SOAK_PHASE_LEVEL)
+        return;
+
+    nowMs = stdPlatform_GetTimeMsec();
+    elapsedMs = nowMs - jkMain_xboxAlwaysSoakPhaseStartMs;
+    if (elapsedMs < phase->seconds * 1000U)
+        return;
+
+    XPERF("Smoke: AlwaysSoak phase-complete cycle=%u phase=%d/%d elapsedMs=%u episode='%s' level='%s'\n",
+          jkMain_xboxAlwaysSoakCycle,
+          jkMain_xboxAlwaysSoakCurrent + 1,
+          jkMain_xboxAlwaysSoakPhaseCount,
+          elapsedMs,
+          phase->episode,
+          phase->level);
+    jkMain_XboxLogTransitionResources("always-soak-phase-complete");
+
+    XPERF("Smoke: AlwaysSoak close-current-gameplay before next phase\n");
+    jkMain_GameplayLeave(JK_GAMEMODE_GAMEPLAY, JK_GAMEMODE_MAIN);
+    jkMain_XboxLogTransitionResources("always-soak-after-close-current");
+
+    jkMain_xboxAlwaysSoakCurrent++;
+    if (jkMain_xboxAlwaysSoakCurrent >= jkMain_xboxAlwaysSoakPhaseCount)
+    {
+        jkMain_xboxAlwaysSoakCurrent = 0;
+        jkMain_xboxAlwaysSoakCycle++;
+        XPERF("Smoke: AlwaysSoak cycle-wrap cycle=%u\n", jkMain_xboxAlwaysSoakCycle);
+    }
+
+    phase = &jkMain_xboxAlwaysSoakPhases[jkMain_xboxAlwaysSoakCurrent];
+    if (phase->type == XBOX_ALWAYS_SOAK_PHASE_MENU)
+    {
+        XPERF("Smoke: AlwaysSoak return-menu cycle=%u phase=%d/%d\n",
+              jkMain_xboxAlwaysSoakCycle,
+              jkMain_xboxAlwaysSoakCurrent + 1,
+              jkMain_xboxAlwaysSoakPhaseCount);
+        jkMain_XboxLogTransitionResources("always-soak-return-menu");
+        if (jkGuiRend_thing_five)
+            jkGuiRend_thing_four = 1;
+        jkSmack_stopTick = 1;
+        jkSmack_nextGuiState = JK_GAMEMODE_MAIN;
+        return;
+    }
+
+    jkMain_XboxAlwaysSoakStartCurrentLevel();
 }
 #endif
 
@@ -353,8 +743,10 @@ void jkMain_GuiAdvance()
     void (__cdecl *v8)(int); // ecx
 
     { static int top = 0; if (top < 3) { JKTRACE("GuiAdv: enter\n"); top++; } }
+    XSL_GUI_TRACE("enter");
     if ( !g_app_suspended )
     {
+        XSL_GUI_TRACE("unsuspended path");
         if ( thing_nine )
             stdControl_ToggleCursor(0);
         if ( thing_eight )
@@ -366,7 +758,9 @@ void jkMain_GuiAdvance()
                 if (v1 > jkMain_lastTickMs + TICKRATE_MS)
                 {
                     jkMain_lastTickMs = v1;
+                    XSL_GUI_TRACE("unsuspended before sithMain_Tick");
                     if (!sithMain_Tick()) return;
+                    XSL_GUI_TRACE("unsuspended after sithMain_Tick");
                 }
                 
                 if ( g_sithMode == 5 )
@@ -391,14 +785,18 @@ void jkMain_GuiAdvance()
                         jkPlayer_idkEndLevel(); // MOTS added
                     jkMain_EndLevel(1);
                 }
+                XSL_GUI_TRACE("unsuspended before jkPlayer_nullsub_1");
                 jkPlayer_nullsub_1(&playerThings[playerThingIdx]);
+                XSL_GUI_TRACE("unsuspended after jkPlayer_nullsub_1");
                 jkGame_dword_552B5C += stdPlatform_GetTimeMsec() - v1;
                 v3 = stdPlatform_GetTimeMsec();
                 if ( g_app_suspended && jkSmack_currentGuiState != 6 ) {
 #if defined(SDL2_RENDER) || defined(TARGET_TWL)
                     if (jkMain_lastTickMs == v1)
 #endif
+                    XSL_GUI_TRACE("unsuspended before jkGame_Update");
                     jkGame_Update();
+                    XSL_GUI_TRACE("unsuspended after jkGame_Update");
                 }
                 jkGame_updateMsecsTotal += stdPlatform_GetTimeMsec() - v3;
             }
@@ -408,8 +806,10 @@ void jkMain_GuiAdvance()
     }
 
     { static int dbg = 0; if (dbg < 5) { JKTRACE("GuiAdv: in suspended path\n"); dbg++; } }
+    XSL_GUI_TRACE("suspended path");
     if ( !thing_nine )
     {
+        XSL_GUI_TRACE("before one-time input setup");
         switch ( jkSmack_currentGuiState )
         {
             case JK_GAMEMODE_VIDEO:
@@ -420,22 +820,30 @@ void jkMain_GuiAdvance()
                 jkCutscene_PauseShow(0);
                 break;
             case JK_GAMEMODE_GAMEPLAY:
+                XSL_GUI_TRACE("before gameplay cursor on");
                 stdControl_ToggleCursor(1);
+                XSL_GUI_TRACE("after gameplay cursor before palettes");
                 jkGame_ddraw_idk_palettes();
+                XSL_GUI_TRACE("after gameplay palettes");
                 break;
             default:
                 break;
         }
+        XSL_GUI_TRACE("before stdControl_Flush");
         stdControl_Flush();
+        XSL_GUI_TRACE("after stdControl_Flush");
         thing_nine = 1;
+        XSL_GUI_TRACE("after set thing_nine");
     }
     { static int d3 = 0; if (d3 < 3) { if (jkSmack_stopTick) JKTRACE("GuiAdv: stopTick=1\n"); else JKTRACE("GuiAdv: stopTick=0!\n"); d3++; } }
+    XSL_GUI_TRACE("before transition check");
     if ( jkSmack_stopTick && !jkGuiRend_thing_five )
     {
         JKTRACE("GuiAdv: TRANSITION\n");
         jkGuiRend_thing_four = 0;
         v4 = jkSmack_currentGuiState;
         v5 = jkMain_aGuiStateFuncs[jkSmack_currentGuiState].leaveFunc;
+        XSL_GUI_TRACE("before leave");
 #ifdef TARGET_XBOX
         jkMain_XboxLogTransitionResources("gui-transition-before-leave");
 #endif
@@ -453,6 +861,7 @@ void jkMain_GuiAdvance()
 #endif
         if ( v5 )
             v5(jkSmack_currentGuiState, jkSmack_nextGuiState);
+        XSL_GUI_TRACE("after leave");
 #ifdef TARGET_XBOX
         jkMain_XboxLogTransitionResources("gui-transition-after-leave");
 #endif
@@ -461,6 +870,7 @@ void jkMain_GuiAdvance()
         jkSmack_stopTick = 0;
         jkSmack_currentGuiState = jkSmack_nextGuiState;
         v7 = jkMain_aGuiStateFuncs[jkSmack_nextGuiState].showFunc;
+        XSL_GUI_TRACE("before show");
 #ifdef TARGET_XBOX
         if (jkSmack_nextGuiState == JK_GAMEMODE_VIDEO ||
             jkSmack_nextGuiState == JK_GAMEMODE_VIDEO2 ||
@@ -477,6 +887,7 @@ void jkMain_GuiAdvance()
             goto LABEL_35;
         //jk_printf("show %u\n", jkSmack_currentGuiState);
         v7(jkSmack_nextGuiState, v4);
+        XSL_GUI_TRACE("after show");
 #ifdef TARGET_XBOX
         jkMain_XboxLogTransitionResources("gui-transition-after-show");
 #endif
@@ -484,9 +895,11 @@ void jkMain_GuiAdvance()
     }
 LABEL_35:
     { static int lbl=0; if(lbl<3){JKTRACEF("GuiAdv: LABEL_35 stopTick=%d state=%d\n",jkSmack_stopTick,jkSmack_currentGuiState);lbl++;} }
+    XSL_GUI_TRACE("label 35");
     if ( !jkSmack_stopTick )
     {
         v8 = jkMain_aGuiStateFuncs[jkSmack_currentGuiState].tickFunc;
+        XSL_GUI_TRACE("before tick resolve");
 #ifdef TARGET_XBOX
         if (jkSmack_currentGuiState == JK_GAMEMODE_VIDEO ||
             jkSmack_currentGuiState == JK_GAMEMODE_VIDEO2 ||
@@ -509,11 +922,14 @@ LABEL_35:
         if ( v8 )
         {
             { static int tc=0; if(tc<3){JKTRACE("GuiAdv: calling tickFunc\n");tc++;} }
+            XSL_GUI_TRACE("before tickFunc");
             v8(jkSmack_currentGuiState);
+            XSL_GUI_TRACE("after tickFunc");
             { static int td=0; if(td<3){JKTRACE("GuiAdv: tickFunc returned\n");td++;} }
         }
     }
     { static int le=0; if(le<3){JKTRACE("GuiAdv: returning\n");le++;} }
+    XSL_GUI_TRACE("return");
 }
 
 void jkMain_EscapeMenuShow(int a1, int a2)
@@ -643,7 +1059,17 @@ void jkMain_EscapeMenuLeave(int a2, int a3)
                 sithMulti_LobbyMessage();
             }
             thing_six = 1;
-            v3 = jkGuiMultiTally_Show(sithNet_isMulti);
+#ifdef TARGET_XBOX
+            if (jkMain_XboxAlwaysSoakIsActive())
+            {
+                XPERF("Smoke: AlwaysSoak skip multiplayer tally during escape leave\n");
+                v3 = 1;
+            }
+            else
+#endif
+            {
+                v3 = jkGuiMultiTally_Show(sithNet_isMulti);
+            }
             thing_six = 0;
             if ( v3 == -1 )
             {
@@ -1031,6 +1457,8 @@ LABEL_28:
 #ifdef TARGET_XBOX
         XDBG("MPLoadTrace: GameplayShow done\n");
         jkMain_XboxLogTransitionResources("gameplay-show-ready");
+        jkMain_XboxSmokeEscapeOnGameplayReady();
+        jkMain_XboxAlwaysSoakOnGameplayReady();
 #endif
     }
     else
@@ -1067,32 +1495,48 @@ void jkMain_GameplayTick(int a2)
 #endif
 
     { static int ge=0; if(ge<3){JKTRACEF("GameplayTick: enter six=%d eight=%d\n",thing_six,thing_eight);ge++;} }
+    XSL_GAMEPLAY_TRACE("enter");
 
     if (thing_six) {
+        XSL_GAMEPLAY_TRACE("return thing_six");
+#ifdef TARGET_XBOX
+        jkMain_XboxAlwaysSoakTickGameplay();
+#endif
         return;
     }
 
     if (!thing_eight) {
+        XSL_GAMEPLAY_TRACE("return not thing_eight");
+#ifdef TARGET_XBOX
+        jkMain_XboxAlwaysSoakTickGameplay();
+#endif
         return;
     }
 
     v1 = stdPlatform_GetTimeMsec();
     { static int gt=0; if(gt<3){JKTRACEF("GameplayTick: tick v1=%u last=%u\n",v1,jkMain_lastTickMs);gt++;} }
+    XSL_GAMEPLAY_TRACE("after time");
 
     if (v1 > jkMain_lastTickMs + TICKRATE_MS)
     {
         jkMain_lastTickMs = v1;
         { static int gs=0; if(gs<3){JKTRACE("GameplayTick: calling sithMain_Tick\n");gs++;} }
+        XSL_GAMEPLAY_TRACE("before sithMain_Tick");
 #if defined(TARGET_XBOX) && defined(XBOX_PERF_SMOKE)
         { unsigned int perfT0 = stdPlatform_GetTimeMsec();
 #endif
-        if (sithMain_Tick()) { JKTRACE("GameplayTick: sithMain_Tick nonzero, returning\n"); return; }
+        if (sithMain_Tick()) { JKTRACE("GameplayTick: sithMain_Tick nonzero, returning\n"); XSL_GAMEPLAY_TRACE("sithMain_Tick returned nonzero"); 
+#ifdef TARGET_XBOX
+            jkMain_XboxAlwaysSoakTickGameplay();
+#endif
+            return; }
 #if defined(TARGET_XBOX) && defined(XBOX_PERF_SMOKE)
           s_perfSithTickMs += stdPlatform_GetTimeMsec() - perfT0;
           s_perfSithTickCalls++;
         }
 #endif
         { static int ga=0; if(ga<3){JKTRACE("GameplayTick: after sithMain_Tick\n");ga++;} }
+        XSL_GAMEPLAY_TRACE("after sithMain_Tick");
     }
     
     if ( g_sithMode == 5 )
@@ -1118,10 +1562,12 @@ void jkMain_GameplayTick(int a2)
             jkMain_EndLevel(1);
         }
         { static int gn=0; if(gn<3){JKTRACE("GameplayTick: nullsub\n");gn++;} }
+        XSL_GAMEPLAY_TRACE("before jkPlayer_nullsub_1");
 #if defined(TARGET_XBOX) && defined(XBOX_PERF_SMOKE)
         { unsigned int perfPlayerStart = stdPlatform_GetTimeMsec();
 #endif
         jkPlayer_nullsub_1(&playerThings[playerThingIdx]);
+        XSL_GAMEPLAY_TRACE("after jkPlayer_nullsub_1");
         jkGame_dword_552B5C += stdPlatform_GetTimeMsec() - v1;
 #if defined(TARGET_XBOX) && defined(XBOX_PERF_SMOKE)
           s_perfPlayerMs += stdPlatform_GetTimeMsec() - perfPlayerStart;
@@ -1129,16 +1575,19 @@ void jkMain_GameplayTick(int a2)
 #endif
         v3 = stdPlatform_GetTimeMsec();
         { static int gg=0; if(gg<3){JKTRACEF("GameplayTick: jkGame_Update check susp=%d a2=%d\n",g_app_suspended,a2);gg++;} }
+        XSL_GAMEPLAY_TRACE("before update check");
         if ( g_app_suspended && a2 != 6 ) {
 #ifdef SDL2_RENDER
             if (jkMain_lastTickMs == v1)
 #endif
             {
                 { static int gu=0; if(gu<3){JKTRACE("GameplayTick: calling jkGame_Update\n");gu++;} }
+                XSL_GAMEPLAY_TRACE("before jkGame_Update");
 #if defined(TARGET_XBOX) && defined(XBOX_PERF_SMOKE)
                 { unsigned int perfUpdateStart = stdPlatform_GetTimeMsec();
 #endif
                 jkGame_Update();
+                XSL_GAMEPLAY_TRACE("after jkGame_Update");
 #if defined(TARGET_XBOX) && defined(XBOX_PERF_SMOKE)
                   s_perfGameUpdateMs += stdPlatform_GetTimeMsec() - perfUpdateStart;
                   s_perfGameUpdateCalls++;
@@ -1149,7 +1598,12 @@ void jkMain_GameplayTick(int a2)
         }
         jkGame_updateMsecsTotal += stdPlatform_GetTimeMsec() - v3;
         { static int gr=0; if(gr<3){JKTRACE("GameplayTick: returning\n");gr++;} }
+        XSL_GAMEPLAY_TRACE("return normal");
     }
+#ifdef TARGET_XBOX
+    jkMain_XboxSmokeEscapeTick();
+    jkMain_XboxAlwaysSoakTickGameplay();
+#endif
 #if defined(TARGET_XBOX) && defined(XBOX_PERF_SMOKE)
     s_perfFrames++;
     s_perfOtherMs += stdPlatform_GetTimeMsec() - perfFuncStart;
@@ -1227,7 +1681,17 @@ void jkMain_GameplayLeave(int a2, int a3)
             sithMulti_LobbyMessage();
         }
         thing_six = 1;
-        v3 = jkGuiMultiTally_Show(sithNet_isMulti);
+#ifdef TARGET_XBOX
+        if (jkMain_XboxAlwaysSoakIsActive())
+        {
+            XPERF("Smoke: AlwaysSoak skip multiplayer tally during gameplay leave\n");
+            v3 = 1;
+        }
+        else
+#endif
+        {
+            v3 = jkGuiMultiTally_Show(sithNet_isMulti);
+        }
         thing_six = 0;
         if ( v3 == -1 )
         {
@@ -1320,6 +1784,7 @@ void jkMain_UnkShow(int a1, int a2)
 
 void jkMain_UnkTick(int a1)
 {
+    jkEpisode_SetMotsCompatForEpisodeName(jkMain_strIdk);
     jkRes_LoadGob(jkMain_strIdk);
     if ( jkEpisode_mLoad.paEntries )
     {
@@ -1371,6 +1836,7 @@ int jkMain_sub_403470(char *a1)
 
 int jkMain_LoadFile(char *a1)
 {
+    jkEpisode_SetMotsCompatForEpisodeName(a1);
     if (jkRes_LoadCD(1))
     {
         sithInventory_549FA0 = 1;
@@ -1413,6 +1879,7 @@ int jkMain_loadFile2(char *pGobPath, char *pEpisodeName)
 #ifdef TARGET_XBOX
     XDBG("MPLoadTrace: jkMain_loadFile2 before jkRes_LoadGob\n");
 #endif
+    jkEpisode_SetMotsCompatForEpisodeName(pGobPath);
     jkRes_LoadGob(pGobPath);
 #ifdef TARGET_XBOX
     XDBG("MPLoadTrace: jkMain_loadFile2 after jkRes_LoadGob\n");
@@ -1492,6 +1959,7 @@ int jkMain_LoadLevelSingleplayer(char *pGobPath, char *pEpisodeName)
     jkMain_aLevelJklFname[127] = 0;
     sithInventory_549FA0 = 1;
     jkSmack_gameMode = 0;
+    jkEpisode_SetMotsCompatForEpisodeName(pGobPath);
     jkRes_LoadGob(pGobPath);
     if ( jkEpisode_mLoad.paEntries )
     {

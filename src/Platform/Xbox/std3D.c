@@ -3183,17 +3183,23 @@ void std3D_DrawMenuVBuffer8(stdVBuffer *vbuf, const rdColor24_local *pal)
 
     glEnable(GL_TEXTURE_2D);
     g_pfnBindTexture(GL_TEXTURE_2D, texId);
-    glColor4f(1.0f, 1.0f, 1.0f, 1.0f);
+    glTexEnvf(GL_TEXTURE_ENV, GL_TEXTURE_ENV_MODE, (GLfloat)GL_REPLACE);
     u2 = (float)w / (float)padW;
     v2 = (float)h / (float)padH;
+
     glBegin(GL_TRIANGLES);
-    glTexCoord2f(0.0f, 0.0f); glVertex3f(0.0f,   0.0f,   0.0f);
-    glTexCoord2f(u2,   0.0f); glVertex3f(640.0f, 0.0f,   0.0f);
-    glTexCoord2f(u2,   v2);   glVertex3f(640.0f, 480.0f, 0.0f);
-    glTexCoord2f(0.0f, 0.0f); glVertex3f(0.0f,   0.0f,   0.0f);
-    glTexCoord2f(u2,   v2);   glVertex3f(640.0f, 480.0f, 0.0f);
-    glTexCoord2f(0.0f, v2);   glVertex3f(0.0f,   480.0f, 0.0f);
+    glColor4f(1.0f, 1.0f, 1.0f, 1.0f); glTexCoord2f(0.0f, 0.0f); glVertex3f(0.0f,   0.0f,   0.0f);
+    glColor4f(1.0f, 1.0f, 1.0f, 1.0f); glTexCoord2f(u2,   0.0f); glVertex3f(640.0f, 0.0f,   0.0f);
+    glColor4f(1.0f, 1.0f, 1.0f, 1.0f); glTexCoord2f(u2,   v2);   glVertex3f(640.0f, 480.0f, 0.0f);
     glEnd();
+
+    glBegin(GL_TRIANGLES);
+    glColor4f(1.0f, 1.0f, 1.0f, 1.0f); glTexCoord2f(0.0f, 0.0f); glVertex3f(0.0f,   0.0f,   0.0f);
+    glColor4f(1.0f, 1.0f, 1.0f, 1.0f); glTexCoord2f(u2,   v2);   glVertex3f(640.0f, 480.0f, 0.0f);
+    glColor4f(1.0f, 1.0f, 1.0f, 1.0f); glTexCoord2f(0.0f, v2);   glVertex3f(0.0f,   480.0f, 0.0f);
+    glEnd();
+
+    glTexEnvf(GL_TEXTURE_ENV, GL_TEXTURE_ENV_MODE, (GLfloat)GL_MODULATE);
     glDisable(GL_TEXTURE_2D);
 }
 

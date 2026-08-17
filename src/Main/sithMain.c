@@ -4,6 +4,8 @@
 #include "xbox_debug.h"
 #include "Platform/Xbox/xbox_splitscreen.h"
 #endif
+
+#define XSL_TRACE_UPDATE(label) do { } while (0)
 #include "Main/jkGame.h"
 #include "Main/Main.h"
 #include "World/sithWorld.h"
@@ -20,6 +22,7 @@
 #include "AI/sithAIClass.h"
 #include "AI/sithAIAwareness.h"
 #include "Gameplay/sithEvent.h"
+#include "Gameplay/sithInventory.h"
 #include "Engine/sithRender.h"
 #include "Engine/sithCamera.h"
 #include "World/sithSprite.h"
@@ -51,6 +54,134 @@
 
 // Added: FoV fixes
 flex_t sithMain_lastAspect = 1.0;
+
+#ifdef TARGET_XBOX
+static void sithMain_XboxLogMotsInventoryBin(sithThing *player, int binIdx)
+{
+    sithPlayerInfo *playerInfo;
+    sithItemDescriptor *desc;
+
+    if (!Main_bMotsCompat || !player || binIdx < 0 || binIdx >= SITHBIN_NUMBINS)
+        return;
+
+    playerInfo = player->actorParams.playerinfo;
+    desc = &sithInventory_aDescriptors[binIdx];
+    if (!playerInfo || playerInfo == (sithPlayerInfo*)-136)
+    {
+        xbox_debug_Printf("MotSMode: AutoSave bin=%d playerInfo=%p desc=%.7s flags=0x%X\n",
+                          binIdx,
+                          (void*)playerInfo,
+                          desc->fpath,
+                          desc->flags);
+        return;
+    }
+
+    xbox_debug_Printf("MotSMode: AutoSave bin=%d name=%.7s flags=0x%X amt=%.1f state=0x%X avail=%d carries=%d cog=%p\n",
+                      binIdx,
+                      desc->fpath,
+                      desc->flags,
+                      (double)sithInventory_GetBinAmount(player, binIdx),
+                      playerInfo->iteminfo[binIdx].state,
+                      sithInventory_GetAvailable(player, binIdx),
+                      sithInventory_GetCarries(player, binIdx),
+                      (void*)desc->cog);
+}
+
+static void sithMain_XboxLogMotsAutoSaveState(const char *phase)
+{
+    sithThing *player;
+    sithPlayerInfo *playerInfo;
+
+    if (!Main_bMotsCompat)
+        return;
+
+    player = sithPlayer_pLocalPlayerThing;
+    playerInfo = player ? player->actorParams.playerinfo : NULL;
+    xbox_debug_Printf("MotSMode: AutoSave %s player=%p playerIdx=%d type=%u classCog=%p captureCog=%p playerInfo=%p curW=%d curItem=%d curPower=%d staticCogs=%u worldCogs=%u things=%u\n",
+                      phase,
+                      (void*)player,
+                      player ? (int)player->thingIdx : -1,
+                      player ? (unsigned)player->type : 0,
+                      player ? (void*)player->class_cog : 0,
+                      player ? (void*)player->capture_cog : 0,
+                      (void*)playerInfo,
+                      playerInfo ? playerInfo->curWeapon : -1,
+                      playerInfo ? playerInfo->curItem : -1,
+                      playerInfo ? playerInfo->curPower : -1,
+                      sithWorld_pStatic ? (unsigned)sithWorld_pStatic->numCogsLoaded : 0,
+                      sithWorld_pCurrentWorld ? (unsigned)sithWorld_pCurrentWorld->numCogsLoaded : 0,
+                      sithWorld_pCurrentWorld ? (unsigned)sithWorld_pCurrentWorld->numThingsLoaded : 0);
+
+    sithMain_XboxLogMotsInventoryBin(player, SITHBIN_MOTS_FISTS);
+    sithMain_XboxLogMotsInventoryBin(player, SITHBIN_MOTS_BRYARPISTOL);
+    sithMain_XboxLogMotsInventoryBin(player, SITHBIN_MOTS_STORMTROOPER_RIFLE);
+    sithMain_XboxLogMotsInventoryBin(player, SITHBIN_MOTS_EWEB);
+    sithMain_XboxLogMotsInventoryBin(player, SITHBIN_MOTS_LIGHTSABER);
+    sithMain_XboxLogMotsInventoryBin(player, SITHBIN_MOTS_STORMTROOPER_SCOPE);
+}
+#endif
+
+static int sithMain_CogHasTrigger(sithCog *cog, int msgid)
+{
+    sithCogScript *script;
+    uint32_t i;
+
+    if (!cog || !cog->cogscript)
+        return 0;
+
+    script = cog->cogscript;
+    for (i = 0; i < script->num_triggers; i++)
+    {
+        if (script->triggers[i].trigId == msgid)
+            return 1;
+    }
+
+    return 0;
+}
+
+static int sithMain_MotsPlayerStartupInventoryMissing(sithThing *player)
+{
+    if (!player || !player->actorParams.playerinfo)
+        return 0;
+
+    return sithInventory_GetBinAmount(player, SITHBIN_MOTS_FISTS) <= 0.0
+        && sithInventory_GetBinAmount(player, SITHBIN_MOTS_LIGHTSABER) <= 0.0
+        && sithInventory_GetBinAmount(player, SITHBIN_MOTS_BRYARPISTOL) <= 0.0
+        && sithInventory_GetBinAmount(player, SITHBIN_MOTS_BLASTECH) <= 0.0;
+}
+
+static void sithMain_SendMotsLocalPlayerClassStartupIfNeeded(void)
+{
+    sithThing *player;
+    sithCog *classCog;
+
+    if (!Main_bMotsCompat || sithNet_isMulti)
+        return;
+
+    player = sithPlayer_pLocalPlayerThing;
+    if (!player || player->type != SITH_THING_PLAYER || !sithMain_MotsPlayerStartupInventoryMissing(player))
+        return;
+
+    classCog = player->class_cog;
+    if (!sithMain_CogHasTrigger(classCog, SITH_MESSAGE_STARTUP))
+    {
+#ifdef TARGET_XBOX
+        xbox_debug_Printf("MotSMode: local player class startup skipped player=%p classCog=%p hasStartup=0\n",
+                          (void*)player, (void*)classCog);
+#endif
+        return;
+    }
+
+#ifdef TARGET_XBOX
+    xbox_debug_Printf("MotSMode: firing local player class STARTUP player=%p thingIdx=%d classCog=%p name=%s script=%s\n",
+                      (void*)player,
+                      (int)player->thingIdx,
+                      (void*)classCog,
+                      classCog->cogscript_fpath,
+                      classCog->cogscript ? classCog->cogscript->cog_fpath : "");
+#endif
+    sithCog_SendMessage(classCog, SITH_MESSAGE_STARTUP, SENDERTYPE_THING, player->thingIdx, 0, 0, 0);
+}
 
 int sithMain_Startup(HostServices *commonFuncs)
 {
@@ -132,13 +263,22 @@ void sithMain_Shutdown()
 
 int sithMain_Load(char *path)
 {
-    sithWorld_pStatic = sithWorld_New();
-    if ( !sithWorld_pStatic )
+    sithWorld *newStatic;
+
+    if ( sithWorld_pStatic )
+        sithMain_Free();
+
+    newStatic = sithWorld_New();
+    if ( !newStatic )
         return 0;
 
-    sithWorld_pStatic->level_type_maybe |= 1;
-    if ( !sithWorld_Load(sithWorld_pStatic, path) )
+    newStatic->level_type_maybe |= 1;
+    sithWorld_pStatic = newStatic;
+    if ( !sithWorld_Load(newStatic, path) )
     {
+        if ( sithWorld_pLoading == newStatic )
+            sithWorld_pLoading = 0;
+        sithWorld_FreeEntry(newStatic);
         sithWorld_pStatic = 0;
         return 0;
     }
@@ -151,6 +291,8 @@ void sithMain_Free()
     stdPlatform_Printf("OpenJKDF2: %s\n", __func__);
     if ( sithWorld_pStatic )
     {
+        if ( sithWorld_pLoading == sithWorld_pStatic )
+            sithWorld_pLoading = 0;
         sithWorld_FreeEntry(sithWorld_pStatic);
         sithWorld_pStatic = 0;
     }
@@ -482,35 +624,49 @@ int sithMain_Tick()
             {
 #ifdef TARGET_XBOX
 #endif
+                XSL_TRACE_UPDATE("fixed before sound");
                 sithSoundMixer_Tick(sithTime_deltaSeconds);
 #ifdef TARGET_XBOX
 #endif
+                XSL_TRACE_UPDATE("fixed after sound before event");
                 sithEvent_Advance();
+                XSL_TRACE_UPDATE("fixed after event before comm");
 
                 if ( sithComm_bSyncMultiplayer )
+                {
+                    XSL_TRACE_UPDATE("fixed before comm");
                     sithComm_Sync();
+                    XSL_TRACE_UPDATE("fixed after comm");
+                }
 
                 if ( (g_debugmodeFlags & DEBUGFLAG_NO_AIEVENTS) == 0  && (!sithNet_isMulti || sithNet_isMulti && sithNet_isServer))
                 {
 #ifdef TARGET_XBOX
 #endif
+                    XSL_TRACE_UPDATE("fixed before ai");
                     sithAI_TickAll();
+                    XSL_TRACE_UPDATE("fixed after ai");
                 }
 
 #ifdef TARGET_XBOX
 #endif
+                XSL_TRACE_UPDATE("fixed before surface");
                 sithSurface_Tick(sithTime_deltaSeconds);
 #ifdef TARGET_XBOX
 #endif
+                XSL_TRACE_UPDATE("fixed after surface before things");
                 sithThing_TickAll(sithTime_deltaSeconds, sithTime_deltaMs);
 #ifdef TARGET_XBOX
 #endif
+                XSL_TRACE_UPDATE("fixed after things before mots");
                 sithThing_MotsTick(0x1F, 0, 0);
 #ifdef TARGET_XBOX
 #endif
+                XSL_TRACE_UPDATE("fixed after mots before cog");
                 sithCogScript_TickAll();
 #ifdef TARGET_XBOX
 #endif
+                XSL_TRACE_UPDATE("fixed after cog");
 
                 // COG scripts will sleep for periods of time based on sithTime_curMs,
                 // so we have to emulate the current time as well
@@ -529,60 +685,89 @@ int sithMain_Tick()
         {
 #ifdef TARGET_XBOX
 #endif
+            XSL_TRACE_UPDATE("normal before sound");
             sithSoundMixer_Tick(sithTime_deltaSeconds);
+            XSL_TRACE_UPDATE("normal after sound before event");
             sithEvent_Advance();
+            XSL_TRACE_UPDATE("normal after event before comm");
 
             if ( sithComm_bSyncMultiplayer )
+            {
+                XSL_TRACE_UPDATE("normal before comm");
                 sithComm_Sync();
+                XSL_TRACE_UPDATE("normal after comm");
+            }
 
             if ( (g_debugmodeFlags & DEBUGFLAG_NO_AIEVENTS) == 0 && (!sithNet_isMulti || sithNet_isMulti && sithNet_isServer))
+            {
+                XSL_TRACE_UPDATE("normal before ai");
                 sithAI_TickAll();
+                XSL_TRACE_UPDATE("normal after ai");
+            }
 
+            XSL_TRACE_UPDATE("normal before surface");
             sithSurface_Tick(sithTime_deltaSeconds);
+            XSL_TRACE_UPDATE("normal after surface before controls");
             if ( g_sithMode != 2 )
             {
-#ifdef FIXED_TIMESTEP_PHYS
-                #ifdef TARGET_XBOX
+#ifdef TARGET_XBOX
                 if (xboxSplitScreen_IsEnabled())
+                {
                     xboxSplitScreen_BeginControlFrame();
+                }
                 else
-                #endif
-                sithControl_ReadControls();
 #endif
+                {
+#ifdef FIXED_TIMESTEP_PHYS
+                    sithControl_ReadControls();
+#endif
+                }
                 #ifdef TARGET_XBOX
                 if (xboxSplitScreen_IsEnabled())
                     xboxSplitScreen_TickControls(sithTime_deltaSeconds, sithTime_deltaMs);
                 else
                 #endif
                 sithControl_Tick(sithTime_deltaSeconds, sithTime_deltaMs);
-#ifdef FIXED_TIMESTEP_PHYS
-                #ifdef TARGET_XBOX
+#ifdef TARGET_XBOX
                 if (xboxSplitScreen_IsEnabled())
+                {
                     xboxSplitScreen_EndControlFrame();
+                }
                 else
-                #endif
-                sithControl_FinishRead();
 #endif
+                {
+#ifdef FIXED_TIMESTEP_PHYS
+                    sithControl_FinishRead();
+#endif
+                }
             }
 
+            XSL_TRACE_UPDATE("normal after controls before things");
             sithThing_TickAll(sithTime_deltaSeconds, sithTime_deltaMs);
+            XSL_TRACE_UPDATE("normal after things before mots");
             sithThing_MotsTick(0x1F, 0, 0);
 
+            XSL_TRACE_UPDATE("normal after mots before cog");
             sithCogScript_TickAll();
+            XSL_TRACE_UPDATE("normal after cog");
         }
 
         //sithAI_PrintThings();
 #ifdef TARGET_XBOX
 #endif
+        XSL_TRACE_UPDATE("before console advance");
         sithConsole_AdvanceLogBuf();
 #ifdef TARGET_XBOX
 #endif
+        XSL_TRACE_UPDATE("after console before timelimit");
         sithMulti_HandleTimeLimit(sithTime_deltaMs);
 #ifdef TARGET_XBOX
 #endif
+        XSL_TRACE_UPDATE("after timelimit before save flush");
         sithGamesave_Flush();
 #ifdef TARGET_XBOX
 #endif
+        XSL_TRACE_UPDATE("after save flush");
 
         sithMain_tickEndMs = stdPlatform_GetTimeMsec();
 
@@ -700,10 +885,26 @@ void sithMain_AutoSave()
     //g_debugmodeFlags |= 1;
 #endif
 
+#ifdef TARGET_XBOX
+    sithMain_XboxLogMotsAutoSaveState("enter");
+#endif
     sithTime_Startup();
+#ifdef TARGET_XBOX
+    sithMain_XboxLogMotsAutoSaveState("before-reset");
+#endif
     sithInventory_Reset(sithPlayer_pLocalPlayerThing);
+#ifdef TARGET_XBOX
+    sithMain_XboxLogMotsAutoSaveState("after-reset");
+#endif
 
+#ifdef TARGET_XBOX
+    sithMain_XboxLogMotsAutoSaveState("before-startup");
+#endif
     sithCog_SendSimpleMessageToAll(SITH_MESSAGE_STARTUP, 0, 0, 0, 0);
+    sithMain_SendMotsLocalPlayerClassStartupIfNeeded();
+#ifdef TARGET_XBOX
+    sithMain_XboxLogMotsAutoSaveState("after-startup");
+#endif
     for (uint32_t v2 = 0; v2 < sithWorld_pCurrentWorld->numThingsLoaded; v2++)
     {
         v3 = &sithWorld_pCurrentWorld->things[v2];
@@ -719,6 +920,9 @@ void sithMain_AutoSave()
             sithActor_SetMaxHeathForDifficulty(v3);
         }
     }
+#ifdef TARGET_XBOX
+    sithMain_XboxLogMotsAutoSaveState("after-created");
+#endif
 
     if ( sithNet_isMulti )
     {

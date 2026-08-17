@@ -33,6 +33,7 @@ int jkRes_Shutdown();
 void jkRes_New(char *path);
 void jkRes_FreeGobs(int idx); // Added: This seems to be inlined everywhere
 void jkRes_LoadGob(char *a1);
+int jkRes_SetMotsCompat(int bMotsCompat);
 int jkRes_LoadCd(char *a1);
 void jkRes_HookHS();
 void jkRes_UnhookHS();

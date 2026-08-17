@@ -17,8 +17,10 @@
 #include "Gui/jkGUIForce.h"
 #include "World/jkPlayer.h"
 #include "Main/jk.h"
+#include "Main/jkDev.h"
 #include "Main/jkStrings.h"
 #include "Main/jkMain.h"
+#include "Platform/stdControl.h"
 #include "Dss/sithMulti.h"
 #include "Devices/sithSoundMixer.h"
 
@@ -64,6 +66,79 @@ static jkGuiElement jkGuiEsc_aElements[10] = {
 static jkGuiMenu jkGuiEsc_menu = { jkGuiEsc_aElements, -1, 0x0FFFF, 0x0FFFF, 0x0F, 0, 0, jkGui_stdBitmaps, jkGui_stdFonts, 0, 0, "thermloop01.wav", "thrmlpu2.wav", 0, 0, 0, 0, 0, 0 };
 
 #ifdef TARGET_XBOX
+typedef enum jkGuiEscKonamiInput
+{
+    JKGUIESC_KONAMI_UP = 0,
+    JKGUIESC_KONAMI_DOWN,
+    JKGUIESC_KONAMI_LEFT,
+    JKGUIESC_KONAMI_RIGHT,
+    JKGUIESC_KONAMI_B,
+    JKGUIESC_KONAMI_A
+} jkGuiEscKonamiInput;
+
+static int jkGuiEsc_xboxKonamiIdx;
+static int jkGuiEsc_xboxKonamiFired;
+
+static int jkGuiEsc_XboxKonamiInput(int input)
+{
+    static const int sequence[] =
+    {
+        JKGUIESC_KONAMI_UP,
+        JKGUIESC_KONAMI_UP,
+        JKGUIESC_KONAMI_DOWN,
+        JKGUIESC_KONAMI_DOWN,
+        JKGUIESC_KONAMI_LEFT,
+        JKGUIESC_KONAMI_RIGHT,
+        JKGUIESC_KONAMI_LEFT,
+        JKGUIESC_KONAMI_RIGHT,
+        JKGUIESC_KONAMI_B,
+        JKGUIESC_KONAMI_A
+    };
+    const int sequenceCount = (int)(sizeof(sequence) / sizeof(sequence[0]));
+
+    if (input == sequence[jkGuiEsc_xboxKonamiIdx])
+    {
+        jkGuiEsc_xboxKonamiIdx++;
+        if (jkGuiEsc_xboxKonamiIdx >= sequenceCount)
+        {
+            jkGuiEsc_xboxKonamiIdx = 0;
+            if (jkDev_GiveAllCurrentMode())
+            {
+                jkGuiEsc_xboxKonamiFired = 1;
+                jkGuiRend_PlayWav(jkGuiEsc_menu.soundClick);
+            }
+        }
+        return 1;
+    }
+
+    jkGuiEsc_xboxKonamiIdx = (input == sequence[0]) ? 1 : 0;
+    return jkGuiEsc_xboxKonamiIdx ? 1 : 0;
+}
+
+static int jkGuiEsc_XboxPollKonami(void)
+{
+    int consumed = 0;
+    if (stdControl_XboxGetControllerKeyPress(0, KEY_JOY1_HUP))
+        consumed |= jkGuiEsc_XboxKonamiInput(JKGUIESC_KONAMI_UP);
+    if (stdControl_XboxGetControllerKeyPress(0, KEY_JOY1_HDOWN))
+        consumed |= jkGuiEsc_XboxKonamiInput(JKGUIESC_KONAMI_DOWN);
+    if (stdControl_XboxGetControllerKeyPress(0, KEY_JOY1_HLEFT))
+        consumed |= jkGuiEsc_XboxKonamiInput(JKGUIESC_KONAMI_LEFT);
+    if (stdControl_XboxGetControllerKeyPress(0, KEY_JOY1_HRIGHT))
+        consumed |= jkGuiEsc_XboxKonamiInput(JKGUIESC_KONAMI_RIGHT);
+    if (stdControl_XboxGetControllerKeyPress(0, KEY_JOY1_B2))
+        consumed |= jkGuiEsc_XboxKonamiInput(JKGUIESC_KONAMI_B);
+    if (stdControl_XboxGetControllerKeyPress(0, KEY_JOY1_B1))
+        consumed |= jkGuiEsc_XboxKonamiInput(JKGUIESC_KONAMI_A);
+    return consumed;
+}
+
+static void jkGuiEsc_XboxTick(jkGuiMenu *menu)
+{
+    (void)menu;
+    jkGuiEsc_XboxPollKonami();
+}
+
 static void jkGuiEsc_SetRect(jkGuiElement *element, int x, int y, int w, int h)
 {
     element->rect.x = x;
@@ -74,16 +149,16 @@ static void jkGuiEsc_SetRect(jkGuiElement *element, int x, int y, int w, int h)
 
 static void jkGuiEsc_ApplyXboxLayout(void)
 {
-    jkGuiEsc_SetRect(&jkGuiEsc_aElements[JKGUIESC_ELMT_OBJECTIVES],   0,  45, 400, 38);
-    jkGuiEsc_SetRect(&jkGuiEsc_aElements[JKGUIESC_ELMT_MAP],          0,  90, 400, 38);
-    jkGuiEsc_SetRect(&jkGuiEsc_aElements[JKGUIESC_ELMT_JEDIPOWERS],   0, 135, 400, 38);
-    jkGuiEsc_SetRect(&jkGuiEsc_aElements[JKGUIESC_ELMT_RETURNTOGAME], 0, 215, 400, 38);
+    jkGuiEsc_SetRect(&jkGuiEsc_aElements[JKGUIESC_ELMT_OBJECTIVES],   0,  40, 400, 36);
+    jkGuiEsc_SetRect(&jkGuiEsc_aElements[JKGUIESC_ELMT_MAP],          0,  82, 400, 36);
+    jkGuiEsc_SetRect(&jkGuiEsc_aElements[JKGUIESC_ELMT_JEDIPOWERS],   0, 124, 400, 36);
+    jkGuiEsc_SetRect(&jkGuiEsc_aElements[JKGUIESC_ELMT_RETURNTOGAME], 0, 200, 400, 36);
 
-    jkGuiEsc_SetRect(&jkGuiEsc_aElements[JKGUIESC_ELMT_RESTART],    390, 145, 250, 38);
-    jkGuiEsc_SetRect(&jkGuiEsc_aElements[JKGUIESC_ELMT_LOAD],       390, 190, 250, 38);
-    jkGuiEsc_SetRect(&jkGuiEsc_aElements[JKGUIESC_ELMT_SAVE],       390, 235, 250, 38);
-    jkGuiEsc_SetRect(&jkGuiEsc_aElements[JKGUIESC_ELMT_SETUP],      390, 280, 250, 38);
-    jkGuiEsc_SetRect(&jkGuiEsc_aElements[JKGUIESC_ELMT_ABORT],      390, 325, 250, 38);
+    jkGuiEsc_SetRect(&jkGuiEsc_aElements[JKGUIESC_ELMT_RESTART],    390, 125, 250, 36);
+    jkGuiEsc_SetRect(&jkGuiEsc_aElements[JKGUIESC_ELMT_LOAD],       390, 168, 250, 36);
+    jkGuiEsc_SetRect(&jkGuiEsc_aElements[JKGUIESC_ELMT_SAVE],       390, 211, 250, 36);
+    jkGuiEsc_SetRect(&jkGuiEsc_aElements[JKGUIESC_ELMT_SETUP],      390, 254, 250, 36);
+    jkGuiEsc_SetRect(&jkGuiEsc_aElements[JKGUIESC_ELMT_ABORT],      390, 297, 250, 36);
 }
 #endif
 
@@ -171,6 +246,10 @@ void jkGuiEsc_Shutdown()
 void jkGuiEsc_Show()
 {
     int32_t v3; // eax
+    int32_t clicked;
+#ifdef TARGET_XBOX
+    int xboxCheatConsumed;
+#endif
 
     sithSoundMixer_PauseSong(1);
 
@@ -206,12 +285,31 @@ void jkGuiEsc_Show()
 
 #ifdef TARGET_XBOX
     jkGuiEsc_ApplyXboxLayout();
+    jkGuiEsc_xboxKonamiIdx = 0;
+    jkGuiEsc_xboxKonamiFired = 0;
+    jkGuiEsc_menu.idkFunc = jkGuiEsc_XboxTick;
 #endif
 
     while ( 1 )
     {
         jkGuiRend_MenuSetEscapeKeyShortcutElement(&jkGuiEsc_menu, &jkGuiEsc_aElements[JKGUIESC_ELMT_RETURNTOGAME]);
-        switch (jkGuiRend_DisplayAndReturnClicked(&jkGuiEsc_menu))
+#ifdef TARGET_XBOX
+        jkGuiRend_XboxFooterBegin(&jkGuiEsc_menu);
+        jkGuiRend_XboxFooterAddAction(&jkGuiEsc_menu, JKGUI_XBOX_BTN_A, 0, L"Select");
+        jkGuiRend_XboxFooterAddElementAction(&jkGuiEsc_menu, JKGUI_XBOX_BTN_B, &jkGuiEsc_aElements[JKGUIESC_ELMT_RETURNTOGAME], L"Back");
+#endif
+        clicked = jkGuiRend_DisplayAndReturnClicked(&jkGuiEsc_menu);
+#ifdef TARGET_XBOX
+        xboxCheatConsumed = jkGuiEsc_XboxPollKonami();
+        if (jkGuiEsc_xboxKonamiFired)
+        {
+            jkGuiEsc_xboxKonamiFired = 0;
+            continue;
+        }
+        if (xboxCheatConsumed && clicked == -1)
+            continue;
+#endif
+        switch (clicked)
         {
             case -1:
                 return;

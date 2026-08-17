@@ -49,7 +49,6 @@ extern struct stdVBuffer* Video_pMenuBuffer;
 extern struct stdVBuffer* Video_pVbufIdk;
 extern struct stdVBuffer* Video_pOverlayMapBuffer;
 
-#ifdef XBOX_PERF_SMOKE
 static const char *xbox_read_smoke_autostart_args(char *buf, unsigned int bufSize)
 {
     DWORD readBytes = 0;
@@ -57,12 +56,12 @@ static const char *xbox_read_smoke_autostart_args(char *buf, unsigned int bufSiz
     unsigned int i;
 
     if (!buf || bufSize < 2)
-        return "-autostart -sp -episode JK1 -map 01narshadda.jkl";
+        return "";
 
     h = CreateFileA("D:\\xbox_smoke_autostart_args.txt", GENERIC_READ,
                     FILE_SHARE_READ, NULL, OPEN_EXISTING, FILE_ATTRIBUTE_NORMAL, NULL);
     if (h == INVALID_HANDLE_VALUE)
-        return "-autostart -sp -episode JK1 -map 01narshadda.jkl";
+        return "";
 
     if (!ReadFile(h, buf, bufSize - 1, &readBytes, NULL))
         readBytes = 0;
@@ -78,9 +77,8 @@ static const char *xbox_read_smoke_autostart_args(char *buf, unsigned int bufSiz
         }
     }
 
-    return buf[0] ? buf : "-autostart -sp -episode JK1 -map 01narshadda.jkl";
+    return buf[0] ? buf : "";
 }
-#endif
 
 /* =========================================================================
  * void main(void)  —  Xbox entry point (no argc/argv on Xbox)
@@ -168,17 +166,15 @@ void __cdecl main(void)
      *    Main_Startup takes a command-line string, same as the PC build.
      *    Pass empty string for default behaviour (no episode override).
      * -------------------------------------------------------------- */
-#ifdef XBOX_PERF_SMOKE
     {
         char smokeArgs[160];
         const char *startupArgs = xbox_read_smoke_autostart_args(smokeArgs, sizeof(smokeArgs));
-        XPERF("Smoke: Main_Startup args='%s'\n", startupArgs);
+        if (startupArgs[0])
+            xbox_debug_Printf("Smoke: Main_Startup args='%s'\n", startupArgs);
         Main_Startup((char *)startupArgs);
-        XPERF("Smoke: Main_Startup returned\n");
+        if (startupArgs[0])
+            XDBG("Smoke: Main_Startup returned\n");
     }
-#else
-    Main_Startup("");
-#endif
 
     /* Match the upstream startup flow: the title GUI state loads static.jkl
      * and items.dat after the intro FMV, before the main menu is shown. */
@@ -238,6 +234,7 @@ void __cdecl main(void)
         }
         */
         loopCount++;
+        {
 #ifdef XBOX_PERF_SMOKE
         {
             DWORD nowMs = GetTickCount();
@@ -325,6 +322,7 @@ void __cdecl main(void)
           }
         }
 #endif
+        }
     }
     } /* close loopCount scope */
 

@@ -225,6 +225,7 @@ void jkDSS_Load()
     char a1[32]; // [esp+0h] [ebp-20h] BYREF
 
     stdConffile_Read(a1, 32);
+    jkEpisode_SetMotsCompatForEpisodeName(a1);
     jkRes_LoadGob(a1);
     stdConffile_Read(&jkEpisode_mLoad.currentEpisodeEntryIdx, 4);
 }

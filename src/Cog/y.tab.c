@@ -5,6 +5,11 @@ char yysccsid[] = "@(#)yaccpar	1.4 (Berkeley) 02/25/90";
 #include <stdio.h>
 #include "sithCogParse.h"
 #include "stdPlatform.h"
+#ifdef TARGET_XBOX
+#include "Main/Main.h"
+#include "Platform/Xbox/xbox_debug.h"
+extern char* sithCogParse_lastParsedFile;
+#endif
 
 #define printf _printf  /* VC71 lacks C99 variadic macros; identifier rename suffices */
 #define fwrite(x,y,z,w) _fwrite(x,y,z,w)
@@ -48,6 +53,22 @@ typedef union {
 #define RETURN 279
 #define CALL 280
 #define YYERRCODE 256
+#ifdef TARGET_XBOX
+static void yy_xbox_log_token_fetch(const char *phase, int state, int token)
+{
+    static int logCount = 0;
+
+    if (!Main_bMotsCompat || logCount >= 64)
+        return;
+
+    xbox_debug_Printf("MotSMode: Yacc token %s file=%s state=%d token=%d\n",
+                      phase,
+                      sithCogParse_lastParsedFile ? sithCogParse_lastParsedFile : "",
+                      state,
+                      token);
+    logCount++;
+}
+#endif
 short yylhs[] = {                                        -1,
     1,    1,    1,    1,    1,    1,    3,    3,    3,    3,
     4,    4,    6,    6,    7,    7,    8,    8,    8,    8,
@@ -442,7 +463,13 @@ yyloop:
     if (yyn = yydefred[yystate]) goto yyreduce;
     if (yychar < 0)
     {
+#ifdef TARGET_XBOX
+        yy_xbox_log_token_fetch("before", yystate, yychar);
+#endif
         if ((yychar = yylex()) < 0) yychar = 0;
+#ifdef TARGET_XBOX
+        yy_xbox_log_token_fetch("after", yystate, yychar);
+#endif
 #if YYDEBUG
         if (yydebug)
         {
@@ -785,7 +812,13 @@ break;
         *++yyvsp = yyval;
         if (yychar < 0)
         {
+#ifdef TARGET_XBOX
+            yy_xbox_log_token_fetch("before-final", yystate, yychar);
+#endif
             if ((yychar = yylex()) < 0) yychar = 0;
+#ifdef TARGET_XBOX
+            yy_xbox_log_token_fetch("after-final", yystate, yychar);
+#endif
 #if YYDEBUG
             if (yydebug)
             {

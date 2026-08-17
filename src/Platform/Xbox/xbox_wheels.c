@@ -9,6 +9,7 @@
 #include "../../General/stdBitmap.h"
 #include "../../General/stdString.h"
 #include "../../General/util.h"
+#include "../../Main/Main.h"
 #include "../../Platform/std3D.h"
 #include "../../World/sithWeapon.h"
 #include "gl/gl.h"
@@ -25,6 +26,8 @@ void std3D_XboxEndViewportUI(void);
 
 #define XBOX_WHEEL_MAX_PORTS 4
 #define XBOX_WHEEL_HOLD_MS 260
+#define XBOX_WHEEL_MAX_WEAPON_SLOTS 17
+#define XBOX_WHEEL_ARRAY_COUNT(a) ((int)(sizeof(a) / sizeof((a)[0])))
 
 typedef enum XboxWheelKind
 {
@@ -68,11 +71,12 @@ typedef struct XboxWheelForceSlot
 } XboxWheelForceSlot;
 
 static XboxWheelState s_wheels[XBOX_WHEEL_MAX_PORTS];
-static stdBitmap *s_weaponIcons[10];
-static int s_weaponIconTried[10];
+static stdBitmap *s_weaponIcons[XBOX_WHEEL_MAX_WEAPON_SLOTS];
+static int s_weaponIconTried[XBOX_WHEEL_MAX_WEAPON_SLOTS];
+static const char *s_weaponIconLoadedPaths[XBOX_WHEEL_MAX_WEAPON_SLOTS];
 static int s_weaponIconLogBudget = 16;
 
-static const XboxWheelWeaponSlot s_weaponSlots[10] =
+static const XboxWheelWeaponSlot s_weaponSlotsJk[] =
 {
     { SITHBIN_FISTS,              "Fists",              "ui\\bm\\xw_fists.bm",    92.0f, 68.0f },
     { SITHBIN_BRYARPISTOL,        "Bryar Pistol",       "ui\\bm\\xw_bryar.bm",    54.0f, 28.0f },
@@ -86,7 +90,28 @@ static const XboxWheelWeaponSlot s_weaponSlots[10] =
     { SITHBIN_LIGHTSABER,         "Lightsaber",         "ui\\bm\\xw_saber.bm",    56.0f, 24.0f }
 };
 
-static const XboxWheelForceSlot s_forceSlots[14] =
+static const XboxWheelWeaponSlot s_weaponSlotsMots[] =
+{
+    { SITHBIN_MOTS_FISTS,              "Fists",                   "ui\\bm\\xw_fists.bm",    92.0f, 68.0f },
+    { SITHBIN_MOTS_BRYARPISTOL,        "Bryar Pistol",            "ui\\bm\\xw_bryar.bm",    54.0f, 28.0f },
+    { SITHBIN_MOTS_STORMTROOPER_RIFLE, "Stormtrooper Rifle",      "ui\\bm\\xw_strifle.bm",  58.0f, 26.0f },
+    { SITHBIN_MOTS_THERMAL_DETONATOR,  "Thermal Detonator",       "ui\\bm\\xw_thermal.bm",  88.0f, 68.0f },
+    { SITHBIN_MOTS_REPEATER,           "Repeater",                "ui\\bm\\xw_repeater.bm", 58.0f, 28.0f },
+    { SITHBIN_MOTS_RAIL_DETONATOR,     "Rail Detonator",          "ui\\bm\\xw_rail.bm",     87.0f, 45.0f },
+    { SITHBIN_MOTS_SEQUENCER_CHARGE,   "Sequencer Charge",        "ui\\bm\\xw_seqchg.bm",   84.0f, 72.0f },
+    { SITHBIN_MOTS_CONCUSSION_RIFLE,   "Concussion Rifle",        "ui\\bm\\xw_conc.bm",     90.0f, 42.0f },
+    { SITHBIN_MOTS_EWEB,               "EWEB",                    NULL,                     80.0f, 40.0f },
+    { SITHBIN_MOTS_LIGHTSABER,         "Lightsaber",              "ui\\bm\\xw_saber.bm",    56.0f, 24.0f },
+    { SITHBIN_MOTS_BLASTECH,           "Blastech",                NULL,                     70.0f, 34.0f },
+    { SITHBIN_MOTS_STORMTROOPER_SCOPE, "Scoped Rifle",            NULL,                     70.0f, 34.0f },
+    { SITHBIN_MOTS_FLASH_BOMB,          "Flash Bomb",              NULL,                     70.0f, 52.0f },
+    { SITHBIN_MOTS_TUSKEN_PROD,         "Tusken Prod",             "ui\\bm\\xw_tusken.bm",   116.0f, 64.0f },
+    { SITHBIN_MOTS_RAIL_SEEKER,         "Seeking Rail Detonator",  NULL,                     87.0f, 45.0f },
+    { SITHBIN_MOTS_MANUAL_SEQUENCER,    "Manual Sequencer",        NULL,                     84.0f, 72.0f },
+    { SITHBIN_MOTS_CARBO_GUN,           "Carbonite Gun",           NULL,                     78.0f, 38.0f }
+};
+
+static const XboxWheelForceSlot s_forceSlotsJk[] =
 {
     { SITHBIN_F_SEEING,      "Force Seeing",       1 },
     { SITHBIN_F_PULL,        "Force Pull",         2 },
@@ -102,6 +127,27 @@ static const XboxWheelForceSlot s_forceSlots[14] =
     { SITHBIN_F_HEALING,     "Force Heal",         13 },
     { SITHBIN_F_JUMP,        "Force Jump",         14 },
     { SITHBIN_F_SPEED,       "Force Speed",        15 }
+};
+
+static const XboxWheelForceSlot s_forceSlotsMots[] =
+{
+    { SITHBIN_F_JUMP,        "Force Jump",          -1 },
+    { SITHBIN_F_SPEED,       "Force Speed",         -1 },
+    { SITHBIN_F_SEEING,      "Force Seeing",        -1 },
+    { SITHBIN_F_PROJECT,     "Force Projection",    -1 },
+    { SITHBIN_F_PUSH,        "Force Push",          -1 },
+    { SITHBIN_F_PULL,        "Force Pull",          -1 },
+    { SITHBIN_F_GRIP,        "Force Grip",          -1 },
+    { SITHBIN_F_FARSIGHT,    "Far Sight",           -1 },
+    { SITHBIN_F_SABERTHROW,  "Saber Throw",         -1 },
+    { SITHBIN_F_HEALING,     "Force Heal",          -1 },
+    { SITHBIN_F_PERSUASION,  "Force Persuasion",    -1 },
+    { SITHBIN_F_BLINDING,    "Force Blind",         -1 },
+    { SITHBIN_F_CHAINLIGHT,  "Chain Lightning",     -1 },
+    { SITHBIN_F_ABSORB,      "Force Absorb",        -1 },
+    { SITHBIN_F_PROTECTION,  "Force Protection",    -1 },
+    { SITHBIN_F_DESTRUCTION, "Force Destruction",   -1 },
+    { SITHBIN_F_DEADLYSIGHT, "Deadly Sight",        -1 }
 };
 
 static sithThing* xbox_wheels_Player(void)
@@ -121,11 +167,39 @@ static int xbox_wheels_ScaleY(float y)
     return (int)(y * (float)h / 480.0f);
 }
 
+static const XboxWheelWeaponSlot *xbox_wheels_WeaponSlots(int *outCount)
+{
+    if (Main_bMotsCompat)
+    {
+        if (outCount)
+            *outCount = XBOX_WHEEL_ARRAY_COUNT(s_weaponSlotsMots);
+        return s_weaponSlotsMots;
+    }
+    if (outCount)
+        *outCount = XBOX_WHEEL_ARRAY_COUNT(s_weaponSlotsJk);
+    return s_weaponSlotsJk;
+}
+
+static const XboxWheelForceSlot *xbox_wheels_ForceSlots(int *outCount)
+{
+    if (Main_ShouldUseMotsForcePowers())
+    {
+        if (outCount)
+            *outCount = XBOX_WHEEL_ARRAY_COUNT(s_forceSlotsMots);
+        return s_forceSlotsMots;
+    }
+    if (outCount)
+        *outCount = XBOX_WHEEL_ARRAY_COUNT(s_forceSlotsJk);
+    return s_forceSlotsJk;
+}
+
 static int xbox_wheels_WeaponSlotForBin(int bin)
 {
     int i;
-    for (i = 0; i < 10; i++)
-        if (s_weaponSlots[i].bin == bin)
+    int count;
+    const XboxWheelWeaponSlot *slots = xbox_wheels_WeaponSlots(&count);
+    for (i = 0; i < count; i++)
+        if (slots[i].bin == bin)
             return i;
     return 0;
 }
@@ -133,10 +207,32 @@ static int xbox_wheels_WeaponSlotForBin(int bin)
 static int xbox_wheels_ForceSlotForBin(int bin)
 {
     int i;
-    for (i = 0; i < 14; i++)
-        if (s_forceSlots[i].bin == bin)
+    int count;
+    const XboxWheelForceSlot *slots = xbox_wheels_ForceSlots(&count);
+    for (i = 0; i < count; i++)
+        if (slots[i].bin == bin)
             return i;
     return 0;
+}
+
+static float xbox_wheels_RadialSlotAngle(int slot, int count)
+{
+    if (count <= 0)
+        return 90.0f;
+    return 90.0f - ((float)slot * (360.0f / (float)count));
+}
+
+static float xbox_wheels_RadialSlotHalfWidth(int count)
+{
+    float halfWidth;
+    if (count <= 0)
+        return 8.2f;
+    halfWidth = (360.0f / (float)count) * 0.38f;
+    if (halfWidth < 6.2f)
+        halfWidth = 6.2f;
+    if (halfWidth > 8.2f)
+        halfWidth = 8.2f;
+    return halfWidth;
 }
 
 static float xbox_wheels_ForcePosAngle(int pos)
@@ -160,10 +256,17 @@ static void xbox_wheels_ForcePosUnit(int pos, float *outX, float *outY)
     *outY = (float)sin((double)angle);
 }
 
+static void xbox_wheels_RadialSlotUnit(int slot, int count, float *outX, float *outY)
+{
+    float angle = xbox_wheels_RadialSlotAngle(slot, count) * 0.01745329252f;
+    *outX = (float)cos((double)angle);
+    *outY = (float)sin((double)angle);
+}
+
 static int xbox_wheels_IsWeaponAvailable(sithThing *player, int bin)
 {
     if (!player) return 0;
-    if (bin == SITHBIN_FISTS) return 1;
+    if (bin == SITHBIN_FISTS || bin == SITHBIN_MOTS_FISTS) return 1;
     return sithInventory_GetAvailable(player, bin) ||
            sithInventory_GetCarries(player, bin) ||
            sithInventory_GetBinAmount(player, bin) > 0.0f;
@@ -187,21 +290,48 @@ static int xbox_wheels_AmmoForWeapon(sithThing *player, int weaponBin)
     {
         case SITHBIN_BRYARPISTOL:
         case SITHBIN_STORMTROOPER_RIFLE:
+        case SITHBIN_MOTS_BRYARPISTOL:
+        case SITHBIN_MOTS_STORMTROOPER_RIFLE:
+        case SITHBIN_MOTS_BLASTECH:
+        case SITHBIN_MOTS_STORMTROOPER_SCOPE:
             ammoBin = SITHBIN_ENERGY;
             break;
         case SITHBIN_THERMAL_DETONATOR:
             ammoBin = SITHBIN_THERMAL_DETONATOR;
             break;
+        case SITHBIN_MOTS_THERMAL_DETONATOR:
+            ammoBin = SITHBIN_MOTS_THERMAL_DETONATOR;
+            break;
         case SITHBIN_TUSKEN_PROD:
         case SITHBIN_REPEATER:
         case SITHBIN_CONCUSSION_RIFLE:
+        case SITHBIN_MOTS_TUSKEN_PROD:
+        case SITHBIN_MOTS_REPEATER:
+        case SITHBIN_MOTS_CONCUSSION_RIFLE:
             ammoBin = SITHBIN_POWER;
             break;
         case SITHBIN_RAIL_DETONATOR:
+        case SITHBIN_MOTS_RAIL_DETONATOR:
             ammoBin = SITHBIN_RAILCHARGES;
             break;
         case SITHBIN_SEQUENCER_CHARGE:
             ammoBin = SITHBIN_SEQUENCER_CHARGE;
+            break;
+        case SITHBIN_MOTS_SEQUENCER_CHARGE:
+        case SITHBIN_MOTS_MANUAL_SEQUENCER:
+            ammoBin = SITHBIN_MOTS_SEQUENCER_CHARGE;
+            break;
+        case SITHBIN_MOTS_EWEB:
+            ammoBin = SITHBIN_EWEB_ROUNDS;
+            break;
+        case SITHBIN_MOTS_FLASH_BOMB:
+            ammoBin = SITHBIN_MOTS_FLASH_BOMB;
+            break;
+        case SITHBIN_MOTS_RAIL_SEEKER:
+            ammoBin = SITHBIN_SEEKRAILS;
+            break;
+        case SITHBIN_MOTS_CARBO_GUN:
+            ammoBin = SITHBIN_CARBPELLETS;
             break;
         default:
             return 0;
@@ -244,14 +374,18 @@ static void xbox_wheels_Close(int port, int commit)
         if (state->openKind == XBOX_WHEEL_WEAPON)
         {
             int slot = state->selectedWeaponSlot;
-            int bin = (slot >= 0 && slot < 10) ? s_weaponSlots[slot].bin : -1;
+            int count;
+            const XboxWheelWeaponSlot *slots = xbox_wheels_WeaponSlots(&count);
+            int bin = (slot >= 0 && slot < count) ? slots[slot].bin : -1;
             if (bin >= 0 && xbox_wheels_IsWeaponAvailable(player, bin))
                 sithWeapon_SelectWeapon(player, bin, 0);
         }
         else if (state->openKind == XBOX_WHEEL_FORCE)
         {
             int slot = state->selectedForceSlot;
-            int bin = (slot >= 0 && slot < 14) ? s_forceSlots[slot].bin : -1;
+            int count;
+            const XboxWheelForceSlot *slots = xbox_wheels_ForceSlots(&count);
+            int bin = (slot >= 0 && slot < count) ? slots[slot].bin : -1;
             if (bin >= 0 && xbox_wheels_IsForceAvailable(player, bin))
                 sithInventory_SelectPower(player, bin);
         }
@@ -262,26 +396,56 @@ static void xbox_wheels_Close(int port, int commit)
 static void xbox_wheels_UpdateWeaponSelection(int port, float rx, float ry)
 {
     int side, row;
+    int i, count, best;
+    float bestDist;
+    const XboxWheelWeaponSlot *slots = xbox_wheels_WeaponSlots(&count);
     if ((rx * rx + ry * ry) < 0.10f)
         return;
-    side = (rx >= 0.0f) ? 1 : 0;
-    row = (int)((1.0f - ry) * 2.5f);
-    if (row < 0) row = 0;
-    if (row > 4) row = 4;
-    s_wheels[port].selectedWeaponSlot = side ? (5 + row) : row;
+
+    if (slots == s_weaponSlotsJk)
+    {
+        side = (rx >= 0.0f) ? 1 : 0;
+        row = (int)((1.0f - ry) * 2.5f);
+        if (row < 0) row = 0;
+        if (row > 4) row = 4;
+        s_wheels[port].selectedWeaponSlot = side ? (5 + row) : row;
+        return;
+    }
+
+    best = s_wheels[port].selectedWeaponSlot;
+    bestDist = 9999.0f;
+    for (i = 0; i < count; i++)
+    {
+        float sx, sy;
+        float dx, dy;
+        xbox_wheels_RadialSlotUnit(i, count, &sx, &sy);
+        dx = rx - sx;
+        dy = ry - sy;
+        if ((dx * dx + dy * dy) < bestDist)
+        {
+            bestDist = dx * dx + dy * dy;
+            best = i;
+        }
+    }
+    s_wheels[port].selectedWeaponSlot = best;
 }
 
 static void xbox_wheels_UpdateForceSelection(int port, float rx, float ry)
 {
     int i, best = s_wheels[port].selectedForceSlot;
     float bestDist = 9999.0f;
+    int count;
+    const XboxWheelForceSlot *slots = xbox_wheels_ForceSlots(&count);
     if ((rx * rx + ry * ry) < 0.10f)
         return;
-    for (i = 0; i < 14; i++)
+    for (i = 0; i < count; i++)
     {
         float sx, sy;
         float dx, dy;
-        xbox_wheels_ForcePosUnit(s_forceSlots[i].wheelPos, &sx, &sy);
+        if (slots[i].wheelPos >= 0)
+            xbox_wheels_ForcePosUnit(slots[i].wheelPos, &sx, &sy);
+        else
+            xbox_wheels_RadialSlotUnit(i, count, &sx, &sy);
         dx = rx - sx;
         dy = ry - sy;
         float d = dx * dx + dy * dy;
@@ -505,29 +669,45 @@ static void xbox_wheels_DrawBitmapCentered(stdBitmap *bitmap, float cx, float cy
                            available ? 245 : 155);
 }
 
-static void xbox_wheels_DrawWeaponIcon(int slot, float cx, float cy, int available)
+static void xbox_wheels_DrawWeaponIcon(const XboxWheelWeaponSlot *slots, int slot, float cx, float cy, int available)
 {
-    if (slot < 0 || slot >= 10)
+    const char *path;
+    int drewIcon = 0;
+    if (slot < 0 || slot >= XBOX_WHEEL_MAX_WEAPON_SLOTS || !slots)
         return;
+    path = slots[slot].iconPath;
+    if (!path || !path[0])
+        return;
+    if (s_weaponIconLoadedPaths[slot] != path)
+    {
+        if (s_weaponIcons[slot])
+            stdBitmap_Free(s_weaponIcons[slot]);
+        s_weaponIcons[slot] = NULL;
+        s_weaponIconTried[slot] = 0;
+        s_weaponIconLoadedPaths[slot] = path;
+    }
     if (!s_weaponIconTried[slot])
     {
         s_weaponIconTried[slot] = 1;
-        s_weaponIcons[slot] = stdBitmap_LoadPartial((char*)s_weaponSlots[slot].iconPath, 1, 0);
+        s_weaponIcons[slot] = stdBitmap_LoadPartial((char*)path, 1, 0);
         if (s_weaponIconLogBudget > 0)
         {
             XPERF("Smoke: WheelIcon load slot=%d path='%s' bitmap=%p\n",
-                  slot, s_weaponSlots[slot].iconPath, (void*)s_weaponIcons[slot]);
+                  slot, path, (void*)s_weaponIcons[slot]);
             s_weaponIconLogBudget--;
         }
     }
 
     if (s_weaponIcons[slot])
+    {
         xbox_wheels_DrawBitmapCentered(s_weaponIcons[slot], cx, cy,
-                                       s_weaponSlots[slot].iconW,
-                                       s_weaponSlots[slot].iconH,
+                                       slots[slot].iconW,
+                                       slots[slot].iconH,
                                        available);
+        drewIcon = 1;
+    }
 
-    if (!available)
+    if (drewIcon && !available)
         xbox_wheels_Rect(cx - 28.0f, cy - 20.0f, 56.0f, 40.0f, 92, 92, 92, 120);
 }
 
@@ -558,86 +738,124 @@ static void xbox_wheels_DrawWeapon(stdFont *font, XboxWheelState *state)
 {
     sithThing *player = xbox_wheels_Player();
     int i;
+    int count;
+    const XboxWheelWeaponSlot *slots = xbox_wheels_WeaponSlots(&count);
     char text[96];
     const float leftStarts[5] = { 133.0f, 157.0f, 181.0f, 205.0f, 229.0f };
     const float rightStarts[5] = { 47.0f, 23.0f, -1.0f, -25.0f, -49.0f };
     if (!player)
         return;
 
-    for (i = 0; i < 10; i++)
+    if (state->selectedWeaponSlot < 0 || state->selectedWeaponSlot >= count)
+        state->selectedWeaponSlot = 0;
+
+    if (slots == s_weaponSlotsJk)
     {
-        float startDeg = (i < 5) ? leftStarts[i] : rightStarts[i - 5];
-        float endDeg = (i < 5) ? (startDeg + 19.0f) : (startDeg - 19.0f);
-        int available = xbox_wheels_IsWeaponAvailable(player, s_weaponSlots[i].bin);
-        int selected = (i == state->selectedWeaponSlot);
-        if (i >= 5)
+        for (i = 0; i < count; i++)
         {
-            float tmp = startDeg;
-            startDeg = endDeg;
-            endDeg = tmp;
+            float startDeg = (i < 5) ? leftStarts[i] : rightStarts[i - 5];
+            float endDeg = (i < 5) ? (startDeg + 19.0f) : (startDeg - 19.0f);
+            int available = xbox_wheels_IsWeaponAvailable(player, slots[i].bin);
+            int selected = (i == state->selectedWeaponSlot);
+            if (i >= 5)
+            {
+                float tmp = startDeg;
+                startDeg = endDeg;
+                endDeg = tmp;
+            }
+            xbox_wheels_DrawWedge(320.0f, 238.0f, 86.0f, 153.0f, startDeg, endDeg, selected, available);
         }
-        xbox_wheels_DrawWedge(320.0f, 238.0f, 86.0f, 153.0f, startDeg, endDeg, selected, available);
+        for (i = 0; i < count; i++)
+        {
+            float startDeg = (i < 5) ? leftStarts[i] : rightStarts[i - 5];
+            float endDeg = (i < 5) ? (startDeg + 19.0f) : (startDeg - 19.0f);
+            float iconX, iconY;
+            int available = xbox_wheels_IsWeaponAvailable(player, slots[i].bin);
+            if (i >= 5)
+            {
+                float tmp = startDeg;
+                startDeg = endDeg;
+                endDeg = tmp;
+            }
+            xbox_wheels_SegmentCenter(320.0f, 238.0f, 122.0f, startDeg, endDeg, &iconX, &iconY);
+            xbox_wheels_DrawWeaponIcon(slots, i, iconX, iconY, available);
+        }
     }
-    for (i = 0; i < 10; i++)
+    else
     {
-        float startDeg = (i < 5) ? leftStarts[i] : rightStarts[i - 5];
-        float endDeg = (i < 5) ? (startDeg + 19.0f) : (startDeg - 19.0f);
-        float iconX, iconY;
-        int available = xbox_wheels_IsWeaponAvailable(player, s_weaponSlots[i].bin);
-        if (i >= 5)
+        float halfWidth = xbox_wheels_RadialSlotHalfWidth(count);
+        for (i = 0; i < count; i++)
         {
-            float tmp = startDeg;
-            startDeg = endDeg;
-            endDeg = tmp;
+            float centerDeg = xbox_wheels_RadialSlotAngle(i, count);
+            int available = xbox_wheels_IsWeaponAvailable(player, slots[i].bin);
+            int selected = (i == state->selectedWeaponSlot);
+            xbox_wheels_DrawWedge(320.0f, 238.0f, 86.0f, 153.0f,
+                                  centerDeg - halfWidth, centerDeg + halfWidth,
+                                  selected, available);
         }
-        xbox_wheels_SegmentCenter(320.0f, 238.0f, 122.0f, startDeg, endDeg, &iconX, &iconY);
-        xbox_wheels_DrawWeaponIcon(i, iconX, iconY, available);
+        for (i = 0; i < count; i++)
+        {
+            float centerDeg = xbox_wheels_RadialSlotAngle(i, count);
+            float iconX, iconY;
+            int available = xbox_wheels_IsWeaponAvailable(player, slots[i].bin);
+            xbox_wheels_SegmentCenter(320.0f, 238.0f, 122.0f,
+                                      centerDeg - halfWidth, centerDeg + halfWidth,
+                                      &iconX, &iconY);
+            xbox_wheels_DrawWeaponIcon(slots, i, iconX, iconY, available);
+        }
     }
 
-    if (state->selectedWeaponSlot < 0 || state->selectedWeaponSlot >= 10)
-        state->selectedWeaponSlot = 0;
     stdString_snprintf(text, sizeof(text), "%s - (%d)",
-                       s_weaponSlots[state->selectedWeaponSlot].name,
-                       xbox_wheels_AmmoForWeapon(player, s_weaponSlots[state->selectedWeaponSlot].bin));
+                       slots[state->selectedWeaponSlot].name,
+                       xbox_wheels_AmmoForWeapon(player, slots[state->selectedWeaponSlot].bin));
     xbox_wheels_DrawText(font, text,
-                         !xbox_wheels_IsWeaponAvailable(player, s_weaponSlots[state->selectedWeaponSlot].bin));
+                         !xbox_wheels_IsWeaponAvailable(player, slots[state->selectedWeaponSlot].bin));
 }
 
 static void xbox_wheels_DrawForce(stdFont *font, XboxWheelState *state)
 {
     sithThing *player = xbox_wheels_Player();
     int i;
+    int count;
+    const XboxWheelForceSlot *slots = xbox_wheels_ForceSlots(&count);
     char text[96];
     if (!player)
         return;
 
-    for (i = 0; i < 14; i++)
+    if (state->selectedForceSlot < 0 || state->selectedForceSlot >= count)
+        state->selectedForceSlot = 0;
+
+    for (i = 0; i < count; i++)
     {
-        float centerDeg = xbox_wheels_ForcePosAngle(s_forceSlots[i].wheelPos);
-        float startDeg = centerDeg - 8.2f;
-        float endDeg = centerDeg + 8.2f;
-        int available = xbox_wheels_IsForceAvailable(player, s_forceSlots[i].bin);
+        float centerDeg = (slots[i].wheelPos >= 0) ?
+            xbox_wheels_ForcePosAngle(slots[i].wheelPos) :
+            xbox_wheels_RadialSlotAngle(i, count);
+        float halfWidth = (slots[i].wheelPos >= 0) ? 8.2f : xbox_wheels_RadialSlotHalfWidth(count);
+        float startDeg = centerDeg - halfWidth;
+        float endDeg = centerDeg + halfWidth;
+        int available = xbox_wheels_IsForceAvailable(player, slots[i].bin);
         int selected = (i == state->selectedForceSlot);
         xbox_wheels_DrawWedge(320.0f, 238.0f, 86.0f, 153.0f, startDeg, endDeg, selected, available);
     }
-    for (i = 0; i < 14; i++)
+    for (i = 0; i < count; i++)
     {
-        float centerDeg = xbox_wheels_ForcePosAngle(s_forceSlots[i].wheelPos);
-        float startDeg = centerDeg - 8.2f;
-        float endDeg = centerDeg + 8.2f;
+        float centerDeg = (slots[i].wheelPos >= 0) ?
+            xbox_wheels_ForcePosAngle(slots[i].wheelPos) :
+            xbox_wheels_RadialSlotAngle(i, count);
+        float halfWidth = (slots[i].wheelPos >= 0) ? 8.2f : xbox_wheels_RadialSlotHalfWidth(count);
+        float startDeg = centerDeg - halfWidth;
+        float endDeg = centerDeg + halfWidth;
         float iconX, iconY;
-        int available = xbox_wheels_IsForceAvailable(player, s_forceSlots[i].bin);
+        int available = xbox_wheels_IsForceAvailable(player, slots[i].bin);
         xbox_wheels_SegmentCenter(320.0f, 238.0f, 122.0f, startDeg, endDeg, &iconX, &iconY);
-        xbox_wheels_DrawForceIcon(s_forceSlots[i].bin, iconX, iconY, available);
+        xbox_wheels_DrawForceIcon(slots[i].bin, iconX, iconY, available);
     }
 
-    if (state->selectedForceSlot < 0 || state->selectedForceSlot >= 14)
-        state->selectedForceSlot = 0;
     stdString_snprintf(text, sizeof(text), "%s - (level %d)",
-                       s_forceSlots[state->selectedForceSlot].name,
-                       (int)sithInventory_GetBinAmount(player, s_forceSlots[state->selectedForceSlot].bin));
+                       slots[state->selectedForceSlot].name,
+                       (int)sithInventory_GetBinAmount(player, slots[state->selectedForceSlot].bin));
     xbox_wheels_DrawText(font, text,
-                         !xbox_wheels_IsForceAvailable(player, s_forceSlots[state->selectedForceSlot].bin));
+                         !xbox_wheels_IsForceAvailable(player, slots[state->selectedForceSlot].bin));
 }
 
 void xbox_wheels_Draw(stdFont *font)

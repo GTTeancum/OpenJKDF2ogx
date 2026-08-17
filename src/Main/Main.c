@@ -133,6 +133,10 @@ char Main_strEpisode[129];
 char Main_strMap[128+4];
 #endif
 
+#ifdef TARGET_XBOX
+int32_t Main_xboxSmokeDisableCutscenes = 0;
+#endif
+
 int Main_ShouldUseMotsForcePowers(void)
 {
     return Main_bMotsCompat && !sithNet_isMulti;
@@ -243,6 +247,8 @@ int Main_StartupDedicated(int bFullyDedicated)
     sithNet_scorelimit = v34.scoreLimit;
     sithNet_multiplayer_timelimit = v34.timeLimit;
 
+    jkEpisode_SetMotsCompatForEpisodeName(v34.episodeGobName);
+
     if (!Main_bAutostartSp) {
         int v21 = sithMulti_CreatePlayer(
               v34.serverName,
@@ -310,8 +316,10 @@ int Main_Startup(const char *cmdline)
     jkPlayer_setFullSubtitles = 1; // Added: Set subtitles as default for opening cutscene
     jkPlayer_setDisableCutscenes = 0;
 #ifdef TARGET_XBOX
-    if (Main_XboxMarkerExists("D:\\XboxSystemLinkSmoke.ini") || Main_XboxMarkerExists("D:\\xbox_smoke_disable_cutscenes.txt"))
+    Main_xboxSmokeDisableCutscenes = 0;
+    if (util_FileExists("XboxSystemLinkSmoke.ini") || util_FileExists("xbox_smoke_disable_cutscenes.txt"))
     {
+        Main_xboxSmokeDisableCutscenes = 1;
         jkPlayer_setDisableCutscenes = 1;
         xbox_debug_Print("Smoke: cutscenes disabled by marker\n");
     }
@@ -323,7 +331,7 @@ int Main_Startup(const char *cmdline)
 #else
     jkPlayer_setCrosshair = 0;
 #endif
-    jkPlayer_setSaberCam = 0;
+    jkPlayer_setSaberCam = 1;
     jkGuiNetHost_gameFlags = 144;
     jkGuiNetHost_scoreLimit = 100;
     jkGuiNetHost_timeLimit = 0;

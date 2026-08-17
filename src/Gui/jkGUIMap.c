@@ -333,6 +333,11 @@ int jkGuiMap_Show()
         jkGuiMap_bOrbitActive = 0;
         jkGuiMap_dword_556660 = 1;
     }
+#ifdef TARGET_XBOX
+    jkGuiRend_XboxFooterBegin(&jkGuiMap_menu);
+    jkGuiRend_XboxFooterAddAction(&jkGuiMap_menu, JKGUI_XBOX_BTN_A, 1, L"Done");
+    jkGuiRend_XboxFooterAddAction(&jkGuiMap_menu, JKGUI_XBOX_BTN_B, 1, L"Back");
+#endif
     v0 = jkGuiRend_DisplayAndReturnClicked(&jkGuiMap_menu);
     sithMap_Shutdown();
     rdCanvas_Free(jkGuiMap_pCanvas);

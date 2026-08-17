@@ -2934,6 +2934,7 @@ LABEL_7:
         jkGuiBuildMulti_menuLoadCharacter_buttons[5].wstr = 0;
     else
         jkGuiBuildMulti_menuLoadCharacter_buttons[5].wstr = jkEpisode_aEpisodes[v6].unistr;
+    jkEpisode_SetMotsCompatForEpisodeName(pStrEpisode);
     jkRes_LoadGob(pStrEpisode);
     stdStrTable_Load(&strtable, "misc\\cogStrings.uni");
     v9 = rank;

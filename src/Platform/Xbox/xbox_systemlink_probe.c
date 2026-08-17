@@ -3,6 +3,7 @@
 #include <string.h>
 
 #ifdef TARGET_XBOX
+#include "Devices/sithConsole.h"
 #include "Dss/sithMulti.h"
 #include "Gameplay/sithPlayer.h"
 #include "General/stdString.h"
@@ -32,6 +33,18 @@
 #define XSL_LAUNCH_DEADLINE_MS 5000u
 #define XSL_MAX_PACKET 2304
 #define XSL_GAME_QUEUE 32
+#define XSL_GAME_RECV_SCAN_LIMIT 64
+#define XSL_HEALTH_WARN_INTERVAL_MS 1000u
+#define XSL_HEALTH_PACKET_STALE_MS 15000u
+
+enum
+{
+    XSL_HEALTH_OK = 0,
+    XSL_HEALTH_NO_PEER = 1,
+    XSL_HEALTH_NO_SESSION = 2,
+    XSL_HEALTH_NO_HOST_ADDRESS = 3,
+    XSL_HEALTH_STALE_PACKETS = 4
+};
 
 typedef struct XboxSystemLinkGamePacketHeader
 {
@@ -118,11 +131,16 @@ typedef struct XboxSystemLinkProbeState
     int gameplayActive;
     int gameplayIsHost;
     int smokeHarness;
+    unsigned long lastGameSendMs;
+    unsigned long lastGameReceiveMs;
+    unsigned long lastHealthWarnMs;
+    int lastHealthWarnCode;
     XboxSystemLinkGameQueueEntry loopback[XSL_GAME_QUEUE];
 } XboxSystemLinkProbeState;
 
 static XboxSystemLinkProbeState g_xsl;
 static int g_xslSendTraceBudget = 0;
+static int g_xslRecvTraceBudget = 0;
 
 static unsigned long xboxSystemLinkProbe_NowMs(void)
 {
@@ -358,6 +376,10 @@ static int xboxSystemLinkProbe_ParsePacket(char *buffer,
     entry->maxRank = (int)value;
     xboxSystemLinkProbe_CopyPacketString(tokens[18], entry->episodeGobName, sizeof(entry->episodeGobName));
     xboxSystemLinkProbe_CopyPacketString(tokens[19], entry->mapJklFname, sizeof(entry->mapJklFname));
+    if (!strcmp(entry->episodeGobName, "-"))
+        entry->episodeGobName[0] = 0;
+    if (!strcmp(entry->mapJklFname, "-"))
+        entry->mapJklFname[0] = 0;
     if (!xboxSystemLinkProbe_ParseUInt(tokens[20], 10, &value))
         return 0;
     *secureBits = (int)value;
@@ -384,6 +406,11 @@ void xboxSystemLinkProbe_FormatAddress(unsigned long address, char *out, int out
     out[outCount - 1] = 0;
 }
 
+static const char *xboxSystemLinkProbe_PacketStringOrDash(const char *text)
+{
+    return (text && text[0]) ? text : "-";
+}
+
 static int xboxSystemLinkProbe_InitSockets(void)
 {
     XNetStartupParams params;
@@ -398,18 +425,23 @@ static int xboxSystemLinkProbe_InitSockets(void)
 
     memset(&params, 0, sizeof(params));
     params.cfgSizeOfStruct = sizeof(params);
+    params.cfgFlags = XNET_STARTUP_BYPASS_SECURITY;
     params.cfgPrivatePoolSizeInPages = 12;
-    params.cfgSockMaxSockets = 32;
+    params.cfgEnetReceiveQueueLength = 8;
+    params.cfgIpFragMaxSimultaneous = 4;
+    params.cfgIpFragMaxPacketDiv256 = 8;
+    params.cfgSockMaxSockets = 64;
     params.cfgSockDefaultRecvBufsizeInK = 32;
     params.cfgSockDefaultSendBufsizeInK = 32;
     params.cfgKeyRegMax = 8;
     params.cfgSecRegMax = 32;
+    params.cfgQosDataLimitDiv4 = 64;
 
     xnetResult = XNetStartup(&params);
     g_xsl.xnetStartupOwned = (xnetResult == 0);
     linkStatus = XNetGetEthernetLinkStatus();
     memset(&wsaData, 0, sizeof(wsaData));
-    wsaResult = WSAStartup(MAKEWORD(2, 2), &wsaData);
+    wsaResult = WSAStartup(MAKEWORD(1, 1), &wsaData);
     g_xsl.wsaStartupOwned = (wsaResult == 0);
 
     g_xsl.socketsReady = ((xnetResult == 0 || xnetResult == WSAEALREADY) && wsaResult == 0);
@@ -467,12 +499,43 @@ static void xboxSystemLinkProbe_CleanupSockets(const char *reason)
                       cleanedXnet);
 }
 
+static void xboxSystemLinkProbe_ClearPeerSecureAddress(XboxSystemLinkPeerState *peer, const char *reason)
+{
+    IN_ADDR secureAddr;
+    int result;
+
+    if (!peer || !peer->hasSecureAddress)
+        return;
+
+    secureAddr.s_addr = peer->secureAddress;
+    result = XNetUnregisterInAddr(secureAddr);
+    xbox_debug_Printf("XSL secure addr unregister reason=%s peer=0x%08X addr=0x%08X result=%d\n",
+                      reason ? reason : "unknown",
+                      peer->publicPeer.id,
+                      peer->secureAddress,
+                      result);
+    peer->hasSecureAddress = 0;
+    peer->secureAddress = 0;
+}
+
+static void xboxSystemLinkProbe_ClearAllSecureAddresses(const char *reason)
+{
+    int i;
+
+    for (i = 0; i < g_xsl.peerCount; i++)
+        xboxSystemLinkProbe_ClearPeerSecureAddress(&g_xsl.peers[i], reason);
+    g_xsl.hasSecureHostAddress = 0;
+    g_xsl.secureHostAddress = 0;
+}
+
 static void xboxSystemLinkProbe_UnregisterSession(const char *reason)
 {
     int result;
 
     if (!g_xsl.sessionRegistered)
         return;
+
+    xboxSystemLinkProbe_ClearAllSecureAddresses(reason);
 
     result = 0;
     if (g_xsl.sessionKeyOwned)
@@ -488,8 +551,6 @@ static void xboxSystemLinkProbe_UnregisterSession(const char *reason)
     g_xsl.sessionIsHost = 0;
     g_xsl.sessionKeyOwned = 0;
     g_xsl.sessionHostId = 0;
-    g_xsl.hasSecureHostAddress = 0;
-    g_xsl.secureHostAddress = 0;
     memset(&g_xsl.sessionKeyId, 0, sizeof(g_xsl.sessionKeyId));
     memset(&g_xsl.sessionKey, 0, sizeof(g_xsl.sessionKey));
 }
@@ -594,9 +655,10 @@ static int xboxSystemLinkProbe_ResolvePeerSecureAddress(XboxSystemLinkPeerState 
                           connectResult);
     }
 
+    if (peer->hasSecureAddress && peer->secureAddress != secureAddr.s_addr)
+        xboxSystemLinkProbe_ClearPeerSecureAddress(peer, "secure addr changed");
     peer->secureAddress = secureAddr.s_addr;
     peer->hasSecureAddress = 1;
-    peer->publicPeer.address = secureAddr.s_addr;
     if (outAddress)
         *outAddress = secureAddr.s_addr;
     return 1;
@@ -688,6 +750,12 @@ static int xboxSystemLinkProbe_OpenSocketBound(SOCKET *socketOut, int basePort, 
 
         if (bind(sock, (struct sockaddr *)&addr, sizeof(addr)) == 0)
         {
+            noBlock = 1;
+            if (ioctlsocket(sock, FIONBIO, &noBlock) == SOCKET_ERROR)
+            {
+                g_xsl.lastError = WSAGetLastError();
+                xbox_debug_Printf("XSL %s nonblocking-after-bind failed err=%d\n", label, g_xsl.lastError);
+            }
             *socketOut = sock;
             *portOut = basePort + i;
             xbox_debug_Printf("XSL %s socket bound port=%d\n", label, *portOut);
@@ -841,6 +909,77 @@ static void xboxSystemLinkProbe_UpdateElection(unsigned long nowMs)
     }
 }
 
+static void xboxSystemLinkProbe_PrintGameplayHealthWarning(unsigned long nowMs, int code, const char *message)
+{
+    unsigned long recvAgeMs;
+
+    if (!message || code == XSL_HEALTH_OK)
+        return;
+    if (code == g_xsl.lastHealthWarnCode
+        && nowMs - g_xsl.lastHealthWarnMs < XSL_HEALTH_WARN_INTERVAL_MS)
+        return;
+
+    recvAgeMs = g_xsl.lastGameReceiveMs ? nowMs - g_xsl.lastGameReceiveMs : 0;
+    sithConsole_Print(message);
+    xbox_debug_Printf("XSL health warning code=%d peers=%d host=%d session=%d secureHost=%d lastSendAge=%lu lastRecvAge=%lu lastErr=%d\n",
+                      code,
+                      g_xsl.peerCount,
+                      g_xsl.gameplayIsHost,
+                      g_xsl.sessionRegistered,
+                      g_xsl.hasSecureHostAddress,
+                      g_xsl.lastGameSendMs ? nowMs - g_xsl.lastGameSendMs : 0,
+                      recvAgeMs,
+                      g_xsl.lastError);
+    g_xsl.lastHealthWarnMs = nowMs;
+    g_xsl.lastHealthWarnCode = code;
+}
+
+static void xboxSystemLinkProbe_TickGameplayHealth(unsigned long nowMs)
+{
+    int code;
+    const char *message;
+
+    if (!g_xsl.gameplayActive || g_xsl.smokeHarness)
+        return;
+
+    code = XSL_HEALTH_OK;
+    message = 0;
+    if (g_xsl.peerCount <= 0)
+    {
+        code = XSL_HEALTH_NO_PEER;
+        message = "SYSTEM LINK WARNING: no remote Xbox detected.";
+    }
+    else if (!g_xsl.sessionRegistered)
+    {
+        code = XSL_HEALTH_NO_SESSION;
+        message = "SYSTEM LINK WARNING: secure session is not active.";
+    }
+    else if (!g_xsl.gameplayIsHost && !g_xsl.hasSecureHostAddress)
+    {
+        code = XSL_HEALTH_NO_HOST_ADDRESS;
+        message = "SYSTEM LINK WARNING: host address is not resolved.";
+    }
+    else if (g_xsl.lastGameReceiveMs
+        && nowMs - g_xsl.lastGameReceiveMs >= XSL_HEALTH_PACKET_STALE_MS)
+    {
+        code = XSL_HEALTH_STALE_PACKETS;
+        message = "SYSTEM LINK WARNING: no network packets received.";
+    }
+
+    if (code == XSL_HEALTH_OK)
+    {
+        if (g_xsl.lastHealthWarnCode != XSL_HEALTH_OK)
+            xbox_debug_Printf("XSL health restored peers=%d host=%d session=%d\n",
+                              g_xsl.peerCount,
+                              g_xsl.gameplayIsHost,
+                              g_xsl.sessionRegistered);
+        g_xsl.lastHealthWarnCode = XSL_HEALTH_OK;
+        return;
+    }
+
+    xboxSystemLinkProbe_PrintGameplayHealthWarning(nowMs, code, message);
+}
+
 static void xboxSystemLinkProbe_ExpirePeers(unsigned long nowMs)
 {
     int i;
@@ -852,6 +991,7 @@ static void xboxSystemLinkProbe_ExpirePeers(unsigned long nowMs)
             xbox_debug_Printf("XSL peer expired id=0x%08X packets=%lu\n",
                               g_xsl.peers[i].publicPeer.id,
                               g_xsl.peers[i].publicPeer.packets);
+            xboxSystemLinkProbe_ClearPeerSecureAddress(&g_xsl.peers[i], "peer expired");
             if (i < g_xsl.peerCount - 1)
             {
                 memmove(&g_xsl.peers[i],
@@ -1086,8 +1226,8 @@ static void xboxSystemLinkProbe_Send(void)
               g_xsl.selectedEntry.scoreLimit,
               g_xsl.selectedEntry.timeLimit,
               g_xsl.selectedEntry.maxRank,
-              g_xsl.selectedEntry.episodeGobName,
-              g_xsl.selectedEntry.mapJklFname,
+              xboxSystemLinkProbe_PacketStringOrDash(g_xsl.selectedEntry.episodeGobName),
+              xboxSystemLinkProbe_PacketStringOrDash(g_xsl.selectedEntry.mapJklFname),
               secureBits,
               xnAddrHex,
               keyIdHex,
@@ -1193,6 +1333,10 @@ void xboxSystemLinkProbe_Stop(void)
     xboxSystemLinkProbe_CleanupSockets("stop");
     g_xsl.started = 0;
     g_xsl.gameplayActive = 0;
+    g_xsl.lastGameSendMs = 0;
+    g_xsl.lastGameReceiveMs = 0;
+    g_xsl.lastHealthWarnMs = 0;
+    g_xsl.lastHealthWarnCode = XSL_HEALTH_OK;
     g_xsl.phase = XBOX_SYSTEMLINK_PHASE_DISCOVERY;
     g_xsl.peerCount = 0;
     xbox_debug_Print("XSL stopped\n");
@@ -1221,7 +1365,14 @@ int xboxSystemLinkProbe_Start(void)
         return 0;
 
     if (!g_xsl.localId)
-        g_xsl.localId = xboxSystemLinkProbe_NowMs() ^ (unsigned long)&g_xsl;
+    {
+        unsigned long randomId;
+        randomId = 0;
+        if (XNetRandom((unsigned char *)&randomId, sizeof(randomId)) == 0 && randomId)
+            g_xsl.localId = randomId;
+        else
+            g_xsl.localId = xboxSystemLinkProbe_NowMs() ^ (unsigned long)&g_xsl;
+    }
     xboxSystemLinkProbe_UpdateLocalXnAddr();
 
     g_xsl.started = 1;
@@ -1230,6 +1381,7 @@ int xboxSystemLinkProbe_Start(void)
     g_xsl.lastLogMs = 0;
     g_xsl.sendCounter = 0;
     g_xslSendTraceBudget = 12;
+    g_xslRecvTraceBudget = 48;
     g_xsl.peerCount = 0;
     g_xsl.role = XBOX_SYSTEMLINK_ROLE_SEEKING;
     g_xsl.lastLoggedRole = -1;
@@ -1257,6 +1409,12 @@ void xboxSystemLinkProbe_Tick(void)
     nowMs = xboxSystemLinkProbe_NowMs();
     xboxSystemLinkProbe_ExpirePeers(nowMs);
     xboxSystemLinkProbe_UpdateElection(nowMs);
+
+    if (nowMs - g_xsl.lastSendMs >= XSL_SEND_INTERVAL_MS)
+    {
+        xboxSystemLinkProbe_Send();
+        g_xsl.lastSendMs = nowMs;
+    }
 
     for (;;)
     {
@@ -1297,6 +1455,16 @@ void xboxSystemLinkProbe_Tick(void)
         }
 
         buffer[count] = 0;
+        if (g_xslRecvTraceBudget > 0)
+        {
+            char addressText[32];
+            xboxSystemLinkProbe_FormatAddress(from.sin_addr.s_addr, addressText, sizeof(addressText));
+            xbox_debug_Printf("XSL recv packet addr=%s bytes=%d head=%.12s\n",
+                              addressText,
+                              count,
+                              buffer);
+            g_xslRecvTraceBudget--;
+        }
         memset(&entry, 0, sizeof(entry));
         memset(xnAddrHex, 0, sizeof(xnAddrHex));
         memset(keyIdHex, 0, sizeof(keyIdHex));
@@ -1355,6 +1523,17 @@ void xboxSystemLinkProbe_Tick(void)
                                            &packetKeyId,
                                            &packetKey,
                                            nowMs);
+            if (g_xslRecvTraceBudget > 0)
+            {
+                xbox_debug_Printf("XSL recv parsed id=0x%08X local=0x%08X role=%d phase=%d host=0x%08X secure=%d\n",
+                                  id,
+                                  g_xsl.localId,
+                                  role,
+                                  phase,
+                                  hostId,
+                                  secureBits);
+                g_xslRecvTraceBudget--;
+            }
         }
         else if (sscanf(buffer, "JKXSL1|%08X|%d|%lu", &id, &port, &counter) == 3)
         {
@@ -1377,16 +1556,17 @@ void xboxSystemLinkProbe_Tick(void)
                                            0,
                                            nowMs);
         }
+        else if (g_xslRecvTraceBudget > 0)
+        {
+            xbox_debug_Printf("XSL recv ignored parse-failed bytes=%d head=%.32s\n",
+                              count,
+                              buffer);
+            g_xslRecvTraceBudget--;
+        }
     }
 
     xboxSystemLinkProbe_UpdateElection(nowMs);
     xboxSystemLinkProbe_UpdateLaunch(nowMs);
-
-    if (nowMs - g_xsl.lastSendMs >= XSL_SEND_INTERVAL_MS)
-    {
-        xboxSystemLinkProbe_Send();
-        g_xsl.lastSendMs = nowMs;
-    }
 
     if (nowMs - g_xsl.lastLogMs >= 5000)
     {
@@ -1427,6 +1607,10 @@ void xboxSystemLinkProbe_GetStatus(XboxSystemLinkProbeStatus *outStatus)
     outStatus->localPlayerCount = g_xsl.localPlayerCount;
     outStatus->readyMask = g_xsl.readyMask;
     outStatus->confirmed = g_xsl.confirmed;
+    outStatus->sessionRegistered = g_xsl.sessionRegistered;
+    outStatus->hasLocalXnAddr = g_xsl.hasLocalXnAddr;
+    outStatus->localXnAddrStatus = g_xsl.localXnAddrStatus;
+    outStatus->hasSecureHostAddress = g_xsl.hasSecureHostAddress;
     outStatus->groupMachineCount = xboxSystemLinkProbe_GroupMachineCount();
     outStatus->allConfirmed = xboxSystemLinkProbe_AllMachinesConfirmed();
     outStatus->localFirstPlayerIndex = g_xsl.localFirstPlayerIndex;
@@ -1540,7 +1724,7 @@ int xboxSystemLinkProbe_SmokeHarnessBegin(const jkMultiEntry3 *entry, int isHost
     peer = &g_xsl.peers[0];
     memset(peer, 0, sizeof(*peer));
     peer->publicPeer.id = peerId;
-    peer->publicPeer.address = 0x0100007Fu;
+    peer->publicPeer.address = INADDR_BROADCAST;
     peer->publicPeer.port = XSL_BASE_PORT;
     peer->publicPeer.gamePort = XSL_GAME_BASE_PORT;
     peer->publicPeer.role = isHost ? XBOX_SYSTEMLINK_ROLE_CLIENT : XBOX_SYSTEMLINK_ROLE_HOST;
@@ -1585,7 +1769,7 @@ int xboxSystemLinkProbe_SmokeHarnessBegin(const jkMultiEntry3 *entry, int isHost
                       g_xsl.localPlayerCount,
                       remoteLocalPlayerCount,
                       g_xsl.rosterMaxPlayers);
-    xbox_debug_Printf("XSL peer discovered smoke-harness synthetic id=0x%08X addr=127.0.0.1 port=%d game=%d role=%d locals=%d\n",
+    xbox_debug_Printf("XSL peer discovered smoke-harness synthetic id=0x%08X addr=255.255.255.255 port=%d game=%d role=%d locals=%d\n",
                       peerId,
                       peer->publicPeer.port,
                       peer->publicPeer.gamePort,
@@ -1689,6 +1873,10 @@ int xboxSystemLinkProbe_BeginGameplay(const jkMultiEntry3 *entry, int isHost)
     g_xsl.gameplayActive = 1;
     g_xsl.gameplayIsHost = isHost ? 1 : 0;
     g_xsl.phase = XBOX_SYSTEMLINK_PHASE_IN_GAME;
+    g_xsl.lastGameSendMs = 0;
+    g_xsl.lastGameReceiveMs = xboxSystemLinkProbe_NowMs();
+    g_xsl.lastHealthWarnMs = 0;
+    g_xsl.lastHealthWarnCode = XSL_HEALTH_OK;
     xboxSplitScreen_SetFirstPlayerIndex(g_xsl.localFirstPlayerIndex);
     xbox_debug_Printf("XSL gameplay begin host=%d localFirst=%d locals=%d rosterMax=%d gamePort=%d gob=%s jkl=%s\n",
                       g_xsl.gameplayIsHost,
@@ -1893,6 +2081,14 @@ static int xboxSystemLinkProbe_TargetIsLocal(int netId)
     return xboxSystemLinkProbe_IsLocalPlayerIndex(idx);
 }
 
+static int xboxSystemLinkProbe_MachineIndexForNetId(int netId)
+{
+    int playerIndex = xboxSystemLinkProbe_PlayerIndexForNetId(netId);
+    if (playerIndex < 0)
+        return -1;
+    return playerIndex / XBOX_SYSTEMLINK_PLAYER_STRIDE;
+}
+
 static int xboxSystemLinkProbe_GetRemoteEndpointForNetId(int netId, unsigned long *outAddress, int *outPort)
 {
     int playerIndex;
@@ -1929,7 +2125,9 @@ static int xboxSystemLinkProbe_GetRemoteEndpointForNetId(int netId, unsigned lon
     if (g_xsl.sessionRegistered && peer->hasXnAddr)
         xboxSystemLinkProbe_ResolvePeerSecureAddress(peer, 0);
     if (outAddress)
-        *outAddress = peer->hasSecureAddress ? peer->secureAddress : peer->publicPeer.address;
+        *outAddress = (g_xsl.smokeHarness && !peer->hasSecureAddress)
+            ? INADDR_BROADCAST
+            : (peer->hasSecureAddress ? peer->secureAddress : peer->publicPeer.address);
     if (outPort)
         *outPort = peer->publicPeer.gamePort ? peer->publicPeer.gamePort : XSL_GAME_BASE_PORT;
     return outAddress && *outAddress && outPort && *outPort;
@@ -1982,16 +2180,22 @@ BOOL xboxSystemLinkProbe_GameSend(DPID idFrom, DPID idTo, void *lpData, DWORD dw
         g_xsl.lastError = WSAGetLastError();
         return 0;
     }
+    g_xsl.lastGameSendMs = xboxSystemLinkProbe_NowMs();
     return 1;
 }
 
 int xboxSystemLinkProbe_GameReceive(int *pIdOut, int *pMsgIdOut, int *pLenOut)
 {
     int loopRet;
+    int scanCount;
+    unsigned long nowMs;
 
     xboxSystemLinkProbe_EnsureState();
     if (!g_xsl.gameplayActive)
         return -1;
+
+    nowMs = xboxSystemLinkProbe_NowMs();
+    xboxSystemLinkProbe_TickGameplayHealth(nowMs);
 
     loopRet = xboxSystemLinkProbe_PopLoopback(pIdOut, pMsgIdOut, pLenOut);
     if (loopRet == 0)
@@ -2000,14 +2204,31 @@ int xboxSystemLinkProbe_GameReceive(int *pIdOut, int *pMsgIdOut, int *pLenOut)
     if (!xboxSystemLinkProbe_OpenGameSocket())
         return -1;
 
+    scanCount = 0;
     for (;;)
     {
         unsigned char packet[XSL_MAX_PACKET];
         XboxSystemLinkGamePacketHeader header;
         struct sockaddr_in from;
+        fd_set readSet;
+        struct timeval timeout;
+        int ready;
         int fromSize;
         int count;
         int payloadLen;
+
+        FD_ZERO(&readSet);
+        FD_SET(g_xsl.gameSocket, &readSet);
+        timeout.tv_sec = 0;
+        timeout.tv_usec = 0;
+        ready = select((int)g_xsl.gameSocket + 1, &readSet, NULL, NULL, &timeout);
+        if (ready == SOCKET_ERROR)
+        {
+            g_xsl.lastError = WSAGetLastError();
+            return -1;
+        }
+        if (ready <= 0 || !FD_ISSET(g_xsl.gameSocket, &readSet))
+            return -1;
 
         fromSize = sizeof(from);
         count = recvfrom(g_xsl.gameSocket, (char *)packet, sizeof(packet), 0, (struct sockaddr *)&from, &fromSize);
@@ -2018,18 +2239,40 @@ int xboxSystemLinkProbe_GameReceive(int *pIdOut, int *pMsgIdOut, int *pLenOut)
                 g_xsl.lastError = err;
             return -1;
         }
+        scanCount++;
         if (count < (int)sizeof(header))
+        {
+            if (scanCount >= XSL_GAME_RECV_SCAN_LIMIT)
+                return -1;
             continue;
+        }
         memcpy(&header, packet, sizeof(header));
         if (header.magic != XSL_GAME_MAGIC || header.version != XSL_GAME_VERSION || header.headerSize != sizeof(header))
+        {
+            if (scanCount >= XSL_GAME_RECV_SCAN_LIMIT)
+                return -1;
             continue;
+        }
         if (header.payloadSize > 2052 || (int)(sizeof(header) + header.payloadSize) > count)
+        {
+            if (scanCount >= XSL_GAME_RECV_SCAN_LIMIT)
+                return -1;
             continue;
+        }
+        g_xsl.lastGameReceiveMs = xboxSystemLinkProbe_NowMs();
 
         if (!xboxSystemLinkProbe_TargetIsLocal((int)header.idTo))
         {
-            if (g_xsl.gameplayIsHost)
+            int fromMachine = xboxSystemLinkProbe_MachineIndexForNetId((int)header.idFrom);
+            int toMachine = xboxSystemLinkProbe_MachineIndexForNetId((int)header.idTo);
+            if (g_xsl.gameplayIsHost
+                && fromMachine >= 0
+                && toMachine >= 0
+                && fromMachine != g_xsl.localMachineIndex
+                && fromMachine != toMachine)
                 xboxSystemLinkProbe_GameSend(header.idFrom, header.idTo, packet + sizeof(header), header.payloadSize);
+            if (scanCount >= XSL_GAME_RECV_SCAN_LIMIT)
+                return -1;
             continue;
         }
 
@@ -2091,6 +2334,10 @@ void xboxSystemLinkProbe_GameClose(void)
     g_xsl.gameplayActive = 0;
     g_xsl.gameplayIsHost = 0;
     g_xsl.smokeHarness = 0;
+    g_xsl.lastGameSendMs = 0;
+    g_xsl.lastGameReceiveMs = 0;
+    g_xsl.lastHealthWarnMs = 0;
+    g_xsl.lastHealthWarnCode = XSL_HEALTH_OK;
     xboxSystemLinkProbe_CloseGameSocket();
     xboxSystemLinkProbe_UnregisterSession("game close");
     if (!g_xsl.started)

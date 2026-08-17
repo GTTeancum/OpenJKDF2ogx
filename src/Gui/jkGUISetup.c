@@ -57,7 +57,8 @@ static jkGuiMenu jkGuiSetupControls_menu = {jkGuiSetupControls_buttons, 0, 0xFF,
 #ifdef TARGET_XBOX
 static int32_t jkGuiSetupXbox_sliderImages[2] = {JKGUI_BM_SLIDER_BACK, JKGUI_BM_SLIDER_THUMB};
 static wchar_t jkGuiSetupXbox_resolutionText[64] = L"Current resolution: 640 x 480";
-static wchar_t jkGuiSetupXbox_sensitivityText[32] = L"Look sensitivity: 50";
+static wchar_t jkGuiSetupXbox_sensitivityXText[32] = L"Look X: 50";
+static wchar_t jkGuiSetupXbox_sensitivityYText[32] = L"Look Y: 75";
 static wchar_t jkGuiSetupXbox_deadzoneText[32] = L"Deadzone: 12%";
 
 enum
@@ -152,7 +153,7 @@ static jkGuiElement jkGuiSetupXboxDisplay_buttons[14] = {
 
 static jkGuiMenu jkGuiSetupXboxDisplay_menu = {jkGuiSetupXboxDisplay_buttons, 0, 0xFF, 0xE1, 0xF, 0, 0, jkGui_stdBitmaps, jkGui_stdFonts, 0, 0, "thermloop01.wav", "thrmlpu2.wav", 0, 0, 0, 0, 0, 0};
 
-static jkGuiElement jkGuiSetupXboxControls_buttons[31] = {
+static jkGuiElement jkGuiSetupXboxControls_buttons[33] = {
     {ELEMENT_TEXT, 0, 0, 0, 3, {0, 410, 640, 20}, 1, 0, 0, 0, 0, 0, {0}, 0},
     {ELEMENT_TEXT, 0, 6, "GUI_SETUP", 3, {20, 20, 600, 40}, 1, 0, 0, 0, 0, 0, {0}, 0},
     {ELEMENT_TEXTBUTTON, 100, 2, "GUI_GENERAL", 3, {20, 80, 120, 40},  1, 0, "GUI_GENERAL_HINT", 0, 0, 0, {0}, 0},
@@ -162,25 +163,27 @@ static jkGuiElement jkGuiSetupXboxControls_buttons[31] = {
     {ELEMENT_TEXTBUTTON, 104, 2, "GUI_CONTROLS", 3, {500, 80, 120, 40}, 1, 0, "GUI_CONTROLS_HINT", 0, 0, 0, {0}, 0},
     {ELEMENT_TEXT, 0, 0, L"Controls", 3, {30, 128, 580, 24}, 1, 0, 0, 0, 0, 0, {0}, 0},
     {ELEMENT_TEXT, 0, 0, L"Options", 2, {40, 160, 560, 18}, 1, 0, 0, 0, 0, 0, {0}, 0},
-    {ELEMENT_TEXT, 0, 0, jkGuiSetupXbox_sensitivityText, 2, {50, 188, 220, 20}, 1, 0, 0, 0, 0, 0, {0}, 0},
-    {ELEMENT_SLIDER, 0, 0, (const char*)100, 0, {285, 182, 320, 30}, 1, 0, 0, 0, 0, jkGuiSetupXbox_sliderImages, {0}, 0},
-    {ELEMENT_TEXT, 0, 0, jkGuiSetupXbox_deadzoneText, 2, {50, 220, 220, 20}, 1, 0, 0, 0, 0, 0, {0}, 0},
-    {ELEMENT_SLIDER, 0, 0, (const char*)30, 0, {285, 214, 320, 30}, 1, 0, 0, 0, 0, jkGuiSetupXbox_sliderImages, {0}, 0},
-    {ELEMENT_CHECKBOX, 0, 0, L"Invert look", 0, {50, 258, 220, 20}, 1, 0, 0, 0, 0, 0, {0}, 0},
-    {ELEMENT_CHECKBOX, 0, 0, L"Vibration", 0, {335, 258, 220, 20}, 1, 0, 0, 0, 0, 0, {0}, 0},
-    {ELEMENT_TEXT, 0, 0, L"Default gamepad layout", 2, {40, 292, 560, 18}, 1, 0, 0, 0, 0, 0, {0}, 0},
-    {ELEMENT_TEXT, 0, 0, L"Move: Left stick", 2, {50, 317, 250, 18}, 1, 0, 0, 0, 0, 0, {0}, 0},
-    {ELEMENT_TEXT, 0, 0, L"Look: Right stick", 2, {335, 317, 250, 18}, 1, 0, 0, 0, 0, 0, {0}, 0},
-    {ELEMENT_TEXT, 0, 0, L"Fire:", 2, {50, 340, 250, 18}, 1, 0, 0, 0, 0, 0, {0}, 0},
-    {ELEMENT_TEXT, 0, 0, L"Alt fire:", 2, {335, 340, 250, 18}, 1, 0, 0, 0, 0, 0, {0}, 0},
-    {ELEMENT_TEXT, 0, 0, L"Jump / confirm: A", 2, {50, 363, 250, 18}, 1, 0, 0, 0, 0, 0, {0}, 0},
-    {ELEMENT_TEXT, 0, 0, L"Crouch toggle: RS", 2, {335, 363, 250, 18}, 1, 0, 0, 0, 0, 0, {0}, 0},
-    {ELEMENT_TEXT, 0, 0, L"Use / activate: X", 2, {50, 386, 250, 18}, 1, 0, 0, 0, 0, 0, {0}, 0},
-    {ELEMENT_TEXT, 0, 0, L"Weapons:", 2, {335, 386, 250, 18}, 1, 0, 0, 0, 0, 0, {0}, 0},
-    {ELEMENT_CUSTOM, 0, 0, 0, JKGUISETUP_XBTN_RT, {102, 328, 52, 36}, 1, 0, 0, jkGuiSetupXbox_ButtonGlyphDraw, 0, 0, {0}, 0},
-    {ELEMENT_CUSTOM, 0, 0, 0, JKGUISETUP_XBTN_LT, {419, 328, 52, 36}, 1, 0, 0, jkGuiSetupXbox_ButtonGlyphDraw, 0, 0, {0}, 0},
-    {ELEMENT_CUSTOM, 0, 0, 0, JKGUISETUP_XBTN_BLACK, {420, 378, 40, 40}, 1, 0, 0, jkGuiSetupXbox_ButtonGlyphDraw, 0, 0, {0}, 0},
-    {ELEMENT_CUSTOM, 0, 0, 0, JKGUISETUP_XBTN_WHITE, {464, 378, 40, 40}, 1, 0, 0, jkGuiSetupXbox_ButtonGlyphDraw, 0, 0, {0}, 0},
+    {ELEMENT_TEXT, 0, 0, jkGuiSetupXbox_sensitivityXText, 2, {50, 184, 220, 20}, 1, 0, 0, 0, 0, 0, {0}, 0},
+    {ELEMENT_SLIDER, 0, 0, (const char*)100, 0, {285, 178, 320, 30}, 1, 0, 0, 0, 0, jkGuiSetupXbox_sliderImages, {0}, 0},
+    {ELEMENT_TEXT, 0, 0, jkGuiSetupXbox_sensitivityYText, 2, {50, 216, 220, 20}, 1, 0, 0, 0, 0, 0, {0}, 0},
+    {ELEMENT_SLIDER, 0, 0, (const char*)100, 0, {285, 210, 320, 30}, 1, 0, 0, 0, 0, jkGuiSetupXbox_sliderImages, {0}, 0},
+    {ELEMENT_TEXT, 0, 0, jkGuiSetupXbox_deadzoneText, 2, {50, 248, 220, 20}, 1, 0, 0, 0, 0, 0, {0}, 0},
+    {ELEMENT_SLIDER, 0, 0, (const char*)30, 0, {285, 242, 320, 30}, 1, 0, 0, 0, 0, jkGuiSetupXbox_sliderImages, {0}, 0},
+    {ELEMENT_CHECKBOX, 0, 0, L"Invert look", 0, {50, 280, 220, 20}, 1, 0, 0, 0, 0, 0, {0}, 0},
+    {ELEMENT_CHECKBOX, 0, 0, L"Vibration", 0, {335, 280, 220, 20}, 1, 0, 0, 0, 0, 0, {0}, 0},
+    {ELEMENT_TEXT, 0, 0, L"Default gamepad layout", 2, {40, 307, 560, 18}, 1, 0, 0, 0, 0, 0, {0}, 0},
+    {ELEMENT_TEXT, 0, 0, L"Move: Left stick", 2, {50, 329, 250, 18}, 1, 0, 0, 0, 0, 0, {0}, 0},
+    {ELEMENT_TEXT, 0, 0, L"Look: Right stick", 2, {335, 329, 250, 18}, 1, 0, 0, 0, 0, 0, {0}, 0},
+    {ELEMENT_TEXT, 0, 0, L"Fire:", 2, {50, 351, 250, 18}, 1, 0, 0, 0, 0, 0, {0}, 0},
+    {ELEMENT_TEXT, 0, 0, L"Alt fire:", 2, {335, 351, 250, 18}, 1, 0, 0, 0, 0, 0, {0}, 0},
+    {ELEMENT_TEXT, 0, 0, L"Jump / confirm: A", 2, {50, 373, 250, 18}, 1, 0, 0, 0, 0, 0, {0}, 0},
+    {ELEMENT_TEXT, 0, 0, L"Crouch toggle: RS", 2, {335, 373, 250, 18}, 1, 0, 0, 0, 0, 0, {0}, 0},
+    {ELEMENT_TEXT, 0, 0, L"Use / activate: X", 2, {50, 395, 250, 18}, 1, 0, 0, 0, 0, 0, {0}, 0},
+    {ELEMENT_TEXT, 0, 0, L"Weapons:", 2, {335, 395, 250, 18}, 1, 0, 0, 0, 0, 0, {0}, 0},
+    {ELEMENT_CUSTOM, 0, 0, 0, JKGUISETUP_XBTN_RT, {102, 339, 52, 36}, 1, 0, 0, jkGuiSetupXbox_ButtonGlyphDraw, 0, 0, {0}, 0},
+    {ELEMENT_CUSTOM, 0, 0, 0, JKGUISETUP_XBTN_LT, {419, 339, 52, 36}, 1, 0, 0, jkGuiSetupXbox_ButtonGlyphDraw, 0, 0, {0}, 0},
+    {ELEMENT_CUSTOM, 0, 0, 0, JKGUISETUP_XBTN_BLACK, {420, 389, 40, 40}, 1, 0, 0, jkGuiSetupXbox_ButtonGlyphDraw, 0, 0, {0}, 0},
+    {ELEMENT_CUSTOM, 0, 0, 0, JKGUISETUP_XBTN_WHITE, {464, 389, 40, 40}, 1, 0, 0, jkGuiSetupXbox_ButtonGlyphDraw, 0, 0, {0}, 0},
     {ELEMENT_TEXTBUTTON, 1, 2, "GUI_OK", 3, {440, 430, 200, 40}, 1, 0, 0, 0, 0, 0, {0}, 0},
     {ELEMENT_TEXTBUTTON, -1, 2, "GUI_CANCEL", 3, {0, 430, 200, 40}, 1, 0, 0, 0, 0, 0, {0}, 0},
     {ELEMENT_END, 0, 0, 0, 0, {0}, 0, 0, 0, 0, 0, 0, {0}, 0},
@@ -219,12 +222,13 @@ static void jkGuiSetupXbox_DebugMenu(const char *label, jkGuiMenu *menu)
 
 static void jkGuiSetupXbox_UpdateSensitivityText(void)
 {
-    jk_snwprintf(jkGuiSetupXbox_sensitivityText, 32, L"Look sensitivity: %d", jkGuiSetupXboxControls_buttons[10].selectedTextEntry);
+    jk_snwprintf(jkGuiSetupXbox_sensitivityXText, 32, L"Look X: %d", jkGuiSetupXboxControls_buttons[10].selectedTextEntry);
+    jk_snwprintf(jkGuiSetupXbox_sensitivityYText, 32, L"Look Y: %d", jkGuiSetupXboxControls_buttons[12].selectedTextEntry);
 }
 
 static void jkGuiSetupXbox_UpdateDeadzoneText(void)
 {
-    jk_snwprintf(jkGuiSetupXbox_deadzoneText, 32, L"Deadzone: %d%%", jkGuiSetupXboxControls_buttons[12].selectedTextEntry);
+    jk_snwprintf(jkGuiSetupXbox_deadzoneText, 32, L"Deadzone: %d%%", jkGuiSetupXboxControls_buttons[14].selectedTextEntry);
 }
 
 static int jkGuiSetupXbox_ShowDisplay(void)
@@ -242,6 +246,10 @@ static int jkGuiSetupXbox_ShowDisplay(void)
     jkGuiRend_MenuSetReturnKeyShortcutElement(&jkGuiSetupXboxDisplay_menu, NULL);
     jkGuiRend_MenuSetEscapeKeyShortcutElement(&jkGuiSetupXboxDisplay_menu, &jkGuiSetupXboxDisplay_buttons[12]);
     jkGuiSetupXbox_DebugMenu("display-before", &jkGuiSetupXboxDisplay_menu);
+    jkGuiRend_XboxFooterBegin(&jkGuiSetupXboxDisplay_menu);
+    jkGuiRend_XboxFooterAddAction(&jkGuiSetupXboxDisplay_menu, JKGUI_XBOX_BTN_A, 0, L"Select");
+    jkGuiRend_XboxFooterAddElementAction(&jkGuiSetupXboxDisplay_menu, JKGUI_XBOX_BTN_B, &jkGuiSetupXboxDisplay_buttons[12], L"Back");
+    jkGuiRend_XboxFooterAddElementAction(&jkGuiSetupXboxDisplay_menu, JKGUI_XBOX_BTN_START, &jkGuiSetupXboxDisplay_buttons[11], L"Done");
     if (jkGuiRend_DisplayAndReturnClicked(&jkGuiSetupXboxDisplay_menu) == -1)
     {
         stdPlatform_Printf("SetupDbg: display returned -1\n");
@@ -256,35 +264,44 @@ static int jkGuiSetupXbox_ShowControls(void)
     int result;
     jkGui_sub_412E20(&jkGuiSetupXboxControls_menu, 100, 104, 104);
     jkGuiSetup_sub_412EF0(&jkGuiSetupXboxControls_menu, 0);
-    jkGuiSetupXboxControls_buttons[10].selectedTextEntry = stdControl_XboxGetLookSensitivity();
-    jkGuiSetupXboxControls_buttons[12].selectedTextEntry = stdControl_XboxGetDeadzone();
-    jkGuiSetupXboxControls_buttons[13].selectedTextEntry = stdControl_XboxGetInvertLook();
-    jkGuiSetupXboxControls_buttons[14].selectedTextEntry = stdControl_XboxGetVibration();
+    jkGuiSetupXboxControls_buttons[10].selectedTextEntry = stdControl_XboxGetLookSensitivityX();
+    jkGuiSetupXboxControls_buttons[12].selectedTextEntry = stdControl_XboxGetLookSensitivityY();
+    jkGuiSetupXboxControls_buttons[14].selectedTextEntry = stdControl_XboxGetDeadzone();
+    jkGuiSetupXboxControls_buttons[15].selectedTextEntry = stdControl_XboxGetInvertLook();
+    jkGuiSetupXboxControls_buttons[16].selectedTextEntry = stdControl_XboxGetVibration();
     jkGuiSetupXbox_UpdateSensitivityText();
     jkGuiSetupXbox_UpdateDeadzoneText();
     jkGuiRend_MenuSetReturnKeyShortcutElement(&jkGuiSetupXboxControls_menu, NULL);
-    jkGuiRend_MenuSetEscapeKeyShortcutElement(&jkGuiSetupXboxControls_menu, &jkGuiSetupXboxControls_buttons[29]);
+    jkGuiRend_MenuSetEscapeKeyShortcutElement(&jkGuiSetupXboxControls_menu, &jkGuiSetupXboxControls_buttons[31]);
     jkGuiSetupXbox_DebugMenu("controls-before", &jkGuiSetupXboxControls_menu);
+    jkGuiRend_XboxFooterBegin(&jkGuiSetupXboxControls_menu);
+    jkGuiRend_XboxFooterAddAction(&jkGuiSetupXboxControls_menu, JKGUI_XBOX_BTN_A, 0, L"Select");
+    jkGuiRend_XboxFooterAddElementAction(&jkGuiSetupXboxControls_menu, JKGUI_XBOX_BTN_B, &jkGuiSetupXboxControls_buttons[31], L"Back");
+    jkGuiRend_XboxFooterAddElementAction(&jkGuiSetupXboxControls_menu, JKGUI_XBOX_BTN_START, &jkGuiSetupXboxControls_buttons[30], L"Done");
     result = jkGuiRend_DisplayAndReturnClicked(&jkGuiSetupXboxControls_menu);
-    stdPlatform_Printf("SetupDbg: controls returned %d sens=%d deadzone=%d invert=%d vibration=%d\n",
+    stdPlatform_Printf("SetupDbg: controls returned %d sensX=%d sensY=%d deadzone=%d invert=%d vibration=%d\n",
         result,
         jkGuiSetupXboxControls_buttons[10].selectedTextEntry,
         jkGuiSetupXboxControls_buttons[12].selectedTextEntry,
-        jkGuiSetupXboxControls_buttons[13].selectedTextEntry,
-        jkGuiSetupXboxControls_buttons[14].selectedTextEntry);
+        jkGuiSetupXboxControls_buttons[14].selectedTextEntry,
+        jkGuiSetupXboxControls_buttons[15].selectedTextEntry,
+        jkGuiSetupXboxControls_buttons[16].selectedTextEntry);
     if (result != -1)
     {
         jkGuiSetupXbox_UpdateSensitivityText();
         jkGuiSetupXbox_UpdateDeadzoneText();
-        stdControl_XboxSetLookOptionsEx(
+        stdControl_XboxSetLookOptionsAxesEx(
             jkGuiSetupXboxControls_buttons[10].selectedTextEntry,
-            jkGuiSetupXboxControls_buttons[13].selectedTextEntry,
-            jkGuiSetupXboxControls_buttons[14].selectedTextEntry,
-            jkGuiSetupXboxControls_buttons[12].selectedTextEntry);
+            jkGuiSetupXboxControls_buttons[12].selectedTextEntry,
+            jkGuiSetupXboxControls_buttons[15].selectedTextEntry,
+            jkGuiSetupXboxControls_buttons[16].selectedTextEntry,
+            jkGuiSetupXboxControls_buttons[14].selectedTextEntry);
         wuRegistry_SaveInt("xboxLookSensitivity", jkGuiSetupXboxControls_buttons[10].selectedTextEntry);
-        wuRegistry_SaveInt("xboxDeadzone", jkGuiSetupXboxControls_buttons[12].selectedTextEntry);
-        wuRegistry_SaveBool("xboxInvertLook", jkGuiSetupXboxControls_buttons[13].selectedTextEntry);
-        wuRegistry_SaveBool("xboxVibration", jkGuiSetupXboxControls_buttons[14].selectedTextEntry);
+        wuRegistry_SaveInt("xboxLookSensitivityX", jkGuiSetupXboxControls_buttons[10].selectedTextEntry);
+        wuRegistry_SaveInt("xboxLookSensitivityY", jkGuiSetupXboxControls_buttons[12].selectedTextEntry);
+        wuRegistry_SaveInt("xboxDeadzone", jkGuiSetupXboxControls_buttons[14].selectedTextEntry);
+        wuRegistry_SaveBool("xboxInvertLook", jkGuiSetupXboxControls_buttons[15].selectedTextEntry);
+        wuRegistry_SaveBool("xboxVibration", jkGuiSetupXboxControls_buttons[16].selectedTextEntry);
     }
     return (result == -1) ? -1 : 104;
 }
@@ -338,7 +355,20 @@ void jkGuiSetup_Show()
     #ifdef TARGET_XBOX
     jkGuiSetupXbox_DebugMenu("root-before", &jkGuiSetup_menu);
     #endif
-    for ( i = jkGuiRend_DisplayAndReturnClicked(&jkGuiSetup_menu); i != -1; i = jkGuiRend_DisplayAndReturnClicked(&jkGuiSetup_menu) )
+    for (
+#ifdef TARGET_XBOX
+        jkGuiRend_XboxFooterBegin(&jkGuiSetup_menu),
+        jkGuiRend_XboxFooterAddAction(&jkGuiSetup_menu, JKGUI_XBOX_BTN_A, 0, L"Select"),
+        jkGuiRend_XboxFooterAddElementAction(&jkGuiSetup_menu, JKGUI_XBOX_BTN_B, &jkGuiSetup_buttons[7], L"Back"),
+#endif
+        i = jkGuiRend_DisplayAndReturnClicked(&jkGuiSetup_menu);
+        i != -1;
+#ifdef TARGET_XBOX
+        jkGuiRend_XboxFooterBegin(&jkGuiSetup_menu),
+        jkGuiRend_XboxFooterAddAction(&jkGuiSetup_menu, JKGUI_XBOX_BTN_A, 0, L"Select"),
+        jkGuiRend_XboxFooterAddElementAction(&jkGuiSetup_menu, JKGUI_XBOX_BTN_B, &jkGuiSetup_buttons[7], L"Back"),
+#endif
+        i = jkGuiRend_DisplayAndReturnClicked(&jkGuiSetup_menu) )
     {
         #ifdef TARGET_XBOX
         stdPlatform_Printf("SetupDbg: root returned id=%d\n", i);

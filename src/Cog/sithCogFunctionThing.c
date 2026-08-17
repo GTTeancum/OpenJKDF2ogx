@@ -31,6 +31,30 @@ extern "C" void xbox_debug_Printf(const char*, ...);
 void sithCogFunctionThing_createThingAtPos_nr_Mots(sithCog *ctx, int idk, sithThing* pThingIn);
 void sithCogFunctionThing_createThingAtPos_nr(sithCog *ctx, int idk);
 
+#ifdef TARGET_XBOX
+static int sithCogFunctionThing_ShouldLogMotsSetInvBin(uint32_t binIdx)
+{
+    switch (binIdx)
+    {
+        case SITHBIN_ENERGY:
+        case SITHBIN_BATTERY:
+        case SITHBIN_SHIELDS:
+        case SITHBIN_POWERBOOST:
+        case 67:
+        case SITHBIN_FIELDLIGHT:
+        case SITHBIN_MOTS_FISTS:
+        case SITHBIN_MOTS_BRYARPISTOL:
+        case SITHBIN_MOTS_STORMTROOPER_RIFLE:
+        case SITHBIN_MOTS_LIGHTSABER:
+        case SITHBIN_MOTS_BLASTECH:
+        case SITHBIN_MOTS_STORMTROOPER_SCOPE:
+            return 1;
+        default:
+            return 0;
+    }
+}
+#endif
+
 void sithCogFunctionThing_GetThingType(sithCog *ctx)
 {
     sithThing* pThing = sithCogExec_PopThing(ctx);
@@ -775,29 +799,65 @@ void sithCogFunctionThing_SetInv(sithCog *ctx)
     cog_flex_t amt = sithCogExec_PopFlex(ctx);
     uint32_t binIdx = sithCogExec_PopInt(ctx);
     sithThing* playerThing = sithCogExec_PopThing(ctx);
+    int shouldLog = 0;
+    int validPlayer = 0;
+    flex_t beforeAmt = 0.0;
+    flex_t afterAmt = 0.0;
 
     if (Main_bMotsCompat && binIdx < SITHBIN_ENERGY) {
         binIdx = sithInventory_SelectWeaponFollowing(binIdx);
     }
 
-#if defined(TARGET_XBOX) && defined(XBOX_VERBOSE_FORMAT_LOGS)
-    /* Diagnostic — log every SetInv cog call so we can see what cog
-       grants the bryar / fists / ammo at level start. */
-    { static int _si = 0;
-      if (_si < 24) {
-          xbox_debug_Printf("CogVerb SetInv: cog=%p thing=%p bin=%u amt=%g\n",
-                            (void*)ctx, (void*)playerThing,
-                            (unsigned)binIdx, (double)amt);
-          _si++;
-      }
+#ifdef TARGET_XBOX
+    shouldLog = Main_bMotsCompat && sithCogFunctionThing_ShouldLogMotsSetInvBin(binIdx);
+#endif
+
+    validPlayer = playerThing
+         && playerThing->type == SITH_THING_PLAYER
+         && playerThing->actorParams.playerinfo
+         && binIdx < SITHBIN_NUMBINS;
+
+#ifdef TARGET_XBOX
+    if (shouldLog)
+    {
+        static int _si = 0;
+        if (_si < 64)
+        {
+            uint32_t descFlags = (binIdx < SITHBIN_NUMBINS) ? sithInventory_aDescriptors[binIdx].flags : 0;
+            beforeAmt = validPlayer ? sithInventory_GetBinAmount(playerThing, binIdx) : 0.0;
+            xbox_debug_Printf("MotSMode: CogVerb SetInv before cog=%p thing=%p thingIdx=%d type=%d hasInfo=%d bin=%u descFlags=0x%X old=%g new=%g valid=%d\n",
+                              (void*)ctx, (void*)playerThing,
+                              playerThing ? playerThing->thingIdx : -1,
+                              playerThing ? playerThing->type : -1,
+                              playerThing && playerThing->actorParams.playerinfo ? 1 : 0,
+                              (unsigned)binIdx, (unsigned)descFlags,
+                              (double)beforeAmt, (double)amt, validPlayer);
+            _si++;
+        }
     }
 #endif
 
-    if ( playerThing
-         && playerThing->type == SITH_THING_PLAYER
-         && playerThing->actorParams.playerinfo
-         && binIdx < SITHBIN_NUMBINS )
+    if (validPlayer)
+    {
         sithInventory_SetBinAmount(playerThing, binIdx, amt);
+
+#ifdef TARGET_XBOX
+        if (shouldLog)
+        {
+            static int _sia = 0;
+            if (_sia < 64)
+            {
+                afterAmt = sithInventory_GetBinAmount(playerThing, binIdx);
+                xbox_debug_Printf("MotSMode: CogVerb SetInv after cog=%p thing=%p bin=%u amt=%g carries=%d avail=%d\n",
+                                  (void*)ctx, (void*)playerThing, (unsigned)binIdx,
+                                  (double)afterAmt,
+                                  sithInventory_GetCarries(playerThing, binIdx),
+                                  sithInventory_GetAvailable(playerThing, binIdx));
+                _sia++;
+            }
+        }
+#endif
+    }
 }
 
 void sithCogFunctionThing_ChangeInv(sithCog *ctx)
@@ -1484,13 +1544,16 @@ void sithCogFunctionThing_SetCurInvWeapon(sithCog *ctx)
     if (Main_bMotsCompat && binIdx < SITHBIN_ENERGY) {
         binIdx = sithInventory_SelectWeaponFollowing(binIdx);
     }
-#if defined(TARGET_XBOX) && defined(XBOX_VERBOSE_FORMAT_LOGS)
-    { static int _sciw = 0;
-      if (_sciw < 16) {
-          xbox_debug_Printf("CogVerb SetCurInvWeapon: cog=%p thing=%p bin=%u\n",
-                            (void*)ctx, (void*)pThing, (unsigned)binIdx);
-          _sciw++;
-      }
+#ifdef TARGET_XBOX
+    if (Main_bMotsCompat)
+    {
+        static int _sciw = 0;
+        if (_sciw < 24)
+        {
+            xbox_debug_Printf("MotSMode: CogVerb SetCurInvWeapon cog=%p thing=%p bin=%u\n",
+                              (void*)ctx, (void*)pThing, (unsigned)binIdx);
+            _sciw++;
+        }
     }
 #endif
     if (pThing)

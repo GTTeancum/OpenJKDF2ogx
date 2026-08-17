@@ -18,6 +18,7 @@
 #include "Win95/stdSound.h"
 #include "Devices/sithSoundMixer.h"
 #include "General/stdString.h"
+#include "General/util.h"
 #include "stdPlatform.h"
 #include "Platform/std3D.h"
 #include <stdlib.h>
@@ -551,6 +552,11 @@ int jkCutscene_sub_421310(char* fpath)
     if (!fpath) return 1;
 
 #ifdef TARGET_XBOX
+    if (!jkPlayer_setDisableCutscenes &&
+        (Main_xboxSmokeDisableCutscenes || util_FileExists("xbox_smoke_disable_cutscenes.txt")))
+    {
+        jkPlayer_setDisableCutscenes = 1;
+    }
     stdPlatform_Printf("CutsceneTrace: CutsceneOpen request='%s' disable=%d\n", fpath, jkPlayer_setDisableCutscenes);
 #endif
 
