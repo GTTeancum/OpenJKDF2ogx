@@ -16,23 +16,6 @@
 #include "external/fcaseopen/fcaseopen.h"
 #endif
 
-#ifdef TARGET_XBOX
-static int jkSmack_ResolveVideoPath(const char *fname, char *out, int outLen)
-{
-    char candidate[128];
-
-    _sprintf(candidate, "video%c%s", LEC_PATH_SEPARATOR_CHR, fname);
-    if ( jkRes_FileExists(candidate, out, outLen) )
-        return 1;
-
-    _sprintf(candidate, "Resource%cVIDEO%c%s", LEC_PATH_SEPARATOR_CHR, LEC_PATH_SEPARATOR_CHR, fname);
-    if ( jkRes_FileExists(candidate, out, outLen) )
-        return 1;
-
-    return 0;
-}
-#endif
-
 void jkSmack_Startup()
 {
     jkSmack_bInit = 1;
@@ -88,7 +71,7 @@ int jkSmack_SmackPlay(const char *fname)
 #endif
 
 #ifdef TARGET_XBOX
-    if ( !jkSmack_ResolveVideoPath(fname, std_genBuffer, sizeof(std_genBuffer)) )
+    if ( !jkMain_XboxResolveVideoPath(fname, std_genBuffer, sizeof(std_genBuffer)) )
 #else
     if ( !util_FileExists(std_genBuffer) )
 #endif

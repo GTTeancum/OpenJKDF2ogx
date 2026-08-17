@@ -522,6 +522,15 @@ int sithMain_Tick()
             flex_d_t framesToApply = rolloverCombine * TARGET_PHYSTICK_FPS; // get number of 50FPS steps passed
             uint32_t wholeFramesToApply = (uint32_t)(float)round((float)framesToApply);
             sithTime_physicsRolloverFrames = rolloverCombine - (((flex_d_t)wholeFramesToApply) * DELTA_PHYSTICK_FPS);
+#ifdef TARGET_XBOX
+            if (wholeFramesToApply > 8)
+            {
+                XPERF("SithMain: capped fixed-step catchup submode frames=%u deltaMs=%u\n",
+                      wholeFramesToApply, sithTime_deltaMs);
+                wholeFramesToApply = 8;
+                sithTime_physicsRolloverFrames = 0.0;
+            }
+#endif
 
             //printf("%f %f\n", framesToApply, rolloverCombine);
 
@@ -530,7 +539,7 @@ int sithMain_Tick()
             sithTime_deltaSeconds = DELTA_PHYSTICK_FPS;
             sithTime_deltaMs = (int)(DELTA_PHYSTICK_FPS * 1000.0);
 
-            for (int i = (int)framesToApply; i > 0; i--)
+            for (uint32_t i = 0; i < wholeFramesToApply; i++)
             {
                 sithSurface_Tick(sithTime_deltaSeconds);
                 sithThing_TickAll(sithTime_deltaSeconds, sithTime_deltaMs);
@@ -573,7 +582,15 @@ int sithMain_Tick()
             flex_d_t framesToApply = rolloverCombine * TARGET_PHYSTICK_FPS; // get number of 50FPS steps passed
             uint32_t wholeFramesToApply = (uint32_t)(float)round((float)framesToApply);
             sithTime_physicsRolloverFrames = rolloverCombine - (((flex_d_t)wholeFramesToApply) * DELTA_PHYSTICK_FPS);
-
+#ifdef TARGET_XBOX
+            if (wholeFramesToApply > 8)
+            {
+                XPERF("SithMain: capped fixed-step catchup frames=%u deltaMs=%u\n",
+                      wholeFramesToApply, sithTime_deltaMs);
+                wholeFramesToApply = 8;
+                sithTime_physicsRolloverFrames = 0.0;
+            }
+#endif
 #ifdef TARGET_XBOX
 #endif
             if (wholeFramesToApply > 0)

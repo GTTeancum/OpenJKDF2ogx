@@ -30,6 +30,29 @@
 #include "Dss/sithMulti.h"
 #include "jk.h"
 
+#ifdef TARGET_XBOX
+#include "Platform/Xbox/xbox_debug.h"
+static int sithAI_xboxRepairLogBudget = 8;
+
+static int sithAI_XboxActorIndex(sithActor *actor)
+{
+    intptr_t offset;
+
+    if (!actor)
+        return -1;
+
+    offset = (intptr_t)((uint8_t*)actor - (uint8_t*)sithAI_actors);
+    if (offset < 0 || (offset % (intptr_t)sizeof(sithActor)) != 0)
+        return -1;
+
+    offset /= (intptr_t)sizeof(sithActor);
+    if (offset < 0 || offset >= SITHAI_MAX_ACTORS)
+        return -1;
+
+    return (int)offset;
+}
+#endif
+
 stdHashTable* sithAI_commandsHashmap = NULL;
 uint32_t sithAI_maxActors = 0;
 int sithAI_actorInitted[SITHAI_MAX_ACTORS] = {0};
@@ -179,7 +202,7 @@ void sithAI_Close()
     int v4; // eax
     sithActor *v5; // ecx
     
-    if (sithAI_bOpened)
+    if (!sithAI_bOpened)
         return;
     
     // TODO: what is this inline?
@@ -687,10 +710,39 @@ void sithAI_Tick(sithThing *thing, flex_t deltaSeconds)
 {
     if ( thing->type == SITH_THING_ACTOR && thing->actorParams.health > 0.0 )
     {
-        if (thing->actor->flags & SITHAI_MODE_TURNING)
-            sithAI_sub_4EA630(thing->actor, deltaSeconds);
-        if (thing->actor->flags & SITHAI_MODE_MOVING)
-            sithAI_idk_msgarrived_target(thing->actor, deltaSeconds);
+        sithActor *actor = thing->actor;
+#ifdef TARGET_XBOX
+        int xboxActorIdx = sithAI_XboxActorIndex(actor);
+        if (xboxActorIdx < 0 || actor->thing != thing || !actor->pAIClass)
+        {
+            if (sithAI_xboxRepairLogBudget > 0)
+            {
+                --sithAI_xboxRepairLogBudget;
+                XPERF("SithAI: repairing invalid actor binding thing=%d template='%s' actor=%p actorIdx=%d actorThing=%p actorAI=%p thingAI=%p\n",
+                      thing->thingIdx,
+                      thing->template_name,
+                      (void*)actor,
+                      xboxActorIdx,
+                      xboxActorIdx >= 0 ? (void*)actor->thing : (void*)0,
+                      xboxActorIdx >= 0 ? (void*)actor->pAIClass : (void*)0,
+                      (void*)thing->pAIClass);
+            }
+            thing->actor = NULL;
+            if (thing->pAIClass)
+                sithAI_NewEntry(thing);
+            actor = thing->actor;
+            xboxActorIdx = sithAI_XboxActorIndex(actor);
+            if (xboxActorIdx < 0 || actor->thing != thing || !actor->pAIClass)
+            {
+                thing->controlType = SITH_CT_NONE;
+                return;
+            }
+        }
+#endif
+        if (actor->flags & SITHAI_MODE_TURNING)
+            sithAI_sub_4EA630(actor, deltaSeconds);
+        if (actor->flags & SITHAI_MODE_MOVING)
+            sithAI_idk_msgarrived_target(actor, deltaSeconds);
     }
 }
 

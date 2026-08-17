@@ -44,6 +44,7 @@ function New-AlwaysOnPlan {
 
     $level = [Math]::Max(60, $DefaultLevelSeconds)
     $short = [Math]::Max(60, [int]($level * 0.75))
+    $runtimeEpisodeDir = Join-Path $RuntimeSource "Episode"
 
     $lines = @(
         "# OpenJKDF2 Xbox always-on XEMU soak",
@@ -55,6 +56,7 @@ function New-AlwaysOnPlan {
         "LEVEL|$level|1|JK1|15maw.jkl",
         "MENU|0",
         "LEVEL|$level|1|JKM|s1l1_rebelbase.jkl",
+        "LEVEL|$level|1|JKM|s2l1_palace.jkl",
         "LEVEL|$level|1|JKM|s5l4_lowersith.jkl",
         "MENU|0",
         "LEVEL|$short|1|JK1MP|m2.jkl",
@@ -72,6 +74,9 @@ function New-AlwaysOnPlan {
         "LEVEL|$short|1|GEMPFAC|gempfac.jkl",
         "LEVEL|$short|1|q3dm5|q3dm5.jkl"
     )
+    if (Test-Path -LiteralPath (Join-Path $runtimeEpisodeDir "impsiege.gob")) {
+        $lines += "LEVEL|$short|1|impsiege|impsiege.jkl"
+    }
     Set-Content -LiteralPath $PlanPath -Value $lines -Encoding ASCII
 }
 

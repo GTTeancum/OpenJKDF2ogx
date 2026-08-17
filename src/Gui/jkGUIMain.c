@@ -1694,6 +1694,13 @@ void jkGuiMain_ShowCutscenes()
                 goto LABEL_17;
             }
 #endif
+#ifdef TARGET_XBOX
+            if ( v5 && jkMain_XboxResolveVideoPath(v5, v12, sizeof(v12)) )
+            {
+                jkMain_SwitchTo4(v12);
+                goto LABEL_17;
+            }
+#endif
             snprintf(v12, 256, "video%c%s", '\\', v5); // Added: sprintf -> snprintf
             if ( util_FileExists(v12) || jkRes_LoadCD(jkPlayer_aCutsceneVal[jkGuiMain_cutscenesElements[1].selectedTextEntry]) ) // Added: Don't need a CD switch if it exists.
             {

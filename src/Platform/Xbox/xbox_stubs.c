@@ -543,7 +543,7 @@ void jkDSS_SendSetTeam(short team)                                          { (v
 //int  jkGuiMultiplayer_Show2(void)                                           { return 0; }
 /* jkCredits_cdOverride is now provided by jkCredits.c. */
 //int  jkCredits_cdOverride                                                   = 0;
-extern "C" const wchar_t *openjkdf2_waReleaseVersion                        = L"Xbox";
+extern "C" const wchar_t *openjkdf2_waReleaseVersion                        = OPENJKDF2_XBOX_BETA_VERSION_W;
 extern "C" const wchar_t *openjkdf2_waReleaseCommitShort                    = L"";
 /* sithGamesave_GetProfilePath is implemented by sithGamesave.c. */
 

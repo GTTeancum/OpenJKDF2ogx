@@ -555,6 +555,49 @@ static void xboxSystemLinkProbe_UnregisterSession(const char *reason)
     memset(&g_xsl.sessionKey, 0, sizeof(g_xsl.sessionKey));
 }
 
+static void xboxSystemLinkProbe_ResetTransientSessionState(const char *reason, int clearSelection)
+{
+    g_xsl.launchId = 0;
+    g_xsl.launchAckId = 0;
+    g_xsl.lastSeenLaunchId = 0;
+    g_xsl.pendingTravel = 0;
+    g_xsl.pendingTravelIsHost = 0;
+    g_xsl.pendingTravelMs = 0;
+    g_xsl.launchDeadlineMs = 0;
+    g_xsl.gameplayActive = 0;
+    g_xsl.gameplayIsHost = 0;
+    g_xsl.smokeHarness = 0;
+    g_xsl.lastGameSendMs = 0;
+    g_xsl.lastGameReceiveMs = 0;
+    g_xsl.lastHealthWarnMs = 0;
+    g_xsl.lastHealthWarnCode = XSL_HEALTH_OK;
+    memset(g_xsl.loopback, 0, sizeof(g_xsl.loopback));
+    if (clearSelection)
+        memset(&g_xsl.selectedEntry, 0, sizeof(g_xsl.selectedEntry));
+    xbox_debug_Printf("XSL transient session reset reason=%s clearSelection=%d\n",
+                      reason ? reason : "unknown",
+                      clearSelection);
+}
+
+static void xboxSystemLinkProbe_ResetLobbyState(const char *reason, int clearSelection)
+{
+    xboxSystemLinkProbe_ResetTransientSessionState(reason, clearSelection);
+    xboxSystemLinkProbe_ClearAllSecureAddresses(reason);
+    memset(g_xsl.peers, 0, sizeof(g_xsl.peers));
+    g_xsl.peerCount = 0;
+    g_xsl.role = XBOX_SYSTEMLINK_ROLE_SEEKING;
+    g_xsl.lastLoggedRole = -1;
+    g_xsl.hostId = 0;
+    g_xsl.lastLoggedHostId = 0;
+    g_xsl.phase = XBOX_SYSTEMLINK_PHASE_DISCOVERY;
+    g_xsl.confirmed = 0;
+    g_xsl.localMachineIndex = 0;
+    g_xsl.localFirstPlayerIndex = 0;
+    g_xsl.rosterMaxPlayers = XBOX_SYSTEMLINK_PLAYER_STRIDE;
+    xboxSplitScreen_SetFirstPlayerIndex(0);
+    xbox_debug_Printf("XSL lobby state reset reason=%s\n", reason ? reason : "unknown");
+}
+
 static int xboxSystemLinkProbe_UpdateLocalXnAddr(void)
 {
     unsigned long status;
@@ -1332,13 +1375,7 @@ void xboxSystemLinkProbe_Stop(void)
     xboxSystemLinkProbe_UnregisterSession("stop");
     xboxSystemLinkProbe_CleanupSockets("stop");
     g_xsl.started = 0;
-    g_xsl.gameplayActive = 0;
-    g_xsl.lastGameSendMs = 0;
-    g_xsl.lastGameReceiveMs = 0;
-    g_xsl.lastHealthWarnMs = 0;
-    g_xsl.lastHealthWarnCode = XSL_HEALTH_OK;
-    g_xsl.phase = XBOX_SYSTEMLINK_PHASE_DISCOVERY;
-    g_xsl.peerCount = 0;
+    xboxSystemLinkProbe_ResetLobbyState("stop", 1);
     xbox_debug_Print("XSL stopped\n");
 }
 
@@ -1353,6 +1390,10 @@ void xboxSystemLinkProbe_StopForTravel(void)
 
 int xboxSystemLinkProbe_Start(void)
 {
+    int savedLocalPlayerCount;
+    int savedReadyMask;
+    int savedConfirmed;
+
     xboxSystemLinkProbe_EnsureState();
     if (g_xsl.started)
         return 1;
@@ -1375,6 +1416,10 @@ int xboxSystemLinkProbe_Start(void)
     }
     xboxSystemLinkProbe_UpdateLocalXnAddr();
 
+    savedLocalPlayerCount = g_xsl.localPlayerCount;
+    savedReadyMask = g_xsl.readyMask;
+    savedConfirmed = g_xsl.confirmed;
+
     g_xsl.started = 1;
     g_xsl.enterMs = xboxSystemLinkProbe_NowMs();
     g_xsl.lastSendMs = 0;
@@ -1382,10 +1427,11 @@ int xboxSystemLinkProbe_Start(void)
     g_xsl.sendCounter = 0;
     g_xslSendTraceBudget = 12;
     g_xslRecvTraceBudget = 48;
-    g_xsl.peerCount = 0;
-    g_xsl.role = XBOX_SYSTEMLINK_ROLE_SEEKING;
-    g_xsl.lastLoggedRole = -1;
-    g_xsl.hostId = 0;
+    xboxSystemLinkProbe_ResetLobbyState("start", 1);
+    g_xsl.localPlayerCount = savedLocalPlayerCount;
+    g_xsl.readyMask = savedReadyMask;
+    g_xsl.confirmed = savedConfirmed;
+    g_xsl.started = 1;
     g_xsl.phase = g_xsl.confirmed ? XBOX_SYSTEMLINK_PHASE_READY : XBOX_SYSTEMLINK_PHASE_DISCOVERY;
     xbox_debug_Printf("XSL lobby started id=0x%08X port=%d localCount=%d xnaddr=0x%08X has=%d\n",
                       g_xsl.localId,
@@ -2331,15 +2377,9 @@ void xboxSystemLinkProbe_GameClose(void)
     xboxSystemLinkProbe_EnsureState();
     if (!g_xsl.gameplayActive)
         return;
-    g_xsl.gameplayActive = 0;
-    g_xsl.gameplayIsHost = 0;
-    g_xsl.smokeHarness = 0;
-    g_xsl.lastGameSendMs = 0;
-    g_xsl.lastGameReceiveMs = 0;
-    g_xsl.lastHealthWarnMs = 0;
-    g_xsl.lastHealthWarnCode = XSL_HEALTH_OK;
     xboxSystemLinkProbe_CloseGameSocket();
     xboxSystemLinkProbe_UnregisterSession("game close");
+    xboxSystemLinkProbe_ResetLobbyState("game close", 1);
     if (!g_xsl.started)
         xboxSystemLinkProbe_CleanupSockets("game close");
 }

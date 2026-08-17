@@ -135,7 +135,16 @@ build/xbox/smoke_runs/
 build/xbox/xemu_ram_logs/
 build/xbox/xemu_smoke_runs/
 build/xbox/xemu_soak_runs/
+build/xbox/xemu_always_on_soak/
 build/xbox/xemu_syslink_screenshots/
+build/xbox/visual_proofs_selected/
+build/xbox/*_work/
+build/xbox/*_plan/
+build/xbox/build_*.log
+build/xbox/build_*.err.log
+build/xbox/inspect_*_jkl_*/
+build/xbox/mots_jkl_probe/
+data/
 build/xbox/*xemu*.iso
 build/xbox/xemu_*stage*/
 build/xbox/chm_extract/
@@ -165,6 +174,7 @@ test_tut01/
 
 # User backup archives
 *.7z
+box art.psd
 
 # OS-level junk
 .DS_Store

@@ -121,6 +121,7 @@ int jkMain_LoadFile(char *a1);
 int jkMain_loadFile2(char *pGobPath, char *pEpisodeName);
 int jkMain_LoadLevelSingleplayer(char *pGobPath, char *pEpisodeName);
 #ifdef TARGET_XBOX
+int jkMain_XboxResolveVideoPath(const char *fname, char *out, int outLen);
 int jkMain_XboxAlwaysSoakStartFromMenu(void);
 void jkMain_XboxAlwaysSoakOnGameplayReady(void);
 void jkMain_XboxAlwaysSoakTickGameplay(void);

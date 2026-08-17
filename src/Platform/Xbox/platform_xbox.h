@@ -12,6 +12,11 @@
 #define PLATFORM_NOSOCKETS   1
 #define QOL_IMPROVEMENTS     1
 
+/* Public beta label shown by Xbox menus/loading screens. Keep this separate
+   from save/network format versions. */
+#define OPENJKDF2_XBOX_BETA_VERSION    "v0.9b"
+#define OPENJKDF2_XBOX_BETA_VERSION_W  L"v0.9b"
+
 /* ── Suppress unavailable features ────────────────────────────── */
 #define LINUX_TMP                    1
 

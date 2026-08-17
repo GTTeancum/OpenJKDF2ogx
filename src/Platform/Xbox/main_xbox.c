@@ -30,6 +30,9 @@ int Main_Startup(const char *cmdline);
 void stdFile_xbox_Startup(void);
 int  stdControl_Startup(void);
 void jkMain_GuiAdvance(void);
+#ifdef TARGET_XBOX
+void jkMain_XboxAlwaysSoakTickGameplay(void);
+#endif
 extern int jkSmack_stopTick;
 extern int jkSmack_nextGuiState;
 extern int jkSmack_currentGuiState;
@@ -270,6 +273,9 @@ void __cdecl main(void)
 #endif
         /* if (loopCount < 5) XDBG("main: -> GuiAdvance\n"); */
         jkMain_GuiAdvance();
+#ifdef TARGET_XBOX
+        jkMain_XboxAlwaysSoakTickGameplay();
+#endif
 #ifdef XBOX_PERF_SMOKE
             { DWORD t2 = GetTickCount();
               if (traceFrame) XPERF("PerfPhase: loop=%d after GuiAdvance before EndScene\n", loopCount);

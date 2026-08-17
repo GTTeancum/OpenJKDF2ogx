@@ -1724,6 +1724,9 @@ int sithThing_Load(sithWorld *pWorld, int a2)
                     }
                     while ( v27 < stdConffile_entry.numArgs );
                 }
+                // MotS levels can add aiclass as a per-instance arg after the initial create pass.
+                if ( v21->controlType == SITH_CT_AI && v21->pAIClass && !v21->actor )
+                    sithAI_NewEntry(v21);
                 if ( (v21->thingflags & v38) != 0 )
                 {
                     sithThing_FreeEverything(v21);

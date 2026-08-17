@@ -332,12 +332,16 @@ void jkGuiTitle_ShowLoadingStatic()
     jkGui_SetModeMenu(jkGui_stdBitmaps[JKGUI_BM_BK_MAIN]->palette);
     jkGuiTitle_whichLoading = 1;
     sithWorld_SetLoadPercentCallback(jkGuiTitle_WorldLoadCallback);
+#ifdef TARGET_XBOX
+    stdString_SafeWStrCopy(jkGuiTitle_versionBuffer, OPENJKDF2_XBOX_BETA_VERSION_W, sizeof(jkGuiTitle_versionBuffer) / sizeof(wchar_t));
+#else
     verRevision = jkGuiTitle_verRevision;
     verMinor = jkGuiTitle_verMinor;
     verMajor = jkGuiTitle_verMajor;
     verMotsStr = L""; // TODO?
     guiVersionStr = jkStrings_GetUniStringWithFallback("GUI_VERSION");
     jk_snwprintf(jkGuiTitle_versionBuffer, (sizeof(jkGuiTitle_versionBuffer) / sizeof(wchar_t))-1, guiVersionStr, verMajor, verMinor, verRevision, verMotsStr);
+#endif
     jkGuiTitle_elementsLoadStatic[4].wstr = jkGuiTitle_versionBuffer;
     jkGuiTitle_elementsLoadStatic[1].selectedTextEntry = 0;
     jkGuiRend_gui_sets_handler_framebufs(&jkGuiTitle_menuLoadStatic);

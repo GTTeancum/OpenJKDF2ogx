@@ -399,6 +399,12 @@ try {
 
     $args = @("-config_path", $ConfigPath, "-monitor", "tcp:127.0.0.1:$MonitorPort,server,nowait")
     $proc = Start-Process -FilePath $XemuExe -ArgumentList $args -WorkingDirectory $InstanceDir -WindowStyle Hidden -PassThru
+    try {
+        $proc.PriorityClass = "BelowNormal"
+    }
+    catch {
+        Write-Warning "Could not lower XEMU process priority: $($_.Exception.Message)"
+    }
 
     $deadline = $start.AddSeconds($DurationSeconds)
     $nextScreenshot = if ($ScreenshotEverySeconds -gt 0) { $start.AddSeconds($ScreenshotEverySeconds) } else { [DateTime]::MaxValue }

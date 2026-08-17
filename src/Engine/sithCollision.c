@@ -129,17 +129,16 @@ flex_t sithCollision_SearchRadiusForThings(sithSector *pStartSector, sithThing *
     unsigned int v26; // [esp+10h] [ebp-8h]
     flex_t curMoveDist; // [esp+2Ch] [ebp+14h]
 
+    if (!pStartSector) {
+        jk_printf("OpenJKDF2 WARN: sithCollision_SearchRadiusForThings received NULL pStartSector!\n");
+        return 0.0f;
+    }
 
     sithCollision_searchStackIdx++;
     sithCollision_searchNumResults[sithCollision_searchStackIdx] = 0;
     sithCollision_stackIdk[sithCollision_searchStackIdx] = 1;
     curMoveDist = moveDist;
     sithCollision_stackSectors[sithCollision_searchStackIdx].sectors[0] = pStartSector;
-
-    if (!pStartSector) {
-        jk_printf("OpenJKDF2 WARN: sithCollision_SearchRadiusForThings received NULL pStartSector!\n");
-        return 0.0f;
-    }
 
     if ( (flags & RAYCAST_1) == 0 )
         curMoveDist = sithCollision_UpdateSectorThingCollision(pStartSector, pThing, pStartPos, pMoveNorm, moveDist, radius, flags);
@@ -208,7 +207,8 @@ flex_t sithCollision_SearchRadiusForThings(sithSector *pStartSector, sithThing *
 
 void sithCollision_SearchClose()
 {
-    --sithCollision_searchStackIdx;
+    if (sithCollision_searchStackIdx >= 0)
+        --sithCollision_searchStackIdx;
 }
 
 flex_t sithCollision_UpdateSectorThingCollision(sithSector *pSector, sithThing *sender, const rdVector3 *a2, const rdVector3 *a3, flex_t a4, flex_t range, int flags)
@@ -518,6 +518,9 @@ sithSector* sithCollision_GetSectorLookAt(sithSector *pStartSector, const rdVect
     int v12; // esi
     rdVector3 a1; // [esp+8h] [ebp-Ch] BYREF
     flex_t a3a; // [esp+1Ch] [ebp+8h]
+
+    if ( !pStartSector )
+        return NULL;
 
     if ( sithIntersect_IsSphereInSector(pEndPos, 0.0, pStartSector) )
         return pStartSector;
@@ -1160,6 +1163,7 @@ int sithCollision_HasLos(sithThing *thing1, sithThing *thing2, int flag)
                 if ( v6 <= v8->distance )
                 {
                     if ( v6 == v8->distance 
+                        && v7
                         && (v7->hitType & (SITHCOLLISION_THINGTOUCH|SITHCOLLISION_THINGCROSS)) 
                         && (v8->hitType & SITHCOLLISION_THINGADJOINCROSS))
                         v7 = v8;
