@@ -56,6 +56,7 @@ This is the quick-access working board for active Xbox port items. Keep it short
 - [x] Include `box art.png` in the beta/release package.
 - [x] Include `OpenJKDF2xCutsceneConverter.exe` in the beta/release package beside `default.xbe` or in `cutscene_converter\`.
 - [x] Fix XMV converter packet alignment and verify regenerated JK/MotS intro XMVs through the Xbox runtime decoder in XEMU.
+- [x] Fix MotS SAN cutscene audio extraction; embedded SMUSH `IACT` audio now becomes a PCM XMV audio stream instead of silent video-only output.
 - [x] Investigate MotS `s2l1_palace.jkl` XEMU black-screen/stall; fixed per-instance AI actor allocation and verified MotS palace -> mod -> JK transition proof.
 - [x] Investigate `impsiege/impsiege.jkl` XEMU soak stall; verified gameplay-ready transition in the same MotS/mod/JK proof pass.
 - [x] Complete live System Link real-lobby proof in XEMU or XEMU+Xbox.

@@ -40,6 +40,10 @@ The writer emits the aligned Xbox packet layout expected by the runtime XMV
 decoder. Release validation should include at least one JK intro playback and
 one MotS intro playback on XEMU or hardware, not just FFmpeg desktop decode.
 
+JK `.SMK` files use FFmpeg audio extraction. MotS `.SAN` files can contain
+embedded SMUSH `IACT` audio that FFmpeg does not expose; this converter includes
+a built-in `IACT` extractor so MotS cutscenes are not emitted as silent XMVs.
+
 To build the GUI:
 
 ```powershell

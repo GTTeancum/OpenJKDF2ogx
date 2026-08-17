@@ -47,9 +47,13 @@ The XMV writer is narrow by design:
 - WMV2 video
 - 640x480 letterboxed output by default
 - 15 FPS by default
-- Stereo 22050 Hz PCM audio when the source has audio
+- 22050 Hz PCM audio when the source has audio
 - One XMV packet per video frame
 - `xmvtool`-compatible first-packet sizing and alignment
+
+JK `.SMK` audio is extracted through FFmpeg. MotS `.SAN` files can store audio
+inside SMUSH `IACT` chunks that FFmpeg does not expose as an audio stream; the
+converter falls back to its built-in `IACT` extractor for those files.
 
 Generated files are validated with FFmpeg's XMV demuxer and a full decode pass
 before originals are deleted.
@@ -67,4 +71,6 @@ Current XEMU proofs:
 - JK intro `01-02a.XMV`: opened through `01-02a.smk`, audio stream enabled,
   smoke skip completed, and the menu repainted.
 - MotS intro `JKMINTRO.XMV`: opened through `jkmintro.san`, smoke skip
-  completed, and the menu repainted.
+  completed, audio stream enabled, and the menu repainted.
+- MotS level cutscene `S1L1OCS.XMV`: regenerated with embedded SAN `IACT`
+  audio; FFprobe reports a 22050 Hz PCM audio stream with non-silent signal.

@@ -191,6 +191,171 @@ def parse_wave(path: Path) -> WaveAudio:
     return WaveAudio(channels=channels, sample_rate=sample_rate, bits_per_sample=bits, data=pcm)
 
 
+def _be32(data: bytes, offset: int) -> int:
+    return struct.unpack_from(">I", data, offset)[0]
+
+
+def _be16(data: bytes, offset: int) -> int:
+    return struct.unpack_from(">H", data, offset)[0]
+
+
+def _le16(data: bytes, offset: int) -> int:
+    return struct.unpack_from("<H", data, offset)[0]
+
+
+def _le32(data: bytes, offset: int) -> int:
+    return struct.unpack_from("<I", data, offset)[0]
+
+
+def _s8(value: int) -> int:
+    return value - 256 if value & 0x80 else value
+
+
+def _s16(value: int) -> int:
+    value &= 0xFFFF
+    return value - 0x10000 if value & 0x8000 else value
+
+
+def _decode_smush_iact_blocks(payload: bytes, carry: bytearray, pcm_chunks: list[bytes]) -> None:
+    pos = 0
+    remaining = len(payload)
+
+    while remaining > 0:
+        if len(carry) >= 2:
+            block_remaining = _be16(carry, 0) + 2 - len(carry)
+            if block_remaining > remaining:
+                carry.extend(payload[pos : pos + remaining])
+                return
+
+            carry.extend(payload[pos : pos + block_remaining])
+            pos += block_remaining
+            remaining -= block_remaining
+
+            block = bytes(carry)
+            carry.clear()
+            if len(block) < 3:
+                continue
+
+            decode_in = 2
+            nibble = block[decode_in]
+            decode_in += 1
+            low_shift = nibble >> 4
+            high_shift = nibble & 0x0F
+            out = bytearray()
+
+            for _ in range(1024):
+                if decode_in >= len(block):
+                    break
+                val = block[decode_in]
+                decode_in += 1
+                if val == 0x80:
+                    if decode_in + 1 >= len(block):
+                        break
+                    hi = block[decode_in]
+                    lo = block[decode_in + 1]
+                    decode_in += 2
+                    out.extend((lo, hi))
+                else:
+                    out.extend(struct.pack("<h", _s16(_s8(val) << low_shift)))
+
+                if decode_in >= len(block):
+                    break
+                val = block[decode_in]
+                decode_in += 1
+                if val == 0x80:
+                    if decode_in + 1 >= len(block):
+                        break
+                    hi = block[decode_in]
+                    lo = block[decode_in + 1]
+                    decode_in += 2
+                    out.extend((lo, hi))
+                else:
+                    out.extend(struct.pack("<h", _s16(_s8(val) << high_shift)))
+
+            if out:
+                if len(out) < 0x1000:
+                    out.extend(b"\x00" * (0x1000 - len(out)))
+                pcm_chunks.append(bytes(out[:0x1000]))
+        else:
+            carry.append(payload[pos])
+            pos += 1
+            remaining -= 1
+
+
+def extract_san_iact_audio(source: Path, wav: Path) -> bool:
+    data = source.read_bytes()
+    if len(data) < 8 or data[:4] != b"ANIM":
+        return False
+    anim_end = 8 + _be32(data, 4)
+    if anim_end > len(data):
+        anim_end = len(data)
+    if len(data) < 16 or data[8:12] != b"AHDR":
+        return False
+
+    ahdr_size = _be32(data, 12)
+    ahdr_payload = 16
+    if ahdr_payload + ahdr_size > len(data):
+        return False
+
+    version = _le16(data, ahdr_payload)
+    audio_rate = DEFAULT_AUDIO_RATE
+    if version == 2 and ahdr_size >= 2 + 2 + 2 + 256 * 3 + 12:
+        ext = ahdr_payload + 2 + 2 + 2 + 256 * 3
+        audio_rate = _le32(data, ext + 8)
+        if audio_rate <= 0 or audio_rate > 48000:
+            audio_rate = DEFAULT_AUDIO_RATE
+
+    pos = 8 + 8 + ahdr_size
+    carry = bytearray()
+    pcm_chunks: list[bytes] = []
+
+    while pos + 8 <= anim_end:
+        chunk_id = data[pos : pos + 4]
+        chunk_size = _be32(data, pos + 4)
+        payload = pos + 8
+        chunk_end = payload + chunk_size
+        if chunk_end > len(data):
+            break
+
+        if chunk_id == b"FRME":
+            sub = payload
+            while sub + 8 <= chunk_end:
+                sub_id = data[sub : sub + 4]
+                sub_size = _be32(data, sub + 4)
+                sub_payload = sub + 8
+                sub_end = sub_payload + sub_size
+                if sub_end > chunk_end:
+                    break
+
+                if sub_id == b"IACT" and sub_size >= 18:
+                    code = _le16(data, sub_payload)
+                    flags = _le16(data, sub_payload + 2)
+                    track_flags = _le16(data, sub_payload + 6)
+                    if code == 8 and flags == 0x2E and track_flags == 0:
+                        _decode_smush_iact_blocks(data[sub_payload + 18 : sub_end], carry, pcm_chunks)
+
+                sub = sub_end + (sub_size & 1)
+
+        pos = chunk_end + (chunk_size & 1)
+
+    if not pcm_chunks:
+        return False
+
+    pcm = b"".join(pcm_chunks)
+    byte_rate = audio_rate * 1 * 2
+    block_align = 2
+    wav_data = bytearray()
+    wav_data += b"RIFF"
+    wav_data += struct.pack("<I", 36 + len(pcm))
+    wav_data += b"WAVEfmt "
+    wav_data += struct.pack("<IHHIIHH", 16, 1, 1, audio_rate, byte_rate, block_align, 16)
+    wav_data += b"data"
+    wav_data += struct.pack("<I", len(pcm))
+    wav_data += pcm
+    wav.write_bytes(wav_data)
+    return wav.stat().st_size > 44
+
+
 def std_wmv2_extra_to_xmv(extra: bytes) -> bytes:
     extra = (extra + b"\x00\x00\x00\x00")[:4]
     data = int.from_bytes(extra, "big")
@@ -369,6 +534,9 @@ def encode_intermediates(ffmpeg: Path, ffprobe: Path, source: Path, avi: Path, w
     )
 
     if not source_has_audio(ffprobe, source):
+        if source.suffix.lower() == ".san" and extract_san_iact_audio(source, wav):
+            log(f"  extracted SAN IACT audio: {wav.stat().st_size / 1024:.1f} KB")
+            return True
         return False
 
     audio_cmd = [
