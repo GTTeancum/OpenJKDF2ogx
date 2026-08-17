@@ -54,10 +54,11 @@ static void xboxXmv_BaseNameNoExt(const char *path, char *out, size_t outSize)
     out[len] = 0;
 }
 
-static void xboxXmv_SameDirXmv(const char *smkPath, char *out, size_t outSize)
+static void xboxXmv_SameDirXmv(const char *smkPath, const char *ext, char *out, size_t outSize)
 {
     size_t len = strlen(smkPath);
     size_t dot = len;
+    size_t extLen = strlen(ext);
     while (dot && smkPath[dot - 1] != '.')
         dot--;
     if (dot)
@@ -65,39 +66,58 @@ static void xboxXmv_SameDirXmv(const char *smkPath, char *out, size_t outSize)
     else
         dot = len;
 
-    if (dot + 4 >= outSize)
-        dot = outSize - 5;
+    if (dot + extLen >= outSize)
+        dot = outSize - extLen - 1;
     memcpy(out, smkPath, dot);
-    memcpy(out + dot, ".xmv", 5);
+    memcpy(out + dot, ext, extLen + 1);
+}
+
+static void xboxXmv_ToUpper(char *s)
+{
+    while (*s)
+    {
+        if (*s >= 'a' && *s <= 'z')
+            *s = (char)(*s - 'a' + 'A');
+        s++;
+    }
 }
 
 static int xboxXmv_FindForSmkPath(const char *smkPath, char *out, size_t outSize)
 {
     char base[128];
-    char candidates[5][260];
+    char upperBase[128];
+    char candidates[9][260];
     int i;
 
     xboxXmv_BaseNameNoExt(smkPath, base, sizeof(base));
-    xboxXmv_SameDirXmv(smkPath, candidates[0], sizeof(candidates[0]));
-    _snprintf(candidates[1], sizeof(candidates[1]), "D:\\resource\\video_xbox\\%s.xmv", base);
-    _snprintf(candidates[2], sizeof(candidates[2]), "D:\\resource\\video\\%s.xmv", base);
-    _snprintf(candidates[3], sizeof(candidates[3]), "D:\\video\\%s.xmv", base);
-    _snprintf(candidates[4], sizeof(candidates[4]), "resource\\video_xbox\\%s.xmv", base);
+    strncpy(upperBase, base, sizeof(upperBase) - 1);
+    upperBase[sizeof(upperBase) - 1] = 0;
+    xboxXmv_ToUpper(upperBase);
 
-    for (i = 0; i < 5; i++)
+    xboxXmv_SameDirXmv(smkPath, ".xmv", candidates[0], sizeof(candidates[0]));
+    xboxXmv_SameDirXmv(smkPath, ".XMV", candidates[1], sizeof(candidates[1]));
+    _snprintf(candidates[2], sizeof(candidates[2]), "D:\\resource\\video_xbox\\%s.xmv", base);
+    _snprintf(candidates[3], sizeof(candidates[3]), "D:\\resource\\video\\%s.xmv", base);
+    _snprintf(candidates[4], sizeof(candidates[4]), "D:\\video\\%s.xmv", base);
+    _snprintf(candidates[5], sizeof(candidates[5]), "D:\\resource\\video_xbox\\%s.XMV", upperBase);
+    _snprintf(candidates[6], sizeof(candidates[6]), "D:\\resource\\video\\%s.XMV", upperBase);
+    _snprintf(candidates[7], sizeof(candidates[7]), "D:\\video\\%s.XMV", upperBase);
+    _snprintf(candidates[8], sizeof(candidates[8]), "resource\\video_xbox\\%s.XMV", upperBase);
+
+    for (i = 0; i < 9; i++)
     {
         candidates[i][sizeof(candidates[i]) - 1] = 0;
         if (xboxXmv_FileExists(candidates[i]))
         {
             strncpy(out, candidates[i], outSize - 1);
             out[outSize - 1] = 0;
-            XDBGF("XmvDbg: selected candidate[%d]='%s' size=%lu\n",
+            XPERF("XmvDbg: selected candidate[%d]='%s' size=%lu\n",
                   i, out, xboxXmv_FileSizeOrZero(out));
             return 1;
         }
     }
 
-    XDBGF("XmvDbg: no loose XMV for '%s' tried base='%s'\n", smkPath, base);
+    XPERF("XmvDbg: no loose XMV for '%s' tried base='%s' upper='%s'\n", smkPath, base, upperBase);
     return 0;
 }
 
@@ -105,7 +125,7 @@ static DWORD WINAPI xboxXmv_PlayThread(void *arg)
 {
     XMVDecoder *decoder = (XMVDecoder *)arg;
     HRESULT hr = decoder->Play(XMVFLAG_NONE, NULL);
-    XDBGF("XmvDbg: Play returned hr=0x%08X\n", hr);
+    XPERF("XmvDbg: Play returned hr=0x%08X\n", hr);
     return FAILED(hr) ? 1 : 0;
 }
 
@@ -137,7 +157,7 @@ static DWORD xboxXmv_ReadSmokeLimitMs(void)
     if (seconds == 0 || seconds > 600)
         return 0;
 
-    XDBGF("XmvDbg: smoke auto-skip armed seconds=%lu\n", seconds);
+    XPERF("XmvDbg: smoke auto-skip armed seconds=%lu\n", seconds);
     return seconds * 1000;
 }
 
@@ -157,21 +177,21 @@ extern "C" int xboxXmv_PlayForSmkPath(const char *smkPath)
     if (!smkPath || !xboxXmv_FindForSmkPath(smkPath, xmvPath, sizeof(xmvPath)))
         return 0;
 
-    XDBGF("XmvDbg: opening '%s' for smk '%s'\n", xmvPath, smkPath);
+    XPERF("XmvDbg: opening '%s' for smk '%s'\n", xmvPath, smkPath);
     hr = XMVDecoder_CreateDecoderForFile(XMVFLAG_SYNC_ON_NEXT_VBLANK, xmvPath, &decoder);
     if (FAILED(hr) || !decoder)
     {
-        XDBGF("XmvDbg: CreateDecoderForFile failed hr=0x%08X path='%s'\n", hr, xmvPath);
+        XPERF("XmvDbg: CreateDecoderForFile failed hr=0x%08X path='%s'\n", hr, xmvPath);
         return 0;
     }
 
     decoder->GetVideoDescriptor(&videoDesc);
-    XDBGF("XmvDbg: desc path='%s' w=%lu h=%lu fps=%lu audioStreams=%lu\n",
+    XPERF("XmvDbg: desc path='%s' w=%lu h=%lu fps=%lu audioStreams=%lu\n",
           xmvPath, videoDesc.Width, videoDesc.Height,
           videoDesc.FramesPerSecond, videoDesc.AudioStreamCount);
     {
         DWORD *raw = (DWORD *)&videoDesc;
-        XDBGF("XmvDbg: rawdesc sizeof=%u dwords=%08lX %08lX %08lX %08lX\n",
+        XPERF("XmvDbg: rawdesc sizeof=%u dwords=%08lX %08lX %08lX %08lX\n",
               (unsigned int)sizeof(videoDesc),
               raw[0], raw[1], raw[2], raw[3]);
     }
@@ -179,7 +199,7 @@ extern "C" int xboxXmv_PlayForSmkPath(const char *smkPath)
     if (videoDesc.AudioStreamCount)
     {
         hr = decoder->EnableAudioStream(0, 0, NULL, NULL);
-        XDBGF("XmvDbg: EnableAudioStream(0) hr=0x%08X\n", hr);
+        XPERF("XmvDbg: EnableAudioStream(0) hr=0x%08X\n", hr);
         if (SUCCEEDED(hr))
             decoder->SetSynchronizationStream(0);
     }
@@ -208,7 +228,7 @@ extern "C" int xboxXmv_PlayForSmkPath(const char *smkPath)
 
         if (smokeLimitMs && (DWORD)(GetTickCount() - playbackStartMs) >= smokeLimitMs)
         {
-            XDBGF("XmvDbg: smoke auto-skip fired elapsedMs=%lu limitMs=%lu\n",
+            XPERF("XmvDbg: smoke auto-skip fired elapsedMs=%lu limitMs=%lu\n",
                   (DWORD)(GetTickCount() - playbackStartMs), smokeLimitMs);
             terminated = 1;
             XDBG("XmvDbg: requesting TerminatePlayback for smoke auto-skip\n");
@@ -218,7 +238,7 @@ extern "C" int xboxXmv_PlayForSmkPath(const char *smkPath)
 
         if (stdControl_XboxMovieSkipRequested(&skipPort, &skipReason))
         {
-            XDBGF("XmvDbg: skip requested port=%d reason=%s\n", skipPort, skipReason);
+            XPERF("XmvDbg: skip requested port=%d reason=%s\n", skipPort, skipReason);
             terminated = 1;
             XDBG("XmvDbg: requesting TerminatePlayback for user skip\n");
             decoder->TerminatePlayback();
@@ -232,10 +252,10 @@ wait_done:
     {
         DWORD threadExit = 0xFFFFFFFF;
         GetExitCodeThread(thread, &threadExit);
-        XDBGF("XmvDbg: playback thread exit=%lu terminated=%d\n", threadExit, terminated);
+        XPERF("XmvDbg: playback thread exit=%lu terminated=%d\n", threadExit, terminated);
     }
     CloseHandle(thread);
-    XDBGF("XmvDbg: playback done path='%s' terminated=%d\n", xmvPath, terminated);
+    XPERF("XmvDbg: playback done path='%s' terminated=%d\n", xmvPath, terminated);
     decoder->CloseDecoder();
     return 1;
 }

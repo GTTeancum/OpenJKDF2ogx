@@ -282,8 +282,8 @@ def write_xmv(path: Path, video: AviVideo, audio: WaveAudio | None, fps: int) ->
         packets[i] = struct.pack("<I", next_size) + packets[i][4:]
 
     header_size = 36 + audio_tracks * 12
-    first_packet_total = header_size + len(packets[0])
-    max_packet_size = max(len(packet) for packet in packets)
+    first_packet_total = align_size(header_size + len(packets[0]), PACKET_ALIGN)
+    max_packet_size = max([first_packet_total] + [len(packet) for packet in packets[1:]])
     duration_ms = round(len(video.frames) * 1000 / fps)
 
     global_header = bytearray()
@@ -307,7 +307,9 @@ def write_xmv(path: Path, video: AviVideo, audio: WaveAudio | None, fps: int) ->
 
     with path.open("wb") as f:
         f.write(global_header)
-        for packet in packets:
+        f.write(packets[0])
+        f.write(b"\x00" * (first_packet_total - header_size - len(packets[0])))
+        for packet in packets[1:]:
             f.write(packet)
 
 

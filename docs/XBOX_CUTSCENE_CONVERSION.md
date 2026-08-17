@@ -49,6 +49,22 @@ The XMV writer is narrow by design:
 - 15 FPS by default
 - Stereo 22050 Hz PCM audio when the source has audio
 - One XMV packet per video frame
+- `xmvtool`-compatible first-packet sizing and alignment
 
 Generated files are validated with FFmpeg's XMV demuxer and a full decode pass
 before originals are deleted.
+
+## Verification Notes
+
+The converter output must be validated beyond desktop decoding. A prior writer
+produced files that FFmpeg and `xmvtool -d` could inspect, but the Xbox runtime
+decoder stalled before returning an XMV descriptor. The fixed writer pads the
+first packet as one aligned packet while preserving the expected packet-size
+word at the start of packet data.
+
+Current XEMU proofs:
+
+- JK intro `01-02a.XMV`: opened through `01-02a.smk`, audio stream enabled,
+  smoke skip completed, and the menu repainted.
+- MotS intro `JKMINTRO.XMV`: opened through `jkmintro.san`, smoke skip
+  completed, and the menu repainted.

@@ -6,10 +6,7 @@ This is the quick-access working board for active Xbox port items. Keep it short
 
 ## Pre-Beta Remaining
 
-- [ ] Investigate MotS `s2l1_palace.jkl` black-screen/stall after XEMU always-on transition soak reaches gameplay-ready.
-- [ ] Investigate `impsiege/impsiege.jkl` XEMU soak stall: engine logs gameplay-ready, but video remains on the loading/mission screen and the always-on phase never completes.
-- [ ] Add MotS text-crawl cutscene support by converting the crawl to XMV; remaining rendered cutscenes can use in-engine footage/mod variants.
-- [ ] Re-run the final always-on XEMU soak after the MotS/mod-map stalls are fixed, covering JK SP/MP, MotS SP/MP, split-screen, System Link, and available mod maps.
+- [ ] Re-run the final always-on XEMU soak after the MotS/mod-map/XMV fixes, covering JK SP/MP, MotS SP/MP, split-screen, System Link, and available mod maps.
 
 ## Completed Immediate Fixes
 
@@ -58,6 +55,9 @@ This is the quick-access working board for active Xbox port items. Keep it short
 
 - [x] Include `box art.png` in the beta/release package.
 - [x] Include `OpenJKDF2xCutsceneConverter.exe` in the beta/release package beside `default.xbe` or in `cutscene_converter\`.
+- [x] Fix XMV converter packet alignment and verify regenerated JK/MotS intro XMVs through the Xbox runtime decoder in XEMU.
+- [x] Investigate MotS `s2l1_palace.jkl` XEMU black-screen/stall; fixed per-instance AI actor allocation and verified MotS palace -> mod -> JK transition proof.
+- [x] Investigate `impsiege/impsiege.jkl` XEMU soak stall; verified gameplay-ready transition in the same MotS/mod/JK proof pass.
 - [x] Complete live System Link real-lobby proof in XEMU or XEMU+Xbox.
   - [x] Audit against UC2 secure XNet/session flow.
   - [x] Reset stale System Link launch/session state after stop/game close.

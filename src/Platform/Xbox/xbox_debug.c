@@ -86,6 +86,7 @@ static int xbox_debug_ShouldLogText(const char *msg)
     if (!strncmp(msg, "Smoke:", 6)) return 1;
     if (!strncmp(msg, "AlwaysSoak:", 11)) return 1;
     if (!strncmp(msg, "XSL", 3)) return 1;
+    if (!strncmp(msg, "XmvDbg:", 7)) return 1;
     if (!strncmp(msg, "SplitScreen", 11)) return 1;
     if (!strncmp(msg, "main:", 5)) return 1;
     if (!strncmp(msg, "Main_Startup:", 13)) return 1;
@@ -221,6 +222,7 @@ void xbox_debug_Print(const char *msg)
             !strncmp(msg, "Smoke:", 6) ||
             !strncmp(msg, "AlwaysSoak:", 11) ||
             !strncmp(msg, "XSL", 3) ||
+            !strncmp(msg, "XmvDbg:", 7) ||
             !strncmp(msg, "SplitScreen", 11) ||
             !strncmp(msg, "main:", 5) || !strncmp(msg, "Main_Startup:", 13) ||
             !strncmp(msg, "TitleLoad:", 10) ||

@@ -36,6 +36,10 @@ For beta/release packaging, include `THIRD_PARTY_NOTICES.txt`,
 `FFMPEG_LICENSE.txt`, and `FFMPEG_GYAN_README.txt` beside the EXE whenever
 FFmpeg is bundled.
 
+The writer emits the aligned Xbox packet layout expected by the runtime XMV
+decoder. Release validation should include at least one JK intro playback and
+one MotS intro playback on XEMU or hardware, not just FFmpeg desktop decode.
+
 To build the GUI:
 
 ```powershell
