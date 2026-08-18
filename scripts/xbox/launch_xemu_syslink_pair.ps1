@@ -279,6 +279,14 @@ function Rebuild-SourceIso()
     }
 
     Copy-Item -LiteralPath (Join-Path $ReleaseRoot 'default.xbe') -Destination (Join-Path $StagePath 'default.xbe') -Force
+    foreach( $dashboardAsset in @('TitleImage.xbx', 'SaveImage.xbx', 'TitleMeta.xbx') )
+    {
+        $dashboardAssetPath = Join-Path $ReleaseRoot $dashboardAsset
+        if( Test-Path -LiteralPath $dashboardAssetPath )
+        {
+            Copy-Item -LiteralPath $dashboardAssetPath -Destination (Join-Path $StagePath $dashboardAsset) -Force
+        }
+    }
     Ensure-SmokePlayerProfile $StagePath
 
     $smokePath = Join-Path $StagePath 'XboxSystemLinkSmoke.ini'

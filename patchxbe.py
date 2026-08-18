@@ -91,7 +91,20 @@ print("KERNEL32 import descriptor stripped.")
 
 # ── Step 2: Run imagebld ─────────────────────────────────────────────────
 
-imagebld = r'C:\XDK_5558\XDK\xbox\bin\imagebld.exe'
+imagebld_candidates = [
+    os.environ.get('IMAGEBLD', ''),
+    os.path.join(os.environ.get('XDK_ROOT', ''), 'bin', 'imagebld.exe'),
+    r'C:\XDK_5558\XDK\xbox\bin\imagebld.exe',
+    r'C:\XDK\xbox\bin\imagebld.exe',
+]
+imagebld = None
+for candidate in imagebld_candidates:
+    if candidate and os.path.isfile(candidate):
+        imagebld = candidate
+        break
+if imagebld is None:
+    print("ERROR: imagebld.exe not found")
+    sys.exit(1)
 cmd = [imagebld, '/IN:' + temp_exe, '/OUT:' + xbe_path]
 cmd.append('/TESTNAME:Star Wars Jedi Knight')
 cmd.append('/TESTID:0x4C410001')
@@ -100,11 +113,29 @@ cmd.append('/TESTMEDIATYPES:0xFFFFFFFF')
 
 # Title image (128x128 BMP) — shown in Xbox dashboard
 script_dir = os.path.dirname(os.path.abspath(__file__))
-title_icon = os.path.join(script_dir, 'resource', 'icon_title.bmp')
-save_icon = os.path.join(script_dir, 'resource', 'icon_save.bmp')
-if os.path.isfile(title_icon):
-    cmd.append('/TITLEIMAGE:' + title_icon)
-    print("Using title image: " + title_icon)
+title_info = os.path.join(script_dir, 'resource', 'XboxAssets', 'titleinfo.txt')
+if os.path.isfile(title_info):
+    cmd.append('/TITLEINFO:' + title_info)
+    print("Using title info: " + title_info)
+
+for icon in [
+    os.path.join('resource', 'XboxAssets', 'titleimage.xbx'),
+    os.path.join('resource', 'icon_title.bmp'),
+]:
+    icon_path = os.path.join(script_dir, icon)
+    if os.path.isfile(icon_path):
+        cmd.append('/TITLEIMAGE:' + icon_path)
+        print("Using title image: " + icon_path)
+        break
+
+for icon in [
+    os.path.join('resource', 'XboxAssets', 'saveimage.xbx'),
+]:
+    icon_path = os.path.join(script_dir, icon)
+    if os.path.isfile(icon_path):
+        cmd.append('/DEFAULTSAVEIMAGE:' + icon_path)
+        print("Using save image: " + icon_path)
+        break
 # /SAVEIMAGE not supported by all imagebld versions — skip if unsupported
 # if os.path.isfile(save_icon):
 #     cmd.append('/SAVEIMAGE:' + save_icon)

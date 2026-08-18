@@ -16,6 +16,8 @@
 #include "../../engine_config.h"
 #include <xtl.h>
 
+#include "xbox_dashboard_assets.inc"
+
 /* Declared in Window_xbox.c */
 int  Window_xbox_Startup(void);
 void Window_xbox_Shutdown(void);
@@ -51,6 +53,76 @@ extern struct stdVideoMode* stdDisplay_pCurVideoMode;
 extern struct stdVBuffer* Video_pMenuBuffer;
 extern struct stdVBuffer* Video_pVbufIdk;
 extern struct stdVBuffer* Video_pOverlayMapBuffer;
+
+static int xbox_read_file_equals(const char* path, const unsigned char* data, unsigned int size)
+{
+    HANDLE h;
+    unsigned char buf[512];
+    DWORD readBytes;
+    unsigned int offset;
+    int equal;
+
+    h = CreateFileA(path, GENERIC_READ, FILE_SHARE_READ, NULL, OPEN_EXISTING, FILE_ATTRIBUTE_NORMAL, NULL);
+    if (h == INVALID_HANDLE_VALUE)
+        return 0;
+
+    offset = 0;
+    equal = 1;
+    while (offset < size)
+    {
+        DWORD want = size - offset;
+        if (want > sizeof(buf))
+            want = sizeof(buf);
+        readBytes = 0;
+        if (!ReadFile(h, buf, want, &readBytes, NULL) || readBytes != want || memcmp(buf, data + offset, want) != 0)
+        {
+            equal = 0;
+            break;
+        }
+        offset += want;
+    }
+
+    if (equal)
+    {
+        readBytes = 0;
+        if (ReadFile(h, buf, 1, &readBytes, NULL) && readBytes != 0)
+            equal = 0;
+    }
+
+    CloseHandle(h);
+    return equal;
+}
+
+static void xbox_write_dashboard_metadata_file(const char* path, const unsigned char* data, unsigned int size)
+{
+    HANDLE h;
+    DWORD written;
+
+    if (xbox_read_file_equals(path, data, size))
+        return;
+
+    h = CreateFileA(path, GENERIC_WRITE, 0, NULL, CREATE_ALWAYS, FILE_ATTRIBUTE_NORMAL, NULL);
+    if (h == INVALID_HANDLE_VALUE)
+    {
+        XDBG("DashboardMeta: open failed\n");
+        return;
+    }
+
+    written = 0;
+    if (!WriteFile(h, data, size, &written, NULL) || written != size)
+        XDBG("DashboardMeta: write failed\n");
+    else
+        XDBG("DashboardMeta: write ok\n");
+
+    CloseHandle(h);
+}
+
+static void xbox_ensure_dashboard_metadata(void)
+{
+    xbox_write_dashboard_metadata_file("U:\\TitleMeta.xbx", s_xboxDashboardTitleMetaXbx, s_xboxDashboardTitleMetaXbxSize);
+    xbox_write_dashboard_metadata_file("U:\\TitleImage.xbx", s_xboxDashboardTitleImageXbx, s_xboxDashboardTitleImageXbxSize);
+    xbox_write_dashboard_metadata_file("U:\\SaveImage.xbx", s_xboxDashboardSaveImageXbx, s_xboxDashboardSaveImageXbxSize);
+}
 
 static const char *xbox_read_smoke_autostart_args(char *buf, unsigned int bufSize)
 {
@@ -91,6 +163,7 @@ void __cdecl main(void)
     /* Debug logging must come first — everything else uses XDBG */
     xbox_debug_Startup();
     XDBG("OpenJKDF2 Xbox: main() entered\n");
+    xbox_ensure_dashboard_metadata();
 
     /* ----------------------------------------------------------------
      * 0. XInput device enumeration — MUST come before D3D init.

@@ -197,6 +197,12 @@ function New-SoakStage {
     }
 
     Copy-Item -LiteralPath $XbePath -Destination (Join-Path $StagePath "default.xbe") -Force
+    foreach ($dashboardAsset in @("TitleImage.xbx", "SaveImage.xbx", "TitleMeta.xbx")) {
+        $dashboardAssetPath = Join-Path $ReleaseRoot $dashboardAsset
+        if (Test-Path -LiteralPath $dashboardAssetPath) {
+            Copy-Item -LiteralPath $dashboardAssetPath -Destination (Join-Path $StagePath $dashboardAsset) -Force
+        }
+    }
     Ensure-SmokePlayerProfile $StagePath
 
     if ($FmvLimitSeconds -gt 0) {

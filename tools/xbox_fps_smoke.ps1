@@ -106,6 +106,12 @@ for ($i = 1; $i -le $Iterations; $i++) {
     Start-Sleep -Seconds 2
 
     Copy-Item $xbeSource $xbeDest -Force
+    foreach ($dashboardAsset in @('TitleImage.xbx', 'SaveImage.xbx', 'TitleMeta.xbx')) {
+        $dashboardAssetPath = Join-Path (Split-Path -Parent $xbeSource) $dashboardAsset
+        if (Test-Path -LiteralPath $dashboardAssetPath) {
+            Copy-Item -LiteralPath $dashboardAssetPath -Destination (Join-Path $game $dashboardAsset) -Force
+        }
+    }
     Remove-Item $gameLog, $cxbxDebugGame, $krnlDebugGame, $cxbxDebugEmu, $krnlDebugEmu -Force -ErrorAction SilentlyContinue
     Set-Content -Path $fmvSmoke -Value '5' -NoNewline
     Set-Content -Path $autostartFile -Value $AutostartArgs -NoNewline

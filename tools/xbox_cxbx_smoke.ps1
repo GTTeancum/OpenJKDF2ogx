@@ -144,6 +144,12 @@ Stop-CxbxProcesses
 Start-Sleep -Seconds 2
 
 Copy-Item -LiteralPath $xbeSrc -Destination $xbeDst -Force
+foreach ($dashboardAsset in @("TitleImage.xbx", "SaveImage.xbx", "TitleMeta.xbx")) {
+    $dashboardAssetPath = Join-Path $BuildDir $dashboardAsset
+    if (Test-Path -LiteralPath $dashboardAssetPath) {
+        Copy-Item -LiteralPath $dashboardAssetPath -Destination (Join-Path $AppDir $dashboardAsset) -Force
+    }
+}
 Remove-Item -LiteralPath $gameLog -Force -ErrorAction SilentlyContinue
 Remove-Item -LiteralPath $cxbxDebugLog -Force -ErrorAction SilentlyContinue
 Remove-Item -LiteralPath $krnlDebugLog -Force -ErrorAction SilentlyContinue

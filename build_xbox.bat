@@ -340,6 +340,8 @@ set _POSTBAT=!OBJDIR!\do_post.bat
 >> "!_POSTBAT!" echo if errorlevel 1 exit /b 1
 
 endlocal
+set "OUTDIR=%~dp0build\xbox\release"
+set "OUTEXE=%~dp0build\xbox\release\openjkdf2_xbox.exe"
 call "%~dp0build\xbox\release\obj\do_post.bat"
 
 if errorlevel 1 (
@@ -347,6 +349,17 @@ if errorlevel 1 (
     echo  XBE GENERATION FAILED
     exit /b 1
 )
+
+REM Copy dashboard assets beside the XBE. patchxbe.py embeds these into the
+REM XBE, but some replacement dashboards also look for title-level files next
+REM to default.xbe.
+echo  Copying dashboard assets to: %OUTDIR%
+copy /y "%~dp0resource\XboxAssets\titleimage.xbx" "%OUTDIR%\TitleImage.xbx"
+if errorlevel 1 exit /b 1
+copy /y "%~dp0resource\XboxAssets\saveimage.xbx" "%OUTDIR%\SaveImage.xbx"
+if errorlevel 1 exit /b 1
+copy /y "%~dp0resource\XboxAssets\TitleMeta.xbx" "%OUTDIR%\TitleMeta.xbx"
+if errorlevel 1 exit /b 1
 
 echo.
 echo ══════════════════════════════════════════════════════════════
