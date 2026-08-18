@@ -7,6 +7,8 @@ engine lineage is preserved underneath; Xbox-specific runtime work lives under
 
 **Downloads:** get the latest Xbox beta from the
 [GitHub Releases page](https://github.com/GTTeancum/OpenJKDF2ogx/releases/latest).
+Report beta bugs on
+[GitHub Issues](https://github.com/GTTeancum/OpenJKDF2ogx/issues).
 
 <p align="center">
   <img src="box%20art.png" alt="OpenJKDF2x box art" width="100%">
