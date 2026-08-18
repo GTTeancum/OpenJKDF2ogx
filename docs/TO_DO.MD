@@ -6,7 +6,7 @@ This is the quick-access working board for active Xbox port items. Keep it short
 
 ## Pre-Beta Remaining
 
-- [ ] Re-run the final always-on XEMU soak after the MotS/mod-map/XMV fixes, covering JK SP/MP, MotS SP/MP, split-screen, System Link, and available mod maps.
+No must-fix pre-beta code items are currently tracked here.
 
 ## Completed Immediate Fixes
 
@@ -57,6 +57,7 @@ This is the quick-access working board for active Xbox port items. Keep it short
 - [x] Include `OpenJKDF2xCutsceneConverter.exe` in the beta/release package beside `default.xbe` or in `cutscene_converter\`.
 - [x] Fix XMV converter packet alignment and verify regenerated JK/MotS intro XMVs through the Xbox runtime decoder in XEMU.
 - [x] Fix MotS SAN cutscene audio extraction; embedded SMUSH `IACT` audio now becomes a PCM XMV audio stream instead of silent video-only output.
+- [x] Re-run the final always-on XEMU soak after the MotS/mod-map/XMV fixes: 7203 seconds continuous, 89/89 RAM polls OK, fatal count 0, ISO cleaned, covered JK SP/MP, MotS SP/MP, 4P split-screen, and available mod maps.
 - [x] Investigate MotS `s2l1_palace.jkl` XEMU black-screen/stall; fixed per-instance AI actor allocation and verified MotS palace -> mod -> JK transition proof.
 - [x] Investigate `impsiege/impsiege.jkl` XEMU soak stall; verified gameplay-ready transition in the same MotS/mod/JK proof pass.
 - [x] Complete live System Link real-lobby proof in XEMU or XEMU+Xbox.
