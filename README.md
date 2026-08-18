@@ -1,9 +1,12 @@
 # OpenJKDF2-ogx — Original Xbox Port
 
 This repository is a fork of [OpenJKDF2](https://github.com/shinyquagsire23/OpenJKDF2)
-porting it to the original Microsoft Xbox console.  The base engine and all
-upstream platform targets (Windows, macOS, Linux, etc.) are preserved unchanged
-underneath; everything Xbox-specific lives under `src/Platform/Xbox/`.
+focused on porting the engine to the original Microsoft Xbox console. The base
+engine lineage is preserved underneath; Xbox-specific runtime work lives under
+`src/Platform/Xbox/`.
+
+**Downloads:** get the latest Xbox beta from the
+[GitHub Releases page](https://github.com/GTTeancum/OpenJKDF2ogx/releases/latest).
 
 <p align="center">
   <img src="box%20art.png" alt="OpenJKDF2x box art" width="100%">

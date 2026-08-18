@@ -187,3 +187,61 @@ desktop.ini
 
 # Local debug log pulled back from Xbox via FTP
 build/xbox/release/debug_openjkdf2.txt
+
+# Legacy upstream desktop/mobile root clutter kept locally but not tracked by
+# the Xbox-focused fork.
+/all
+/analyze.py
+/build_android.sh
+/build_linux64.sh
+/build_run_android.sh
+/build_run_openjkdf2_macos.sh
+/build_run_openjkdf2_wasm.sh
+/build_run_openmots_macos.sh
+/build_run_twl.sh
+/build.sh
+/build_tut03.bat
+/build_twl.sh
+/build_twl_podman.sh
+/build_win64.sh
+/combine_macos_appbundles.sh
+/distpkg_all.sh
+/distpkg_android.sh
+/distpkg_hotfix.sh
+/distpkg_linux_flatpak.sh
+/distpkg_macos.sh
+/distpkg_twl.sh
+/distpkg_version.sh
+/distpkg_win64.sh
+/CMakeLists.txt
+/CMakeSettings.json
+/cmake_modules/
+/cmake_modules_linux/
+/.github/build_macos.sh
+/.github/workflows/macos.yml
+/.github/workflows/ubuntu.yml
+/.github/workflows/win64.yml
+/packaging/
+/update-readme.sh
+
+# Local planning/reverse-engineering notes that are useful on this workstation
+# but not part of the public Xbox release surface.
+/BUILDING.md
+/CONTRIBUTING.md
+/HANDOFF_BOLT_RENDER.md
+/HANDOFF_HUD_RENDER.md
+/HANDOFF_MENU_SYSTEM.md
+/HANDOFF_XBOX_MENU_FLICKER_2026-05-27.md
+/HOOKS.md
+/ida_copypaste_funclist_nostdlib.txt
+/JK-hook.ips
+/OpenJKDF2_Xbox_PortPlan_v4.docx
+/OpenJKDF2_Xbox_PortPlan_v5.docx
+/OpenJKDF2_Xbox.vcproj.*.user
+/README.md.template
+/README.md.template-foot
+/RENDERER_GRAFT.md
+/ROADMAP.md
+/symbols_static.sym
+/symbols.syms
+/wontimpl.txt
