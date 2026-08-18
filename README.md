@@ -5,15 +5,32 @@ porting it to the original Microsoft Xbox console.  The base engine and all
 upstream platform targets (Windows, macOS, Linux, etc.) are preserved unchanged
 underneath; everything Xbox-specific lives under `src/Platform/Xbox/`.
 
-## Status
+<p align="center">
+  <img src="box%20art.png" alt="OpenJKDF2x box art" width="420">
+</p>
 
-- ✅ **Phase 0** — Boot + engine init (game runs end-to-end through GOB load,
-  JKL parse, cog scripts, game tick on retail hardware and CXBX-Reloaded).
-- ✅ **Phase 1** — First pixel.  RGB triangle visible on retail Xbox and on
-  CXBX-R, smooth interpolation, stable across thousands of frames.
-- ⏳ **Phase 2** — Renderer integration (wire engine geometry into the
-  renderer's draw path).
-- See [ROADMAP.md](ROADMAP.md) for the full 7-phase plan.
+## Screenshots
+
+| Menu | Jedi Knight |
+| --- | --- |
+| ![OpenJKDF2x Xbox menu](docs/images/xbox/menu.png) | ![Jedi Knight single-player gameplay](docs/images/xbox/sp-jk.png) |
+| Mysteries of the Sith | Multiplayer |
+| ![Mysteries of the Sith single-player gameplay](docs/images/xbox/sp-mots.png) | ![OpenJKDF2x split-screen multiplayer](docs/images/xbox/mp.png) |
+
+## Credits and Legal Notes
+
+OpenJKDF2x is an original Xbox port of OpenJKDF2. The upstream engine is
+Copyright (C) OpenJKDF2 contributors, and the Xbox port keeps that lineage.
+Jedi Knight: Dark Forces II, Mysteries of the Sith, STAR WARS, LucasArts, and
+related properties remain the property of Lucasfilm Ltd. and its affiliates.
+No retail game assets are included with OpenJKDF2x; users must provide their
+own legally owned game data.
+
+The Xbox renderer uses FakeGL/xquake code Copyright (C) 2000 Jack Palevich,
+under the terms stated in `src/Platform/Xbox/fakeglx.cpp`. Xbox beta packages
+may also include OpenJKDF2xCutsceneConverter.exe; when that tool is shipped,
+its bundled FFmpeg/Gyan.dev notices and license text are included in
+`CUTSCENE_CONVERSION_README.txt`.
 
 ## Renderer
 
@@ -41,18 +58,9 @@ See [BUILD_MIGRATION.md](BUILD_MIGRATION.md) for why the build moved from
 VS2005's `vcproj` to a batch-driven flow, and [CLAUDE.md](CLAUDE.md) for the
 day-to-day port context.
 
-## Other platforms
-
-All upstream platforms (Windows/macOS/Linux/web/etc.) continue to build and
-run from the same source tree.  The Xbox port adds files under
-`src/Platform/Xbox/` and a `build_xbox.bat`; nothing in the upstream paths
-was modified.
-
 ---
 
 # OpenJKDF2 (upstream)
-
-![MacOS Screenshot](docs/images/screenshot.png)
 
 ## [Latest Releases](https://github.com/shinyquagsire23/OpenJKDF2/releases) | [Report a crash or bug](https://github.com/shinyquagsire23/OpenJKDF2/issues)
 
@@ -61,98 +69,6 @@ OpenJKDF2 is a function-by-function reimplementation of DF2 in C, with 64-bit po
 OpenJKDF2 does *not* include any original game assets; a valid copy of JKDF2 is *required* and can be purchased from [GOG](https://www.gog.com/game/star_wars_jedi_knight_dark_forces_ii) or [Steam](https://store.steampowered.com/app/32380/STAR_WARS_Jedi_Knight_Dark_Forces_II/). The GOG version is recommended, since it is DRM-free and also includes the soundtrack in Ogg Vorbis format. If you'd like to try before you buy, a WebAssembly demo of OpenJKDF2 can be found at https://maxthomas.dev/openjkdf2/.
 
 Support for playing the original soundtrack from Ogg Vorbis files is primarily supported for the GOG and Steam versions of the game assets. Original disk soundtracks can also be loaded from `MUSIC/1/Track<2..8>.ogg` and `MUSIC/2/Track<2..12>.ogg` for each disk's soundtrack. If files are missing, it will instead attempt to use a GOG track number from `MUSIC/Track<12..32>.ogg`. Dumping the soundtrack from disks at install time is planned for a future release of OpenJKDF2, but is not currently implemented.
-
-## Platforms
-OpenJKDF2 supports the following configurations:
-
-| Configuration | Renderer | Description |
-| --- | --- | --- |
-| 64-bit Windows/SDL2 | OpenGL 3.3 | 64-bit Windows compilation with SDL2 and OpenAL. DirectX dependencies are replaced with SDL2 and OpenAL. |
-| MacOS x86_64/AArch64 | OpenGL 3.3 | 64-bit MacOS compilation with SDL2 and OpenAL Soft. All release packages include both Intel and ARM64. |
-| 64-bit Linux/SDL2 | OpenGL 3.3 | 64-bit Linux compilation with SDL2 and OpenAL. |
-| ARM64 Android | OpenGL ES 3 | ARMv8 Android compilation with SDL2 and OpenAL Soft. |
-| Nintendo DSi | Custom | Nintendo DSi port with hardware rendering, software audio. Extremely RAM-limited, supports emissive palettes. |
-| Emscripten/WebAssembly | WebGL 2/OpenGL ES 3 | WebAssembly with SDL2 and OpenAL. Runs in a web browser. Since WASM only supports 32-bit pointers, this will likely be less buggy than 64-bit, but less performant. |
-
-The following implementations are in-progress or planned:
-
-| Configuration | Renderer | Description | Status |
-| --- | --- | --- | --- |
-| iOS | Metal? | Not a huge priority, but would be nice to have. | Not started |
-| Switch libnx | OpenGL ES 3 | Not a huge priority, but would be nice to have. | Not started |
-| 32-bit Windows/SDL2 | OpenGL 3.3 | Windows compilation with SDL2 and OpenAL. DirectX dependencies are replaced with SDL2 and OpenAL. Targeting Windows XP ~ Windows 7 | Not started |
-| 32-bit Windows/DirectX | Direct3D 3 | Faithful decompilation with original DirectX bindings/renderer. | Not started |
-
-The following configurations are deprecated:
-
-| Configuration | Renderer | Description |
-| --- | --- | --- |
-| x86 Linux/SDL2, mmap blobs | OpenGL 3.3 | 32-bit Linux compilation with SDL2 and OpenAL. JK.EXE is memory mapped into the process and used as a "binary blob"; Unimplemented functions will fall back to JK.EXE implementations. |
-| 32-bit Linux/SDL2, blobless | OpenGL 3.3 | 32-bit Linux compilation with SDL2 and OpenAL. The output executable is a swap-in replacement for JK.EXE, but will be missing functions and will crash on reaching unimplemented code. |
-| x86 Win32/MinGW DLL | Software/DirectX | Win32 hooked build, JK.EXE is patched to load `df2_reimpl.dll` execute `hook_init_win` before JK.EXE's `main` function. Unimplemented functions will fall back to JK.EXE implementations. `df2_reimpl_kvm.dll` is used for the KVM target |
-
-Linux building works on AArch64/RPi4 with llvmpipe, but V3D GLES has trouble with palettes.
-
-OpenJKDF2 requires game data from a licensed copy of Jedi Knight: Dark Forces II in order to run; No game assets are provided by OpenJKDF2. On Linux, paths and filenames may be case-sensitive. Your directory structure should look something like this:
-```
-.
-├── JK.EXE
-├── MUSIC
-│   ├── Track12.ogg
-│   ├── Track13.ogg
-│   ├── Track14.ogg
-│   ├── Track15.ogg
-│   ├── Track16.ogg
-│   ├── Track17.ogg
-│   ├── Track18.ogg
-│   ├── Track22.ogg
-│   ├── Track23.ogg
-│   ├── Track24.ogg
-│   ├── Track25.ogg
-│   ├── Track26.ogg
-│   ├── Track27.ogg
-│   ├── Track28.ogg
-│   ├── Track29.ogg
-│   ├── Track30.ogg
-│   ├── Track31.ogg
-│   └── Track32.ogg
-├── episode
-│   ├── JK1.gob
-│   ├── JK1CTF.gob
-│   └── JK1MP.gob
-├── openjkdf2-64
-├── player
-└── resource
-    ├── Res1hi.gob
-    ├── Res2.gob
-    ├── jk_.cd
-    └── video
-        ├── 01-02A.SMK
-        ├── 03-04A.SMK
-        ├── 06A.SMK
-        ├── 08-10A.SMK
-        ├── 12A.SMK
-        ├── 16A.SMK
-        ├── 18-19A.SMK
-        ├── 21A.SMK
-        ├── 23A.SMK
-        ├── 25A.SMK
-        ├── 27A.SMK
-        ├── 33-34A.SMK
-        ├── 36A.SMK
-        ├── 38A.SMK
-        ├── 39A.SMK
-        ├── 41-42A.SMK
-        ├── 41DA.SMK
-        ├── 41DSA.SMK
-        ├── 44A.SMK
-        ├── 46A.SMK
-        ├── 48A.SMK
-        ├── 50A.SMK
-        ├── 52-53A.SMK
-        ├── 54A.SMK
-        └── 57A.SMK
-```
 
 ## Building
 
