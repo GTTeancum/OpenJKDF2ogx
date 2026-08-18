@@ -227,6 +227,8 @@ build/xbox/release/debug_openjkdf2.txt
 # Local planning/reverse-engineering notes that are useful on this workstation
 # but not part of the public Xbox release surface.
 /BUILDING.md
+/BUILD_MIGRATION.md
+/CLAUDE.md
 /CONTRIBUTING.md
 /HANDOFF_BOLT_RENDER.md
 /HANDOFF_HUD_RENDER.md
@@ -245,3 +247,6 @@ build/xbox/release/debug_openjkdf2.txt
 /symbols_static.sym
 /symbols.syms
 /wontimpl.txt
+/XBOX_EFFICIENCY_SMOKE.md
+/XBOX_HACKS.md
+/xbox_hardware_resource_audit.md
