@@ -35,6 +35,9 @@ The generated graph is saved as a versioned `.bnav` file. Later loads validate
 the map geometry and gameplay metadata before using the cache. A stale or
 incomplete cache is rejected and rebuilt automatically.
 
+Release path requirement: generated `.bnav` files belong under `episode\\NAV\\`.
+They must not be written to the game root.
+
 ## Bot Decisions
 
 The brain is engine-side C code. It:

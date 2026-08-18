@@ -99,7 +99,7 @@ void sithCogFunction_FireProjectile(sithCog *ctx);
 #define SITHBOT_SHARED_EDGE_BLOCK_MS 30000
 #define SITHBOT_EDGE_FAILURE_MEMORY_MS 60000
 #define SITHBOT_BNAV_MAGIC 0x56414E42u
-#define SITHBOT_BNAV_VERSION 40u
+#define SITHBOT_BNAV_VERSION 43u
 
 typedef enum SithBotNodeKind
 {
@@ -753,6 +753,63 @@ static int sithBot_ShouldFleeAccumulatedEnvironmentalDamage(int victimSlot, sith
     return 0;
 }
 
+static int sithBot_IsMovingPathImpact(sithThing *victim, sithThing *damager,
+                                      int ownerSlot, flex_t amount,
+                                      int damageClass)
+{
+    if (!victim || !damager || ownerSlot >= 0 || amount < 0.15)
+        return 0;
+    if ((damageClass & SITH_DAMAGE_IMPACT) == 0 ||
+        damager->moveType != SITH_MT_PATH ||
+        (damager->thingflags & SITH_TF_STANDABLE) != 0)
+    {
+        return 0;
+    }
+    if (damager == victim->attachedThing &&
+        (victim->attach_flags & (SITH_ATTACH_THING |
+                                  SITH_ATTACH_THINGSURFACE)) != 0)
+    {
+        return 0;
+    }
+    return 1;
+}
+
+static void sithBot_MarkMoverImpactFlee(int victimSlot, sithThing *victim,
+                                        sithThing *damager)
+{
+    int stateIdx;
+    SithBotState *state;
+
+    if (victimSlot < 0 || !victim || !victim->sector || !damager)
+        return;
+
+    stateIdx = sithBot_BotStateForPlayer(victimSlot);
+    if (stateIdx < 0)
+        return;
+
+    state = &sithBot_bots[stateIdx];
+    state->hazardFleeUntilMs = sithTime_curMs + 1800;
+    rdVector_Copy3(&state->hazardPos, &damager->position);
+    state->hazardSector = victim->sector;
+    state->goalNode = -1;
+    state->nextNode = -1;
+    state->nextGoalMs = 0;
+    state->routeGoalNode = -1;
+    state->routeCommitUntilMs = 0;
+    state->goalMode = SITHBOT_GOAL_ESCAPE;
+
+    if (sithBot_debugHazardsLogged < 40)
+    {
+        sithBot_Logf("BotMatch: mover-impact-flee slot=%d thing=%d pos=(%.2f,%.2f,%.2f)\n",
+                     victimSlot,
+                     damager->thingIdx,
+                     victim->position.x,
+                     victim->position.y,
+                     victim->position.z);
+        sithBot_debugHazardsLogged++;
+    }
+}
+
 static void sithBot_MarkHazardFlee(int victimSlot, sithThing *victim, flex_t amount, int damageClass)
 {
     int stateIdx;
@@ -808,6 +865,7 @@ void sithBot_LogDamageEvent(sithThing *victim, sithThing *damager, flex_t amount
     int ownerSlot;
     int victimIsBot;
     int ownerIsBot;
+    int expectedLiftContact = 0;
     flex_t healthBefore;
     flex_t healthAfter;
     int lethal;
@@ -825,6 +883,22 @@ void sithBot_LogDamageEvent(sithThing *victim, sithThing *damager, flex_t amount
     ownerIsBot = ownerSlot >= 0 && sithBot_IsBotNetId(jkPlayer_playerInfos[ownerSlot].net_id);
     if (!victimIsBot && !ownerIsBot)
         return;
+
+    if (victimIsBot && damager &&
+        damager->moveType == SITH_MT_PATH &&
+        (damager->thingflags & SITH_TF_STANDABLE) != 0)
+    {
+        int stateIdx = sithBot_BotStateForPlayer(victimSlot);
+        if (stateIdx >= 0)
+        {
+            SithBotState *state = &sithBot_bots[stateIdx];
+            expectedLiftContact =
+                state->ridingLiftThingIdx == damager->thingIdx ||
+                (damager == victim->attachedThing &&
+                 (victim->attach_flags &
+                  (SITH_ATTACH_THING | SITH_ATTACH_THINGSURFACE)) != 0);
+        }
+    }
 
     if (victimIsBot && ownerSlot == victimSlot && damager &&
         damager->type == SITH_THING_WEAPON &&
@@ -876,10 +950,16 @@ void sithBot_LogDamageEvent(sithThing *victim, sithThing *damager, flex_t amount
         }
     }
 
-    if (victimIsBot &&
-        (sithBot_ShouldFleeSelfDamage(victim, damager, amount, damageClass) ||
-         sithBot_ShouldFleeEnvironmentalDamage(victim, damager, ownerSlot, amount, damageClass) ||
-         sithBot_ShouldFleeAccumulatedEnvironmentalDamage(victimSlot, victim, damager, ownerSlot, amount, damageClass)))
+    if (victimIsBot && !expectedLiftContact &&
+        sithBot_IsMovingPathImpact(victim, damager, ownerSlot, amount,
+                                   damageClass))
+    {
+        sithBot_MarkMoverImpactFlee(victimSlot, victim, damager);
+    }
+    else if (victimIsBot && !expectedLiftContact &&
+             (sithBot_ShouldFleeSelfDamage(victim, damager, amount, damageClass) ||
+              sithBot_ShouldFleeEnvironmentalDamage(victim, damager, ownerSlot, amount, damageClass) ||
+              sithBot_ShouldFleeAccumulatedEnvironmentalDamage(victimSlot, victim, damager, ownerSlot, amount, damageClass)))
     {
         sithBot_MarkHazardFlee(victimSlot, victim, amount, damageClass);
     }
@@ -1252,7 +1332,10 @@ static int sithBot_AddInferredLiftSector(sithSector *sector)
     return 1;
 }
 
-static int sithBot_CogScriptUsesVerb(sithCog *cog, cogSymbolFunc_t func)
+static int sithBot_CogProgramRangeUsesVerb(sithCog *cog,
+                                            cogSymbolFunc_t func,
+                                            uint32_t begin,
+                                            uint32_t end)
 {
     sithCogScript *script;
     int32_t *program;
@@ -1263,17 +1346,22 @@ static int sithBot_CogScriptUsesVerb(sithCog *cog, cogSymbolFunc_t func)
 
     script = cog->cogscript;
     program = script->script_program;
-    if (!program || !script->codeSize)
+    if (!program || !script->codeSize || begin >= end ||
+        begin >= script->codeSize)
         return 0;
+    if (end > script->codeSize)
+        end = script->codeSize;
 
-    i = 0;
-    while (i < script->codeSize)
+    i = begin;
+    while (i < end)
     {
         int op = program[i++];
         switch (op)
         {
             case COG_OPCODE_PUSHINT:
             case COG_OPCODE_PUSHFLOAT:
+                if (i >= end)
+                    return 0;
                 i++;
                 break;
 
@@ -1282,7 +1370,7 @@ static int sithBot_CogScriptUsesVerb(sithCog *cog, cogSymbolFunc_t func)
                 int symbolIdx;
                 sithCogSymbol *symbol;
 
-                if (i >= script->codeSize)
+                if (i >= end)
                     return 0;
                 symbolIdx = program[i++];
                 symbol = sithCogParse_GetSymbol(cog->pSymbolTable, symbolIdx);
@@ -1292,6 +1380,8 @@ static int sithBot_CogScriptUsesVerb(sithCog *cog, cogSymbolFunc_t func)
             }
 
             case COG_OPCODE_PUSHVECTOR:
+                if (i + 3 > end)
+                    return 0;
                 i += 3;
                 break;
 
@@ -1299,6 +1389,8 @@ static int sithBot_CogScriptUsesVerb(sithCog *cog, cogSymbolFunc_t func)
             case COG_OPCODE_GOTRUE:
             case COG_OPCODE_GO:
             case COG_OPCODE_CALL:
+                if (i >= end)
+                    return 0;
                 i++;
                 break;
 
@@ -1308,6 +1400,49 @@ static int sithBot_CogScriptUsesVerb(sithCog *cog, cogSymbolFunc_t func)
     }
 
     return 0;
+}
+
+static int sithBot_CogScriptUsesVerb(sithCog *cog, cogSymbolFunc_t func)
+{
+    if (!cog || !cog->cogscript)
+        return 0;
+    return sithBot_CogProgramRangeUsesVerb(cog, func, 0,
+                                           cog->cogscript->codeSize);
+}
+
+static int sithBot_CogTriggerUsesVerb(sithCog *cog, uint32_t trigId,
+                                      cogSymbolFunc_t func)
+{
+    sithCogScript *script;
+    uint32_t start = 0;
+    uint32_t end;
+    int found = 0;
+    uint32_t i;
+
+    if (!cog || !cog->cogscript)
+        return 0;
+    script = cog->cogscript;
+    end = script->codeSize;
+    for (i = 0; i < script->num_triggers; i++)
+    {
+        sithCogTrigger *trigger = &script->triggers[i];
+        if (trigger->trigId == trigId)
+        {
+            start = trigger->trigPc;
+            found = 1;
+            break;
+        }
+    }
+    if (!found || start >= script->codeSize)
+        return 0;
+
+    for (i = 0; i < script->num_triggers; i++)
+    {
+        uint32_t triggerPc = script->triggers[i].trigPc;
+        if (triggerPc > start && triggerPc < end)
+            end = triggerPc;
+    }
+    return sithBot_CogProgramRangeUsesVerb(cog, func, start, end);
 }
 
 static sithSector *sithBot_GetCogSectorSymbol(sithCog *cog, sithCogReference *ref)
@@ -1754,7 +1889,10 @@ static int sithBot_InferLiftSectorsFromCogs(void)
 
         if (!script || !script->aIdk)
             continue;
-        if (!sithBot_CogScriptUsesVerb(cog, sithCogFunctionSector_SetSectorThrust))
+        /* Startup thrust defines an always-on launch shaft. Thrust used only
+           by activate/timer handlers is machinery or a trap, not a route. */
+        if (!sithBot_CogTriggerUsesVerb(cog, SITH_MESSAGE_STARTUP,
+                                        sithCogFunctionSector_SetSectorThrust))
             continue;
 
         for (j = 0; j < (int)script->numIdk; j++)
@@ -1955,6 +2093,56 @@ static int sithBot_PositionHasWalkableFloor(sithThing *probeThing, sithSector *s
     return sithBot_PositionHasWalkableFloorWithRise(probeThing, sector, pos, 0.35);
 }
 
+static int sithBot_IsStaticThingSegmentClear(sithThing *probeThing,
+                                             const SithBotNode *from,
+                                             const SithBotNode *to)
+{
+    sithCollisionSearchEntry *entry;
+    rdVector3 direction;
+    flex_t distance;
+    flex_t radius;
+    int clear = 1;
+
+    if (!probeThing || !from || !to || !from->sector)
+        return 0;
+
+    rdVector_Sub3(&direction, &to->pos, &from->pos);
+    distance = rdVector_Normalize3Acc(&direction);
+    if (distance <= 0.001)
+        return 1;
+    radius = probeThing->moveSize;
+    if (radius < 0.05)
+        radius = 0.05;
+
+    sithCollision_SearchRadiusForThings(
+        from->sector, probeThing, &from->pos, &direction, distance, radius,
+        RAYCAST_2000 | RAYCAST_100 | RAYCAST_2);
+    while ((entry = sithCollision_NextSearchResult()) != 0)
+    {
+        sithThing *obstacle;
+
+        if (entry->hitType & SITHCOLLISION_ADJOINCROSS)
+            continue;
+        if (!(entry->hitType & SITHCOLLISION_THING))
+            continue;
+        obstacle = entry->receiver;
+        if (!obstacle || obstacle == probeThing)
+            continue;
+        /* Doors, lifts, and other authored movers can clear their path at
+           runtime. Fixed COG geometry must shape the baked route graph. */
+        if (obstacle->moveType == SITH_MT_PATH &&
+            obstacle->trackParams.aFrames &&
+            obstacle->trackParams.loadedFrames > 1)
+        {
+            continue;
+        }
+        clear = 0;
+        break;
+    }
+    sithCollision_SearchClose();
+    return clear;
+}
+
 static int sithBot_IsWalkableSegment(const SithBotNode *from, const SithBotNode *to)
 {
     sithThing *probeThing;
@@ -1995,6 +2183,11 @@ static int sithBot_IsWalkableSegment(const SithBotNode *from, const SithBotNode 
     if ((sithBot_NodeNeedsFloor(from) && !sithBot_PositionHasWalkableFloor(probeThing, from->sector, &from->pos)) ||
         (sithBot_NodeNeedsFloor(to) && !sithBot_PositionHasWalkableFloor(probeThing, to->sector, &to->pos)))
         return 0;
+    if (!assistedVertical &&
+        !sithBot_IsStaticThingSegmentClear(probeThing, from, to))
+    {
+        return 0;
+    }
 
     dist = rdVector_Dist3(&from->pos, &to->pos);
     samples = (int)(dist / 0.75) + 1;
@@ -2764,13 +2957,23 @@ static int sithBot_IsNarrowTransitSector(sithSector *sector)
 
 static flex_t sithBot_GetRouteNodeReachRadius(const SithBotNode *node, flex_t normalRadius)
 {
+    int narrow;
+
     if (!node)
         return normalRadius;
+    narrow = sithBot_IsNarrowTransitSector(node->sector);
     if (node->kind == SITHBOT_NODE_PORTAL)
-        return 0.24;
-    if (sithBot_IsNarrowTransitSector(node->sector))
-        return 0.34;
+        return narrow ? 0.06 : 0.24;
+    if (narrow)
+        return 0.10;
     return normalRadius;
+}
+
+static flex_t sithBot_GetRouteNodeCrossRadius(const SithBotNode *node)
+{
+    if (!node || !sithBot_IsNarrowTransitSector(node->sector))
+        return 0.15;
+    return node->kind == SITHBOT_NODE_PORTAL ? 0.06 : 0.10;
 }
 
 static int sithBot_IsRouteNodeReached(sithThing *thing, const SithBotNode *node, flex_t normalRadius)
@@ -2780,6 +2983,7 @@ static int sithBot_IsRouteNodeReached(sithThing *thing, const SithBotNode *node,
     flex_t dz;
     flex_t reachRadius;
     flex_t clearanceRadius;
+    flex_t crossSectorRadius;
 
     if (!thing || !node)
         return 0;
@@ -2788,9 +2992,10 @@ static int sithBot_IsRouteNodeReached(sithThing *thing, const SithBotNode *node,
     dy = thing->position.y - node->pos.y;
     dz = sithBot_AbsFlex(thing->position.z - node->pos.z);
     reachRadius = sithBot_GetRouteNodeReachRadius(node, normalRadius);
+    crossSectorRadius = sithBot_GetRouteNodeCrossRadius(node);
     if ((thing->sector == node->sector &&
          sithBot_DistSq(&thing->position, &node->pos) < reachRadius * reachRadius) ||
-        (dx * dx + dy * dy < 0.15 * 0.15 && dz < 0.40))
+        (dx * dx + dy * dy < crossSectorRadius * crossSectorRadius && dz < 0.40))
     {
         return 1;
     }
@@ -3008,6 +3213,14 @@ static int sithBot_IsCheapLinkCandidate(int a, int b, flex_t *outDistSq)
 
     from = &sithBot_nodes[a];
     to = &sithBot_nodes[b];
+    /* Path-lift stops already receive validated landing and inter-stop edges.
+       Generic proximity linking can otherwise add a route through the shaft
+       wall to a nearby corridor node. */
+    if ((from->kind == SITHBOT_NODE_LIFT && from->thingIdx >= 0) ||
+        (to->kind == SITHBOT_NODE_LIFT && to->thingIdx >= 0))
+    {
+        return 0;
+    }
     if (!sithBot_IsSectorSafeForBot(from->sector) || !sithBot_IsSectorSafeForBot(to->sector))
         return 0;
     if (!sithBot_SectorsAreDirectlyAdjoined(from->sector, to->sector))
@@ -4831,8 +5044,13 @@ static int sithBot_LoadNavCache(uint32_t worldHash)
         }
 
         if ((diskNode.kind == SITHBOT_NODE_LIFT &&
-             (!sithBot_IsPathLiftThing(sithThing_GetThingByIdx(diskNode.thingIdx)) ||
-              diskNode.pathFrame >= sithThing_GetThingByIdx(diskNode.thingIdx)->trackParams.loadedFrames)) ||
+             ((diskNode.thingIdx >= 0 &&
+               (!sithBot_IsPathLiftThing(sithThing_GetThingByIdx(diskNode.thingIdx)) ||
+                diskNode.pathFrame >= sithThing_GetThingByIdx(diskNode.thingIdx)->trackParams.loadedFrames)) ||
+              (diskNode.thingIdx < 0 &&
+               (diskNode.pathFrame != -1 ||
+                !sithBot_IsUpwardThrustSector(
+                    &sithWorld_pCurrentWorld->sectors[diskNode.sectorIdx]))))) ||
             (diskNode.kind != SITHBOT_NODE_LIFT && diskNode.pathFrame != -1))
         {
             sithBot_numNodes = 0;
@@ -5725,9 +5943,12 @@ static int sithBot_FindRouteMoveNode(int startNode, int goalNode, sithThing *thi
         flex_t dy = thing->position.y - sithBot_nodes[nextNode].pos.y;
         flex_t dz = sithBot_AbsFlex(thing->position.z - sithBot_nodes[nextNode].pos.z);
         flex_t reachRadius = sithBot_GetRouteNodeReachRadius(&sithBot_nodes[nextNode], 0.30);
+        flex_t crossSectorRadius =
+            sithBot_GetRouteNodeCrossRadius(&sithBot_nodes[nextNode]);
         int sameSectorReached = thing->sector == sithBot_nodes[nextNode].sector &&
             sithBot_DistSq(&thing->position, &sithBot_nodes[nextNode].pos) < reachRadius * reachRadius;
-        int overlappingTransition = dx * dx + dy * dy < 0.15 * 0.15 && dz < 0.40;
+        int overlappingTransition =
+            dx * dx + dy * dy < crossSectorRadius * crossSectorRadius && dz < 0.40;
         int clearanceReached = sithBot_nodes[nextNode].kind != SITHBOT_NODE_PORTAL &&
             reachRadius > 0.24 &&
             dx * dx + dy * dy < reachRadius * reachRadius && dz < 0.40 &&
@@ -5737,7 +5958,8 @@ static int sithBot_FindRouteMoveNode(int startNode, int goalNode, sithThing *thi
                                    &sithBot_nodes[nextNode].pos);
         int reachedPortal = sithBot_nodes[nextNode].kind == SITHBOT_NODE_PORTAL &&
             ((thing->sector == sithBot_nodes[nextNode].sector &&
-              sithBot_DistSq(&thing->position, &sithBot_nodes[nextNode].pos) < 0.24 * 0.24) ||
+              sithBot_DistSq(&thing->position, &sithBot_nodes[nextNode].pos) <
+                  reachRadius * reachRadius) ||
              overlappingTransition);
         if (!sameSectorReached && !overlappingTransition && !clearanceReached)
             break;
@@ -5775,7 +5997,7 @@ static int sithBot_FindCommittedRouteMoveNode(SithBotState *state, int startNode
             rdVector_Dist3(&thing->position, &sithBot_nodes[recoveryNode].pos);
 
         if (recoveryDist <=
-                (sithBot_nodes[recoveryNode].kind == SITHBOT_NODE_PORTAL ? 0.24 : 0.34) ||
+                sithBot_GetRouteNodeReachRadius(&sithBot_nodes[recoveryNode], 0.34) ||
             sithTime_curMs >= state->routeRecoveryUntilMs ||
             !sithBot_CanSeePosition(thing->sector, &thing->position,
                                     sithBot_nodes[recoveryNode].sector,
@@ -5811,6 +6033,7 @@ static int sithBot_FindCommittedRouteMoveNode(SithBotState *state, int startNode
             sithBot_IsRouteNodeReached(thing, &sithBot_nodes[state->nextNode], 0.34);
         if (!reachedCommittedNode &&
             sithBot_nodes[state->nextNode].kind == SITHBOT_NODE_PORTAL &&
+            !sithBot_IsNarrowTransitSector(sithBot_nodes[state->nextNode].sector) &&
             dist <= 0.45 && dz < 0.40)
         {
             int physicalNode = sithBot_FindNearestNode(thing);
@@ -5819,8 +6042,14 @@ static int sithBot_FindCommittedRouteMoveNode(SithBotState *state, int startNode
                 physicalNode >= 0 &&
                 sithBot_HasEdge(physicalNode, state->nextNode);
         }
-        overlappingTransition = dx * dx + dy * dy < 0.15 * 0.15 && dz < 0.40;
+        {
+            flex_t crossSectorRadius =
+                sithBot_GetRouteNodeCrossRadius(&sithBot_nodes[state->nextNode]);
+            overlappingTransition =
+                dx * dx + dy * dy < crossSectorRadius * crossSectorRadius && dz < 0.40;
+        }
         if (sithBot_nodes[state->nextNode].kind == SITHBOT_NODE_PORTAL &&
+            !sithBot_IsNarrowTransitSector(sithBot_nodes[state->nextNode].sector) &&
             dist <= 0.45)
         {
             continuationNode =
@@ -5890,7 +6119,8 @@ static int sithBot_FindCommittedRouteMoveNode(SithBotState *state, int startNode
         state->routeRetryAfterMs = 0;
     }
     if (nextNode >= 0 && nextNode != goalNode &&
-        sithBot_nodes[nextNode].kind == SITHBOT_NODE_PORTAL)
+        sithBot_nodes[nextNode].kind == SITHBOT_NODE_PORTAL &&
+        !sithBot_IsNarrowTransitSector(sithBot_nodes[nextNode].sector))
     {
         int continuationNode =
             sithBot_FindPathNext(state->playerIdx, nextNode, goalNode);
@@ -5905,15 +6135,19 @@ static int sithBot_FindCommittedRouteMoveNode(SithBotState *state, int startNode
         }
     }
     if (startNode >= 0 && startNode < sithBot_numNodes &&
-        ((thing->sector == sithBot_nodes[startNode].sector &&
-          sithBot_DistSq(&thing->position, &sithBot_nodes[startNode].pos) < 0.55 * 0.55) ||
-         ((thing->position.x - sithBot_nodes[startNode].pos.x) *
-              (thing->position.x - sithBot_nodes[startNode].pos.x) +
-          (thing->position.y - sithBot_nodes[startNode].pos.y) *
-              (thing->position.y - sithBot_nodes[startNode].pos.y) < 0.15 * 0.15 &&
-          sithBot_AbsFlex(thing->position.z - sithBot_nodes[startNode].pos.z) < 0.40)))
+        sithBot_IsRouteNodeReached(thing, &sithBot_nodes[startNode], 0.55))
     {
         anchoredAtStart = 1;
+    }
+    if (nextNode >= 0 && !anchoredAtStart &&
+        startNode >= 0 && startNode < sithBot_numNodes &&
+        sithBot_nodes[startNode].kind == SITHBOT_NODE_PORTAL &&
+        sithBot_IsNarrowTransitSector(sithBot_nodes[startNode].sector) &&
+        sithBot_CanSeePosition(thing->sector, &thing->position,
+                               sithBot_nodes[startNode].sector,
+                               &sithBot_nodes[startNode].pos))
+    {
+        nextNode = startNode;
     }
     if (nextNode >= 0 &&
         !anchoredAtStart &&
@@ -5960,9 +6194,12 @@ static int sithBot_FindRouteMoveNodeAvoidSector(int startNode, int goalNode, sit
         flex_t dy = thing->position.y - sithBot_nodes[nextNode].pos.y;
         flex_t dz = sithBot_AbsFlex(thing->position.z - sithBot_nodes[nextNode].pos.z);
         flex_t reachRadius = sithBot_GetRouteNodeReachRadius(&sithBot_nodes[nextNode], 0.30);
+        flex_t crossSectorRadius =
+            sithBot_GetRouteNodeCrossRadius(&sithBot_nodes[nextNode]);
         int sameSectorReached = thing->sector == sithBot_nodes[nextNode].sector &&
             sithBot_DistSq(&thing->position, &sithBot_nodes[nextNode].pos) < reachRadius * reachRadius;
-        int overlappingTransition = dx * dx + dy * dy < 0.15 * 0.15 && dz < 0.40;
+        int overlappingTransition =
+            dx * dx + dy * dy < crossSectorRadius * crossSectorRadius && dz < 0.40;
         int clearanceReached = sithBot_nodes[nextNode].kind != SITHBOT_NODE_PORTAL &&
             reachRadius > 0.24 &&
             dx * dx + dy * dy < reachRadius * reachRadius && dz < 0.40 &&
@@ -5972,7 +6209,8 @@ static int sithBot_FindRouteMoveNodeAvoidSector(int startNode, int goalNode, sit
                                    &sithBot_nodes[nextNode].pos);
         int reachedPortal = sithBot_nodes[nextNode].kind == SITHBOT_NODE_PORTAL &&
             ((thing->sector == sithBot_nodes[nextNode].sector &&
-              sithBot_DistSq(&thing->position, &sithBot_nodes[nextNode].pos) < 0.24 * 0.24) ||
+              sithBot_DistSq(&thing->position, &sithBot_nodes[nextNode].pos) <
+                  reachRadius * reachRadius) ||
              overlappingTransition);
 
         if (!sameSectorReached && !overlappingTransition && !clearanceReached)
@@ -7258,10 +7496,17 @@ static void sithBot_DriveGroundVelocity(SithBotState *state, sithThing *thing, c
             targetDz > 0.30 &&
             sithBot_nodes[state->nextNode].kind == SITHBOT_NODE_PORTAL &&
             sithBot_IsCommittedRouteTransition(state, thing, startNode, state->nextNode);
+        int directPortalEdge =
+            startNode >= 0 &&
+            startNode < sithBot_numNodes &&
+            sithBot_nodes[state->nextNode].kind == SITHBOT_NODE_PORTAL &&
+            sithBot_HasEdge(startNode, state->nextNode) &&
+            sithBot_IsRouteNodeReached(thing, &sithBot_nodes[startNode], 0.18);
         int portalTransition =
             sithBot_HasNearbySectorEdgeTo(thing, state->nextNode, 0.38);
         if (startNode == state->nextNode ||
             exactPortalEdge ||
+            directPortalEdge ||
             sithBot_HasEdge(startNode, state->nextNode) ||
             portalTransition)
         {
@@ -7269,6 +7514,7 @@ static void sithBot_DriveGroundVelocity(SithBotState *state, sithThing *thing, c
             safeDir.z = 0.0;
             if (rdVector_Normalize3Acc(&safeDir) > 0.001 &&
                 (exactPortalEdge ||
+                 directPortalEdge ||
                  portalTransition ||
                  sithBot_IsDirectDestinationSafe(thing, &sithBot_nodes[state->nextNode].pos)))
             {
@@ -8970,7 +9216,48 @@ static int sithBot_IsSafeGenericInteractionThing(sithThing *thing)
     return found;
 }
 
-static int sithBot_TryActivateNearbyInteraction(SithBotState *state, sithThing *thing, const rdVector3 *target, int routeOnly)
+static int sithBot_InteractionSurfaceControlsThing(
+    sithSurface *surface, sithThing *controlledThing)
+{
+    int i;
+
+    if (!surface || !controlledThing)
+        return 0;
+    for (i = 0; i < sithCog_numSurfaceLinks; i++)
+    {
+        sithCogSurfaceLink *link = &sithCog_aSurfaceLinks[i];
+        if (link->surface == surface &&
+            sithBot_CogControlsThing(link->cog, controlledThing))
+        {
+            return 1;
+        }
+    }
+    return 0;
+}
+
+static int sithBot_InteractionThingControlsThing(
+    sithThing *control, sithThing *controlledThing)
+{
+    int i;
+
+    if (!control || !controlledThing)
+        return 0;
+    for (i = 0; i < sithCog_numThingLinks; i++)
+    {
+        sithCogThingLink *link = &sithCog_aThingLinks[i];
+        if (link->thing == control &&
+            link->signature == control->signature &&
+            sithBot_CogControlsThing(link->cog, controlledThing))
+        {
+            return 1;
+        }
+    }
+    return 0;
+}
+
+static int sithBot_TryActivateNearbyInteraction(
+    SithBotState *state, sithThing *thing, const rdVector3 *target,
+    int routeOnly, sithThing *ignoredControlledThing)
 {
     sithSurface *bestSurface = 0;
     sithThing *bestThing = 0;
@@ -9001,7 +9288,9 @@ static int sithBot_TryActivateNearbyInteraction(SithBotState *state, sithThing *
         int j;
 
         if (!(surface->surfaceFlags & SITH_SURFACE_COG_LINKED) || face->numVertices <= 0 || !face->vertexPosIdx ||
-            !sithBot_IsSafeGenericInteractionSurface(surface))
+            !sithBot_IsSafeGenericInteractionSurface(surface) ||
+            sithBot_InteractionSurfaceControlsThing(
+                surface, ignoredControlledThing))
             continue;
         if (routeOnly && stdMath_Fabs(face->normal.z) > 0.65)
             continue;
@@ -9053,7 +9342,9 @@ static int sithBot_TryActivateNearbyInteraction(SithBotState *state, sithThing *
             if (candidate == thing || (candidate->type != SITH_THING_COG && candidate->type != SITH_THING_GHOST) ||
                 !(candidate->thingflags & SITH_TF_CAPTURED) ||
                 (candidate->thingflags & (SITH_TF_DISABLED | SITH_TF_WILLBEREMOVED)) ||
-                !sithBot_IsSafeGenericInteractionThing(candidate))
+                !sithBot_IsSafeGenericInteractionThing(candidate) ||
+                sithBot_InteractionThingControlsThing(
+                    candidate, ignoredControlledThing))
                 continue;
 
             distSq = sithBot_DistSq(&thing->position, &candidate->position);
@@ -9481,7 +9772,8 @@ static void sithBot_BuildFloorRoute(int startNode, int *steps, int *first)
 }
 
 static int sithBot_FindControlApproach(const rdVector3 *controlPos, sithSector *controlSector,
-                                       const SithBotNode *liftNode, const int *steps, flex_t *outScore)
+                                       const SithBotNode *liftNode, const int *steps,
+                                       int surfaceControl, flex_t *outScore)
 {
     int best = -1;
     int i;
@@ -9508,8 +9800,13 @@ static int sithBot_FindControlApproach(const rdVector3 *controlPos, sithSector *
         if (controlDistSq > 2.25)
             continue;
         rdVector_Copy3(&traceEnd, controlPos);
-        if (!sithBot_CanSeePosition(sithBot_nodes[i].sector, &sithBot_nodes[i].pos,
-                                    controlSector, &traceEnd))
+        if (surfaceControl
+                ? !sithCollision_GetSectorLookAt(
+                      sithBot_nodes[i].sector, &sithBot_nodes[i].pos,
+                      &traceEnd, 0.03)
+                : !sithBot_CanSeePosition(
+                      sithBot_nodes[i].sector, &sithBot_nodes[i].pos,
+                      controlSector, &traceEnd))
         {
             continue;
         }
@@ -9579,7 +9876,8 @@ static int sithBot_MoveToLiftControl(SithBotState *state, sithThing *bot, sithTh
             ? sithBot_GetLiftControlRank(
                 link->cog, surface, 0, liftNode->pathFrame, lift->curframe)
             : (surface->adjoin ? 1 : 2);
-        approach = sithBot_FindControlApproach(&center, surface->parent_sector, liftNode, steps, &score);
+        approach = sithBot_FindControlApproach(
+            &center, surface->parent_sector, liftNode, steps, 1, &score);
         if (approach >= 0 && (rank > bestRank || (rank == bestRank && score < bestScore)))
         {
             bestRank = rank;
@@ -9606,7 +9904,8 @@ static int sithBot_MoveToLiftControl(SithBotState *state, sithThing *bot, sithTh
         {
             continue;
         }
-        approach = sithBot_FindControlApproach(&control->position, control->sector, liftNode, steps, &score);
+        approach = sithBot_FindControlApproach(
+            &control->position, control->sector, liftNode, steps, 0, &score);
         if (approach >= 0 && (rank > bestRank || (rank == bestRank && score < bestScore)))
         {
             bestRank = rank;
@@ -9629,11 +9928,12 @@ static int sithBot_MoveToLiftControl(SithBotState *state, sithThing *bot, sithTh
     if (dist <= 1.15 &&
         ((bestSurfaceIsTrigger && bestSurface &&
           bot->sector == bestSurface->parent_sector) ||
-         sithBot_CanSeePosition(
-             bot->sector,
-             &bot->position,
-             bestSurface ? bestSurface->parent_sector : bestThing->sector,
-             &bestPos)))
+         (bestSurface
+              ? sithCollision_GetSectorLookAt(
+                    bot->sector, &bot->position, &bestPos, 0.03) != 0
+              : sithBot_CanSeePosition(
+                    bot->sector, &bot->position, bestThing->sector,
+                    &bestPos))))
     {
         if (bestSurfaceIsTrigger)
         {
@@ -10485,7 +10785,10 @@ static int sithBot_TryAttachToPathLift(sithThing *thing, sithThing *lift)
                the passenger to the car until the route reaches its exit stop. */
             thing->attach_flags |= SITH_ATTACH_NO_MOVE;
             rdVector_Zero3(&thing->physicsParams.acceleration);
-            rdVector_Zero3(&thing->physicsParams.vel);
+            rdVector_Scale3(
+                &thing->physicsParams.vel,
+                &lift->trackParams.vel,
+                lift->trackParams.lerpSpeed);
             if (sithComm_multiplayerFlags)
                 sithDSSThing_SendSyncThingAttachment(thing, -1, 255, 1);
         }
@@ -10573,6 +10876,11 @@ static void sithBot_AnchorPassengerToPathLift(sithThing *passenger,
         &anchoredPos, &passenger->field_4C, &lift->lookOrientation);
     rdVector_Add3Acc(&anchoredPos, &lift->position);
     rdVector_Copy3(&passenger->position, &anchoredPos);
+    rdVector_Zero3(&passenger->physicsParams.acceleration);
+    rdVector_Scale3(
+        &passenger->physicsParams.vel,
+        &lift->trackParams.vel,
+        lift->trackParams.lerpSpeed);
     if (passenger->sector != lift->sector)
         sithThing_MoveToSector(passenger, lift->sector, 0);
 }
@@ -10650,7 +10958,10 @@ static int sithBot_HandlePathLiftRoute(SithBotState *state, sithThing *thing, in
             sithThing_AttachThing(thing, lift);
             thing->attach_flags |= SITH_ATTACH_NO_MOVE;
             rdVector_Zero3(&thing->physicsParams.acceleration);
-            rdVector_Zero3(&thing->physicsParams.vel);
+            rdVector_Scale3(
+                &thing->physicsParams.vel,
+                &lift->trackParams.vel,
+                lift->trackParams.lerpSpeed);
             attached = 1;
             if (sithComm_multiplayerFlags)
                 sithDSSThing_SendSyncThingAttachment(thing, -1, 255, 1);
@@ -10718,7 +11029,10 @@ static int sithBot_HandlePathLiftRoute(SithBotState *state, sithThing *thing, in
             sithThing_AttachThing(thing, lift);
             thing->attach_flags |= SITH_ATTACH_NO_MOVE;
             rdVector_Zero3(&thing->physicsParams.acceleration);
-            rdVector_Zero3(&thing->physicsParams.vel);
+            rdVector_Scale3(
+                &thing->physicsParams.vel,
+                &lift->trackParams.vel,
+                lift->trackParams.lerpSpeed);
             if (sithComm_multiplayerFlags)
                 sithDSSThing_SendSyncThingAttachment(thing, -1, 255, 1);
             sithBot_SyncPositionIfNeeded(state, thing);
@@ -10802,7 +11116,10 @@ static int sithBot_HandlePathLiftRoute(SithBotState *state, sithThing *thing, in
                     sithThing_AttachThing(thing, lift);
                     thing->attach_flags |= SITH_ATTACH_NO_MOVE;
                     rdVector_Zero3(&thing->physicsParams.acceleration);
-                    rdVector_Zero3(&thing->physicsParams.vel);
+                    rdVector_Scale3(
+                        &thing->physicsParams.vel,
+                        &lift->trackParams.vel,
+                        lift->trackParams.lerpSpeed);
                     if (sithComm_multiplayerFlags)
                         sithDSSThing_SendSyncThingAttachment(
                             thing, -1, 255, 1);
@@ -10978,7 +11295,10 @@ static int sithBot_HandlePathLiftRoute(SithBotState *state, sithThing *thing, in
             {
                 thing->attach_flags |= SITH_ATTACH_NO_MOVE;
                 rdVector_Zero3(&thing->physicsParams.acceleration);
-                rdVector_Zero3(&thing->physicsParams.vel);
+                rdVector_Scale3(
+                    &thing->physicsParams.vel,
+                    &lift->trackParams.vel,
+                    lift->trackParams.lerpSpeed);
                 if (sithComm_multiplayerFlags)
                     sithDSSThing_SendSyncThingAttachment(thing, -1, 255, 1);
             }
@@ -11209,6 +11529,27 @@ static int sithBot_AttachToNearbyWalkableFloor(sithThing *thing, flex_t maxDrop)
     return 0;
 }
 
+static void sithBot_DetachForLiftExit(sithThing *thing, sithThing *lift)
+{
+    int wasLiftPassenger;
+
+    if (!thing || !thing->attach_flags)
+        return;
+    wasLiftPassenger =
+        (thing->attach_flags &
+         (SITH_ATTACH_THING | SITH_ATTACH_THINGSURFACE)) &&
+        thing->attachedThing == lift;
+    sithThing_DetachThing(thing);
+    thing->attach_flags &= ~SITH_ATTACH_NO_MOVE;
+    if (wasLiftPassenger)
+    {
+        thing->physicsParams.vel.z = 0.0;
+        thing->physicsParams.acceleration.z = 0.0;
+    }
+    if (sithComm_multiplayerFlags)
+        sithDSSThing_SendSyncThingAttachment(thing, -1, 255, 1);
+}
+
 static int sithBot_HandleLiftExit(SithBotState *state, sithThing *thing)
 {
     SithBotNode *exitNode;
@@ -11342,10 +11683,7 @@ static int sithBot_HandleLiftExit(SithBotState *state, sithThing *thing)
 
         if (thing->attach_flags)
         {
-            sithThing_DetachThing(thing);
-            thing->attach_flags &= ~SITH_ATTACH_NO_MOVE;
-            if (sithComm_multiplayerFlags)
-                sithDSSThing_SendSyncThingAttachment(thing, -1, 255, 1);
+            sithBot_DetachForLiftExit(thing, lift);
         }
         liftCenterDir.x = lift->position.x - thing->position.x;
         liftCenterDir.y = lift->position.y - thing->position.y;
@@ -11411,10 +11749,7 @@ static int sithBot_HandleLiftExit(SithBotState *state, sithThing *thing)
                 sithPlayerActions_JumpWithVel(thing, 1.0);
                 state->nextUseMs = sithTime_curMs + 700;
             }
-            sithThing_DetachThing(thing);
-            thing->attach_flags &= ~SITH_ATTACH_NO_MOVE;
-            if (sithComm_multiplayerFlags)
-                sithDSSThing_SendSyncThingAttachment(thing, -1, 255, 1);
+            sithBot_DetachForLiftExit(thing, lift);
         }
         if (!thing->attach_flags)
             sithBot_AttachToNearbyWalkableFloor(thing, 0.45);
@@ -11428,10 +11763,7 @@ static int sithBot_HandleLiftExit(SithBotState *state, sithThing *thing)
                 sithPlayerActions_JumpWithVel(thing, 1.0);
                 state->nextUseMs = sithTime_curMs + 700;
             }
-            sithThing_DetachThing(thing);
-            thing->attach_flags &= ~SITH_ATTACH_NO_MOVE;
-            if (sithComm_multiplayerFlags)
-                sithDSSThing_SendSyncThingAttachment(thing, -1, 255, 1);
+            sithBot_DetachForLiftExit(thing, lift);
         }
         if (thing->attach_flags ||
             (thing->sector == exitTargetSector && exitDist < 0.34))
@@ -11494,10 +11826,7 @@ static int sithBot_HandleLiftExit(SithBotState *state, sithThing *thing)
         (SITH_ATTACH_WORLDSURFACE | SITH_ATTACH_THING |
          SITH_ATTACH_THINGSURFACE | SITH_ATTACH_NO_MOVE))
     {
-        sithThing_DetachThing(thing);
-        thing->attach_flags &= ~SITH_ATTACH_NO_MOVE;
-        if (sithComm_multiplayerFlags)
-            sithDSSThing_SendSyncThingAttachment(thing, -1, 255, 1);
+        sithBot_DetachForLiftExit(thing, lift);
     }
     sithBot_FaceToward(state, thing, &exitTarget, 0);
     if (state->interactionWaitUntilMs && state->lastInteractionThingIdx >= 0)
@@ -11522,7 +11851,8 @@ static int sithBot_HandleLiftExit(SithBotState *state, sithThing *thing)
         activatedExitDoor =
             sithBot_TryActivateLiftExitDoor(state, thing, lift, &exitTarget);
         activatedNearbyInteraction = activatedExitDoor ? 0 :
-            sithBot_TryActivateNearbyInteraction(state, thing, &exitTarget, 1);
+            sithBot_TryActivateNearbyInteraction(
+                state, thing, &exitTarget, 1, lift);
         if (activatedExitDoor || activatedNearbyInteraction)
         {
             /* Stock JK doors toggle when activated at their open frame. Give
@@ -11545,7 +11875,8 @@ static int sithBot_HandleLiftExit(SithBotState *state, sithThing *thing)
         }
         else
         {
-            sithPlayerActions_Activate(thing);
+            if (!sithBot_IsPathLiftThing(lift))
+                sithPlayerActions_Activate(thing);
         }
         state->nextUseMs = sithTime_curMs + 900;
     }
@@ -11567,10 +11898,7 @@ static int sithBot_HandleLiftExit(SithBotState *state, sithThing *thing)
                 sithPlayerActions_JumpWithVel(thing, 1.0);
                 state->nextUseMs = sithTime_curMs + 700;
             }
-            sithThing_DetachThing(thing);
-            thing->attach_flags &= ~SITH_ATTACH_NO_MOVE;
-            if (sithComm_multiplayerFlags)
-                sithDSSThing_SendSyncThingAttachment(thing, -1, 255, 1);
+            sithBot_DetachForLiftExit(thing, lift);
         }
         if (!thing->attach_flags)
             sithBot_AttachToNearbyWalkableFloor(thing, 0.45);
@@ -11584,10 +11912,7 @@ static int sithBot_HandleLiftExit(SithBotState *state, sithThing *thing)
                 sithPlayerActions_JumpWithVel(thing, 1.0);
                 state->nextUseMs = sithTime_curMs + 700;
             }
-            sithThing_DetachThing(thing);
-            thing->attach_flags &= ~SITH_ATTACH_NO_MOVE;
-            if (sithComm_multiplayerFlags)
-                sithDSSThing_SendSyncThingAttachment(thing, -1, 255, 1);
+            sithBot_DetachForLiftExit(thing, lift);
         }
         if (!thing->attach_flags)
         {
@@ -12020,7 +12345,8 @@ static void sithBot_MoveToward(SithBotState *state, sithThing *thing, const rdVe
     if (!combat && state->nextUseMs <= sithTime_curMs &&
         state->interactionRepeatUntilMs <= sithTime_curMs)
     {
-        if (sithBot_TryActivateNearbyInteraction(state, thing, target, 1))
+        if (sithBot_TryActivateNearbyInteraction(
+                state, thing, target, 1, 0))
         {
             state->nextUseMs = sithTime_curMs + 650;
             rdVector_Zero3(&thing->physicsParams.acceleration);
@@ -12598,6 +12924,107 @@ static int sithBot_HandleJumpPadRoute(SithBotState *state, sithThing *thing, int
     return 1;
 }
 
+static int sithBot_TryRecoverHardStuck(SithBotState *state, sithThing *thing)
+{
+    int bestNode = -1;
+    flex_t bestDistSq = 3.4e38f;
+    int pass;
+
+    if (!state || !thing || !thing->sector)
+        return 0;
+
+    for (pass = 0; pass < 3 && bestNode < 0; pass++)
+    {
+        int i;
+        for (i = 0; i < sithBot_numNodes; i++)
+        {
+            SithBotNode *candidate = &sithBot_nodes[i];
+            flex_t distSq;
+            int sameSector = candidate->sector == thing->sector;
+            int ordinaryNode = candidate->kind == SITHBOT_NODE_FLOOR ||
+                candidate->kind == SITHBOT_NODE_SPAWN;
+
+            if (!sithBot_IsNavSectorUsableForBot(candidate->sector) ||
+                candidate->kind == SITHBOT_NODE_ITEM ||
+                candidate->kind == SITHBOT_NODE_LIFT ||
+                candidate->kind == SITHBOT_NODE_JUMPPAD)
+            {
+                continue;
+            }
+            if ((pass == 0 && (!sameSector || !ordinaryNode)) ||
+                (pass == 1 && (!sameSector || ordinaryNode)) ||
+                (pass == 2 && sameSector))
+            {
+                continue;
+            }
+
+            distSq = sithBot_DistSq(&thing->position, &candidate->pos);
+            if (distSq < 0.30 * 0.30 ||
+                distSq > (pass == 2 ? 1.0 * 1.0 : 1.5 * 1.5) ||
+                distSq >= bestDistSq)
+            {
+                continue;
+            }
+            if (!sithBot_CanSeePosition(thing->sector, &thing->position,
+                                        candidate->sector, &candidate->pos) ||
+                !sithBot_IsDirectDestinationSafe(thing, &candidate->pos))
+            {
+                continue;
+            }
+            bestNode = i;
+            bestDistSq = distSq;
+        }
+    }
+    if (bestNode < 0)
+        return 0;
+
+    if (thing->attach_flags)
+        sithThing_DetachThing(thing);
+    sithThing_LeaveSector(thing);
+    sithThing_SetPosAndRot(thing, &sithBot_nodes[bestNode].pos,
+                           &thing->lookOrientation);
+    sithThing_EnterSector(thing, sithBot_nodes[bestNode].sector, 1, 0);
+    sithPhysics_ThingStop(thing);
+    sithPhysics_FindFloor(thing, 1);
+
+    state->goalNode = -1;
+    state->nextNode = -1;
+    state->nextGoalMs = 0;
+    state->routeGoalNode = -1;
+    state->routeCommitUntilMs = 0;
+    state->routeWatchGoal = -1;
+    state->routeWatchStartMs = 0;
+    state->routeFailureGoal = -1;
+    state->routeFailureCount = 0;
+    state->routeRetryGoal = -1;
+    state->routeRetryAfterMs = 0;
+    state->routeHistoryGoal = -1;
+    state->routeLastNode = -1;
+    state->routePriorNode = -1;
+    state->routeFlipCount = 0;
+    state->routeRecoveryNode = -1;
+    state->routeRecoveryUntilMs = 0;
+    state->goalMode = SITHBOT_GOAL_ROAM;
+    state->stuckTicks = 0;
+    state->hardStuckFailures = 0;
+    state->blockedMoveTicks = 0;
+    state->hardStuckSinceMs = sithTime_curMs;
+    rdVector_Copy3(&state->hardStuckPos, &thing->position);
+    rdVector_Copy3(&state->lastMovePos, &thing->position);
+    state->lastMoveCheckMs = sithTime_curMs;
+
+    if (sithComm_multiplayerFlags)
+        sithDSSThing_SendSyncThing(thing, -1, 255);
+    sithBot_Logf("BotMatch: hard-stuck-recover slot=%d node=%d dist=%.2f pos=(%.2f,%.2f,%.2f)\n",
+                 state->playerIdx,
+                 bestNode,
+                 stdMath_Sqrt(bestDistSq),
+                 thing->position.x,
+                 thing->position.y,
+                 thing->position.z);
+    return 1;
+}
+
 static void sithBot_CheckStuck(SithBotState *state, sithThing *thing, const rdVector3 *target)
 {
     flex_t hardStuckMovedSq;
@@ -12640,6 +13067,8 @@ static void sithBot_CheckStuck(SithBotState *state, sithThing *thing, const rdVe
         /* Route goals can change repeatedly while the actor remains physically
            wedged. UT-style bots eventually suicide rather than occupy the same
            unusable position for the rest of the match. */
+        if (sithBot_TryRecoverHardStuck(state, thing))
+            return;
         sithBot_Logf("BotMatch: hard-stuck-suicide slot=%d pos=(%.2f,%.2f,%.2f) moved=%.2f\n",
                      state->playerIdx,
                      thing->position.x,
@@ -12687,7 +13116,8 @@ static void sithBot_CheckStuck(SithBotState *state, sithThing *thing, const rdVe
         if (state->nextUseMs <= sithTime_curMs && state->interactionRepeatUntilMs <= sithTime_curMs)
         {
             sithBot_FaceToward(state, thing, target, 0);
-            if (!sithBot_TryActivateNearbyInteraction(state, thing, target, 0))
+            if (!sithBot_TryActivateNearbyInteraction(
+                    state, thing, target, 0, 0))
                 sithPlayerActions_Activate(thing);
             state->nextUseMs = sithTime_curMs + 900;
         }
@@ -13620,9 +14050,11 @@ static int sithBot_RunHazardFlee(SithBotState *state, sithThing *thing)
 
     if (state->hazardFleeUntilMs <= sithTime_curMs)
     {
+        if (thing->sector == state->hazardSector)
+            sithBot_EmergencyMoveOutOfHazard(state->playerIdx, thing);
         state->hazardFleeUntilMs = 0;
         state->hazardSector = 0;
-        return 0;
+        return 1;
     }
 
     if (sithBot_numNodes <= 0)
@@ -14601,7 +15033,8 @@ static int sithBot_RunCtfObjective(SithBotState *state, sithThing *thing,
         }
         if (state->nextUseMs <= sithTime_curMs &&
             state->interactionRepeatUntilMs <= sithTime_curMs &&
-            sithBot_TryActivateNearbyInteraction(state, thing, &targetPos, 0))
+            sithBot_TryActivateNearbyInteraction(
+                state, thing, &targetPos, 0, 0))
         {
             state->nextUseMs = sithTime_curMs + 650;
             rdVector_Zero3(&thing->physicsParams.acceleration);
@@ -14843,6 +15276,11 @@ static void sithBot_TickState(SithBotState *state, flex_t deltaSeconds, int delt
     if (state->enemyIdx >= 0)
     {
         enemyThing = jkPlayer_playerInfos[state->enemyIdx].playerThing;
+        if (enemyVisible && !sithBot_HasCombatLos(thing, enemyThing))
+        {
+            enemyVisible = 0;
+            state->enemyVisibleCached = 0;
+        }
         if (enemyVisible)
         {
             state->lastSeenEnemyIdx = state->enemyIdx;

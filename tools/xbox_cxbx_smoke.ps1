@@ -205,6 +205,11 @@ while ((Get-Date) -lt $deadline) {
         $item = Get-Item -LiteralPath $activeLog
         $lastLogLength = $item.Length
         $lastLogWrite = $item.LastWriteTime
+        if ($BotMatchSeconds -gt 0 -and
+            (Test-LogPattern $activeLog "BotMatch: scoreboard reason=timed-final")) {
+            Start-Sleep -Seconds 1
+            break
+        }
     }
 
     $aliveProcesses = @(Get-CxbxProcesses)

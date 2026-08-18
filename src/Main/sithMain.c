@@ -259,13 +259,13 @@ int sithMain_Mode1Init_3(char *fpath)
 
         jk_snwprintf(botStatus,
                      sizeof(botStatus) / sizeof(botStatus[0]),
-                     L"Preparing navigation for %d bots",
+                     L"Preparing %d bots",
                      Main_numBots);
         jkGuiTitle_SetLoadingStatus(botStatus);
         sithBot_PrepareNavigation(sithMain_BotNavigationStatus);
         jk_snwprintf(botStatus,
                      sizeof(botStatus) / sizeof(botStatus[0]),
-                     L"Starting match with %d bots",
+                     L"Starting %d bots",
                      Main_numBots);
         jkGuiTitle_SetLoadingStatus(botStatus);
         jkGuiTitle_WorldLoadCallback(100.0);
@@ -787,11 +787,11 @@ static void sithMain_BotNavigationStatus(SithBotNavPhase phase)
     switch (phase)
     {
         case SITHBOT_NAV_CHECKING_CACHE:
-            jk_snwprintf(status, 64, L"Checking navigation for %d bots", Main_numBots);
+            stdString_SafeWStrCopy(status, L"Checking bot routes", 64);
             progress = 91.0;
             break;
         case SITHBOT_NAV_ANALYZING_MAP:
-            jk_snwprintf(status, 64, L"Analyzing map for %d bots", Main_numBots);
+            stdString_SafeWStrCopy(status, L"Analyzing map routes", 64);
             progress = 93.0;
             break;
         case SITHBOT_NAV_CONNECTING_ROUTES:

@@ -122,7 +122,7 @@ foreach ($requestedDir in $RunDir) {
     $loadedSlots = @{}
     $models = @{}
     foreach ($line in $logLines | Where-Object { $_ -match '^BotMatch: spawn-loadout ' }) {
-        if ($line -match "slot=(\d+) weapon=2 available=(\d+) carries=(\d+) ammo=([0-9.]+) model='([^']+)'") {
+        if ($line -match "slot=(\d+) weapon=2 available=(\d+) carries=(\d+) ammo=([0-9.]+).*model='([^']+)'") {
             $slot = [int]$Matches[1]
             if ([int]$Matches[2] -eq 1 -and [int]$Matches[3] -eq 1 -and [double]$Matches[4] -gt 0) {
                 $loadedSlots[$slot] = $true

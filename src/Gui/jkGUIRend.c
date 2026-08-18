@@ -2749,46 +2749,26 @@ int jkGuiRend_SliderEventHandler(jkGuiElement *element, jkGuiMenu *menu, int32_t
         case JKGUI_EVENT_KEYDOWN:
             if ( eventParam == VK_LEFT )
             {
-                v29 = element;
-                v30 = element->selectedTextEntry - 1;
-                element->selectedTextEntry = v30;
-                v31 = v30;
-                if ( v30 < 0 )
-                {
-                    v32 = 0;
-                }
-                else
-                {
-                    v32 = v29->extraInt;
-                    if ( v31 <= (int32_t)v32 )
-                        v32 = v31;
-                }
-                v29->extraInt = v32;
-                jkGuiRend_UpdateAndDrawClickable(v29, menu, 1);
+                int32_t maxValue = (int32_t)(intptr_t)element->unistr;
+                element->selectedTextEntry--;
+                if ( element->selectedTextEntry < 0 )
+                    element->selectedTextEntry = 0;
+                else if ( element->selectedTextEntry > maxValue )
+                    element->selectedTextEntry = maxValue;
+                jkGuiRend_UpdateAndDrawClickable(element, menu, 1);
                 return 0;
             }
             if ( eventParam != VK_RIGHT )
                 return 0;
-            v23 = element;
-            v24 = element->selectedTextEntry + 1;
-            element->selectedTextEntry = v24;
-            if ( v24 < 0 )
             {
-                v26 = 0;
+                int32_t maxValue = (int32_t)(intptr_t)element->unistr;
+                element->selectedTextEntry++;
+                if ( element->selectedTextEntry < 0 )
+                    element->selectedTextEntry = 0;
+                else if ( element->selectedTextEntry > maxValue )
+                    element->selectedTextEntry = maxValue;
             }
-            else
-            {
-                v26 = v23->extraInt;
-                if ( v24 <= v26 )
-                {
-                    v27 = menu;
-                    v23->selectedTextEntry = v24;
-                    jkGuiRend_UpdateAndDrawClickable(v23, v27, 1);
-                    return 0;
-                }
-            }
-            v23->otherDataPtr = v26;
-            jkGuiRend_UpdateAndDrawClickable(v23, menu, 1);
+            jkGuiRend_UpdateAndDrawClickable(element, menu, 1);
             return 0;
         default:
             return 0;
@@ -3421,6 +3401,14 @@ void jkGuiRend_FocusElementDir(jkGuiMenu *pMenu, int32_t dir)
         pMenu->lastMouseOverClickable,
         pMenu->focusedElement);
 #endif
+
+    if (focusedElement->type == ELEMENT_SLIDER &&
+        (dir == FOCUS_LEFT || dir == FOCUS_RIGHT))
+    {
+        jkGuiRend_InvokeEvent(focusedElement, pMenu, JKGUI_EVENT_KEYDOWN,
+                              dir == FOCUS_LEFT ? VK_LEFT : VK_RIGHT);
+        return;
+    }
 
     if (focusedElement->type == ELEMENT_LISTBOX) {
         //printf("listbox\n");
