@@ -1,4 +1,8 @@
 #include "jkCog.h"
+#ifdef TARGET_XBOX
+#include "Platform/Xbox/xbox_debug.h"
+extern int jkMain_xboxSmokeReloadTraceFrames;
+#endif
 
 #include <math.h>
 #include <stdlib.h>  /* rand() */
@@ -213,6 +217,10 @@ void jkCog_SetWeaponMesh(sithCog *ctx)
 
     model3 = sithCogExec_PopModel3(ctx);
     actorThing = sithCogExec_PopThing(ctx);
+#ifdef TARGET_XBOX
+    if (jkMain_xboxSmokeReloadTraceFrames)
+        XPERF("SaveLoad: POV arguments model=%p actor=%p info=%p\n", model3, actorThing, actorThing ? actorThing->playerInfo : NULL);
+#endif
     v3 = actorThing;
     if ( actorThing )
     {
@@ -1152,6 +1160,11 @@ void jkCog_RegisterVerbs()
     sithCogScript_RegisterVerb(sithCog_pSymbolTable, jkCog_GetSaberCam, "jkgetsabercam");
     sithCogScript_RegisterVerb(sithCog_pSymbolTable, jkCog_GetChoice, "jkgetchoice");
 
+#ifdef TARGET_XBOX
+    /* Xbox multiplayer force-well scripts also query these parameters in JK. */
+    if (!Main_bMotsCompat)
+        sithCogScript_RegisterVerb(sithCog_pSymbolTable, jkCog_GetMultiParam, "jkgetmultiparam");
+#endif
     if (Main_bMotsCompat) {
         sithCogScript_RegisterVerb(sithCog_pSymbolTable, jkCog_BeginCutscene,"jkbegincutscene");
         sithCogScript_RegisterVerb(sithCog_pSymbolTable, jkCog_EndCutscene,"jkendcutscene");

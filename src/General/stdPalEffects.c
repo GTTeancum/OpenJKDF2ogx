@@ -310,6 +310,12 @@ LABEL_72:
 
 void stdPalEffects_GatherEffects()
 {
+    stdPalEffects_GatherEffectsMasked(0);
+}
+
+/* Keep global requests, optionally excluding effects owned by other views. */
+void stdPalEffects_GatherEffectsMasked(uint32_t excludedRequests)
+{
     uint32_t effectRequestCounter; // ebx
     flex_d_t tintB; // st7
     flex_d_t tintG; // st6
@@ -335,7 +341,7 @@ void stdPalEffects_GatherEffects()
         pEffectReq = &stdPalEffects_aEffects[0];
         do
         {
-            if ( pEffectReq->isValid )
+            if ( pEffectReq->isValid && !(excludedRequests & (1U << effectRequestCounter)) )
             {
                 if ( pEffectReq->effect.filter.x )
                     palEffect.filter.x = 1;
@@ -357,11 +363,11 @@ void stdPalEffects_GatherEffects()
                 if ( pEffectReq->effect.fade < palEffect.fade )
                     palEffect.fade = pEffectReq->effect.fade;
                 
-                ++effectRequestCounter;
             }
             ++pEffectReq;
+            ++effectRequestCounter;
         }
-        while ( effectRequestCounter < stdPalEffects_numEffectRequests );
+        while ( effectRequestCounter < 32 );
         palEffect.tint.z = tintB;
         palEffect.tint.y = tintG;
         palEffect.tint.x = tintR;

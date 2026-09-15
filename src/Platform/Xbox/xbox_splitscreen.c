@@ -1,7 +1,9 @@
 #include "xbox_splitscreen.h"
 
 #include "xbox_debug.h"
+#include "xbox_video.h"
 #include "xbox_systemlink_probe.h"
+#include "AI/sithBot.h"
 #include "Cog/sithCog.h"
 #include "Devices/sithControl.h"
 #include "Dss/sithMulti.h"
@@ -9,6 +11,7 @@
 #include "Gameplay/sithInventory.h"
 #include "Gameplay/sithPlayer.h"
 #include "General/stdPalEffects.h"
+#include "General/stdMath.h"
 #include "Main/Main.h"
 #include "Main/jkDev.h"
 #include "Main/jkHud.h"
@@ -288,6 +291,7 @@ static void xboxSplitScreen_ClearLocalInvulnerability(void)
         if (jkPlayer_playerInfos[playerIdx].playerThing)
             jkPlayer_playerInfos[playerIdx].playerThing->thingflags &= ~SITH_TF_INVULN;
     }
+    sithBot_ClearActiveBotInvulnerability();
 }
 
 static void xboxSplitScreen_RestoreLocalName(int slot)
@@ -485,7 +489,11 @@ void xboxSplitScreen_OnMultiplayerServerStarted(void)
 
         xbox_debug_Printf("MPLoadTrace: SplitScreen slot %d player=%d before net activate\n", i, playerIdx);
         sithPlayer_sub_4C87C0(playerIdx, playerIdx + 1);
-        jkPlayer_playerInfos[playerIdx].teamNum = 0;
+        /* CTF retains its authored team-entry logic. Ordinary team matches
+         * distribute local players before bots choose the smaller team. */
+        jkPlayer_playerInfos[playerIdx].teamNum =
+            (sithNet_MultiModeFlags & MULTIMODEFLAG_TEAMS) &&
+            !(sithNet_MultiModeFlags & MULTIMODEFLAG_100) ? (i & 1) + 1 : 0;
         xbox_debug_Printf("MPLoadTrace: SplitScreen slot %d before context\n", i);
         xboxSplitScreen_SetContextForLocalSlot(i);
         xbox_debug_Printf("MPLoadTrace: SplitScreen slot %d after context\n", i);
@@ -569,6 +577,24 @@ void xboxSplitScreen_SetContextForLocalSlot(int slot)
 void xboxSplitScreen_RestoreContext(void)
 {
     xboxSplitScreen_SetContextForLocalSlot(0);
+}
+
+/* Sector callbacks during harness moves can select weapons. Keep those
+ * changes with the affected player, just as the normal control tick does. */
+int xboxSplitScreen_BeginLocalOperation(int slot)
+{
+    int previousSlot = g_xboxSplitScreenCurrentSlot;
+    xboxSplitScreen_SaveTransientStateForSlot(previousSlot);
+    xboxSplitScreen_SetContextForLocalSlot(slot);
+    xboxSplitScreen_ApplyTransientStateForSlot(slot);
+    return previousSlot;
+}
+
+void xboxSplitScreen_EndLocalOperation(int previousSlot)
+{
+    xboxSplitScreen_SaveTransientStateForSlot(g_xboxSplitScreenCurrentSlot);
+    xboxSplitScreen_SetContextForLocalSlot(previousSlot);
+    xboxSplitScreen_ApplyTransientStateForSlot(previousSlot);
 }
 
 void xboxSplitScreen_SetContextForControllerPort(int controllerPort)
@@ -676,6 +702,12 @@ void xboxSplitScreen_PostLoadInitializeLocals(void)
 
     xboxSplitScreen_SetContextForLocalSlot(0);
     sithPlayer_ResetPalEffects();
+    /* Each local view owns its dynamic damage and sector-tint requests. */
+    for (i = 1; i < g_xboxSplitScreenLocalCount; i++) {
+        sithPlayerInfo *info = &jkPlayer_playerInfos[xboxSplitScreen_GetPlayerIndexForSlot(i)];
+        info->palEffectsIdx1 = stdPalEffects_NewRequest(1);
+        info->palEffectsIdx2 = stdPalEffects_NewRequest(2);
+    }
     xboxSplitScreen_ClearLocalInvulnerability();
     xboxSplitScreen_ResetViewport();
     g_xboxSplitScreenLoggedViewports = 0;
@@ -795,6 +827,55 @@ void xboxSplitScreen_EndControlFrame(void)
     stdControl_FinishRead();
 }
 
+void xboxSplitScreen_AddDamageTint(sithThing *thing, flex_t red)
+{
+    int slot;
+    if (!g_xboxSplitScreenEnabled) {
+        if (thing == sithPlayer_pLocalPlayerThing)
+            sithPlayer_AddDynamicTint(red, 0.0, 0.0);
+        return;
+    }
+    /* Collision damage can arrive outside this player's control tick. Select
+     * the recipient's request directly without changing gameplay context. */
+    for (slot = 0; slot < g_xboxSplitScreenLocalCount; slot++) {
+        sithPlayerInfo *info = &jkPlayer_playerInfos[xboxSplitScreen_GetPlayerIndexForSlot(slot)];
+        if (thing && info->playerThing == thing) {
+            stdPalEffect *effect = stdPalEffects_GetEffectPointer(info->palEffectsIdx1);
+            effect->tint.x = stdMath_Clamp(effect->tint.x + red, 0.0, 1.0);
+            return;
+        }
+    }
+}
+
+void xboxSplitScreen_TickPlayer(sithPlayerInfo *playerInfo, flex_t deltaSecs)
+{
+    int slot;
+    int previousSlot = g_xboxSplitScreenCurrentSlot;
+    if (g_xboxSplitScreenEnabled) {
+        for (slot = 0; slot < g_xboxSplitScreenLocalCount; slot++) {
+            if (playerInfo != &jkPlayer_playerInfos[xboxSplitScreen_GetPlayerIndexForSlot(slot)])
+                continue;
+            /* Player ticks finish pending mounts and advance weapon fire timers.
+             * Persist those changes before rendering restores a slot's state. */
+            xboxSplitScreen_SetContextForLocalSlot(slot);
+            xboxSplitScreen_ApplyTransientStateForSlot(slot);
+            sithPlayer_Tick(playerInfo, deltaSecs);
+            xboxSplitScreen_SaveTransientStateForSlot(slot);
+            xboxSplitScreen_SetContextForLocalSlot(previousSlot);
+            xboxSplitScreen_ApplyTransientStateForSlot(previousSlot);
+            return;
+        }
+    }
+    sithPlayer_Tick(playerInfo, deltaSecs);
+}
+
+float xboxVideo_GetProjectionPixelAspectRatio(void)
+{
+    if (g_xboxSplitScreenEnabled && g_xboxSplitScreenLocalCount >= 3 && !Main_splitFullWidth)
+        return 1.0f;
+    return xboxVideo_GetPixelAspectRatio();
+}
+
 void xboxSplitScreen_GetViewport(int slot, int *x, int *y, int *w, int *h)
 {
     int vx = 0, vy = 0, vw = 640, vh = 480;
@@ -807,9 +888,12 @@ void xboxSplitScreen_GetViewport(int slot, int *x, int *y, int *w, int *h)
     }
     else if (g_xboxSplitScreenLocalCount >= 3)
     {
-        vw = 320;
+        /* Fit a physical 4:3 canvas inside the anamorphic 640x480 output.
+         * Keep the pair centered, with sidebars only at the outside edges. */
+        float pixelAspect = xboxVideo_GetPixelAspectRatio();
+        vw = pixelAspect > 1.0f && !Main_splitFullWidth ? (int)(320.0f / pixelAspect + 0.5f) : 320;
         vh = 240;
-        vx = (slot & 1) ? 320 : 0;
+        vx = (slot & 1) ? 320 : 320 - vw;
         vy = (slot & 2) ? 0 : 240;
     }
 
@@ -832,7 +916,7 @@ void xboxSplitScreen_GetViewport(int slot, int *x, int *y, int *w, int *h)
             }
             else if (g_xboxSplitScreenLocalCount >= 3)
             {
-                lw = 320; lh = 240; lx = (i & 1) ? 320 : 0; ly = (i & 2) ? 0 : 240;
+                lw = vw; lh = 240; lx = (i & 1) ? 320 : 320 - lw; ly = (i & 2) ? 0 : 240;
             }
             XDBGF("SplitScreenViewport: slot=%d gl=(%d,%d %dx%d)\n", i, lx, ly, lw, lh);
         }
@@ -844,6 +928,11 @@ float xboxSplitScreen_GetCurrentViewportAspect(void)
     int x = 0, y = 0, w = 0, h = 0;
     if (!g_xboxSplitScreenEnabled)
         return 0.0f;
+
+    /* CPU portal clipping uses the logical 640x480 camera canvas. Match
+     * that canvas in the GPU projection rather than expanding vertical FOV. */
+    if (g_xboxSplitScreenLocalCount >= 3)
+        return 0.75f;
 
     xboxSplitScreen_GetViewport(g_xboxSplitScreenCurrentSlot, &x, &y, &w, &h);
     if (w <= 0 || h <= 0)
@@ -889,18 +978,19 @@ static void xboxSplitScreen_DrawHudForCurrentPlayer(void)
 
 static void xboxSplitScreen_ApplyColorEffects(void)
 {
-    stdPalEffects_UpdatePalette(stdDisplay_GetPalette());
-
-    if (stdPalEffects_state.bEnabled)
-    {
-        rdSetColorEffects(&stdPalEffects_state.effect);
+    uint32_t excluded = 0;
+    int slot;
+    for (slot = 0; slot < g_xboxSplitScreenLocalCount; slot++) {
+        sithPlayerInfo *info;
+        if (slot == g_xboxSplitScreenCurrentSlot) continue;
+        info = &jkPlayer_playerInfos[xboxSplitScreen_GetPlayerIndexForSlot(slot)];
+        if ((unsigned int)info->palEffectsIdx1 < 32)
+            excluded |= 1U << info->palEffectsIdx1;
+        if ((unsigned int)info->palEffectsIdx2 < 32)
+            excluded |= 1U << info->palEffectsIdx2;
     }
-    else
-    {
-        stdPalEffect neutral;
-        stdPalEffects_ResetEffect(&neutral);
-        rdSetColorEffects(&neutral);
-    }
+    stdPalEffects_GatherEffectsMasked(excluded);
+    rdSetColorEffects(&stdPalEffects_state.effect);
 }
 
 #define XBOX_SPLIT_XSL_TRACE(label) do { } while (0)
@@ -911,6 +1001,7 @@ int xboxSplitScreen_RenderGameplayFrame(void)
     int result;
     unsigned int frameStartMs;
     unsigned int frameEndMs;
+    unsigned int profileStart;
 
     if (!g_xboxSplitScreenEnabled)
         return 0;
@@ -953,7 +1044,9 @@ int xboxSplitScreen_RenderGameplayFrame(void)
 
     Video_modeStruct.b3DAccel = (HKEY)1;
     XBOX_SPLIT_XSL_TRACE("before clear");
+    profileStart = xbox_debug_ProfileClock();
     stdDisplay_VBufferFill(Video_pMenuBuffer, Video_fillColor, 0);
+    xbox_debug_ProfileAdd(XPROF_CLEAR, profileStart);
     XBOX_SPLIT_XSL_TRACE("after clear before devlog");
     jkDev_DrawLog();
     jkHudInv_ClearRects();
@@ -991,7 +1084,12 @@ int xboxSplitScreen_RenderGameplayFrame(void)
             continue;
         }
         XBOX_SPLIT_XSL_TRACE("slot before update camera");
+        xboxSplitScreen_ApplyColorEffects();
+        profileStart = xbox_debug_ProfileClock();
         sithMain_UpdateCamera();
+        xbox_debug_ProfileAdd(XPROF_WORLD, profileStart);
+        /* Rendering discovers the current camera sector's tint. */
+        xboxSplitScreen_ApplyColorEffects();
         XBOX_SPLIT_XSL_TRACE("slot after update camera");
 
         if (g_xboxSplitScreenLoggedSlots < g_xboxSplitScreenLocalCount
@@ -1037,12 +1135,17 @@ int xboxSplitScreen_RenderGameplayFrame(void)
         }
 
         XBOX_SPLIT_XSL_TRACE("slot before pov");
+        profileStart = xbox_debug_ProfileClock();
         jkPlayer_DrawPov();
+        std3D_XboxDrawColorEffects();
         XBOX_SPLIT_XSL_TRACE("slot after pov before ui");
+        xbox_debug_ProfileAdd(XPROF_POV, profileStart);
+        profileStart = xbox_debug_ProfileClock();
         std3D_XboxBeginViewportUI(vx, vy, vw, vh);
         xboxSplitScreen_DrawHudForCurrentPlayer();
         jkHudInv_Draw();
         std3D_XboxEndViewportUI();
+        xbox_debug_ProfileAdd(XPROF_HUD, profileStart);
         XBOX_SPLIT_XSL_TRACE("slot after ui");
     }
 
@@ -1055,7 +1158,10 @@ int xboxSplitScreen_RenderGameplayFrame(void)
     jkDev_BlitLogToScreen();
 
     XBOX_SPLIT_XSL_TRACE("before flip");
+    profileStart = xbox_debug_ProfileClock();
     result = stdDisplay_DDrawGdiSurfaceFlip();
+    xbox_debug_ProfileAdd(XPROF_FLIP, profileStart);
+    xbox_debug_ProfileFrame(g_xboxSplitScreenLocalCount, sithTime_curMs);
     XBOX_SPLIT_XSL_TRACE("after flip");
     frameEndMs = stdPlatform_GetTimeMsec();
     if (g_xboxSplitScreenFrameCount <= 5 || (g_xboxSplitScreenFrameCount % 120) == 0)

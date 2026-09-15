@@ -305,7 +305,23 @@ void jkGuiPlayer_ShowNewPlayer(int a1)
             jkGuiRend_XboxFooterAddAction(&jkGuiPlayer_menuSelect, JKGUI_XBOX_BTN_Y, 2, L"New");
             jkGuiRend_XboxSetInitialFocus(&jkGuiPlayer_menuSelect, &jkGuiPlayer_menuSelectElements[2]);
 #endif
+#ifdef TARGET_XBOX
+            /* Explicit preview fixture: select an existing staged profile. */
+            {
+                FILE *previewMarker = fopen("D:\\xbox_smoke_model_preview.txt", "rb");
+                if (!previewMarker)
+                    previewMarker = fopen("D:\\xbox_smoke_local_match.txt", "rb");
+                if (previewMarker) {
+                    fclose(previewMarker);
+                    jkGuiPlayer_menuSelectElements[2].selectedTextEntry = 0;
+                    v2 = 1;
+                }
+                else
+                    v2 = jkGuiRend_DisplayAndReturnClicked(&jkGuiPlayer_menuSelect);
+            }
+#else
             v2 = jkGuiRend_DisplayAndReturnClicked(&jkGuiPlayer_menuSelect);
+#endif
         }
         else
         {

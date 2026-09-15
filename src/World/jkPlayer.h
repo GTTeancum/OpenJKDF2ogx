@@ -85,6 +85,7 @@ void jkPlayer_Startup();
 void jkPlayer_Shutdown();
 void jkPlayer_Open();
 void jkPlayer_Close();
+void jkPlayer_InitSaberForThing(sithThing *thing, char *sideMaterial, char *tipMaterial);
 void jkPlayer_InitSaber();
 void jkPlayer_InitThings();
 void jkPlayer_nullsub_1(jkPlayerInfo* unk);

@@ -30,9 +30,22 @@
 #include "Main/jkStrings.h"
 #include "Main/jkMain.h"
 #include "Main/jkEpisode.h"
+#include "Main/jkRes.h"
 #include "General/stdString.h"
 #include "stdPlatform.h"
 #include "jk.h"
+
+#ifdef TARGET_XBOX
+#include "Platform/Xbox/xbox_debug.h"
+#define GAMESAVE_LOAD_TRACE(stage) do { \
+    unsigned int traceNow = stdPlatform_GetTimeMsec(); \
+    XPERF("SaveLoad: %s elapsedMs=%u stageMs=%u\n", stage, \
+        traceNow - xboxLoadStart, traceNow - xboxLoadPrevious); \
+    xboxLoadPrevious = traceNow; \
+} while (0)
+#else
+#define GAMESAVE_LOAD_TRACE(stage) do { } while (0)
+#endif
 
 void sithGamesave_Setidk(sithSaveHandler_t a1, sithSaveHandler_t a2, sithSaveHandler_t a3, sithSaveHandler_t a4, sithSaveHandler_t a5)
 {
@@ -109,7 +122,14 @@ int sithGamesave_LoadEntry(char *fpath)
 #endif
 
     int bIsOutdatedSave = 0;
+#ifdef TARGET_XBOX
+    int xboxLegacySave = 0;
+    char xboxSavePrefix[32];
+    unsigned int xboxLoadStart = stdPlatform_GetTimeMsec();
+    unsigned int xboxLoadPrevious = xboxLoadStart;
+#endif
 
+    GAMESAVE_LOAD_TRACE("open");
     if ( !stdConffile_OpenReadBytesBypass(fpath) )
         goto load_fail;
     stdConffile_Read(&header, sizeof(sithGamesave_Header));
@@ -129,8 +149,33 @@ int sithGamesave_LoadEntry(char *fpath)
 
     // Added: multiple versions
     sithComm_version = header.version;
+
+#ifdef TARGET_XBOX
+    /* Older Xbox builds stubbed jkDSS_Startup, omitting both the 36-byte
+     * episode prefix and JK-specific player packets. Detect that layout
+     * from its map field rather than interpreting it as an episode name. */
+    if (!stdConffile_Read(xboxSavePrefix, sizeof(xboxSavePrefix)))
+        goto load_fail;
+    xboxLegacySave = !strncmp(xboxSavePrefix, header.jklName, sizeof(xboxSavePrefix));
+    stdConffile_Close();
+    if (!stdConffile_OpenReadBytesBypass(fpath) ||
+        !stdConffile_Read(&header, sizeof(header)))
+        goto load_fail;
+    if (xboxLegacySave) {
+        GAMESAVE_LOAD_TRACE("legacy Xbox save; rebuilding omitted JK state");
+        header.episodeName[sizeof(header.episodeName)-1] = 0;
+        jkEpisode_SetMotsCompatForEpisodeName(header.episodeName);
+        jkRes_LoadGob(header.episodeName);
+        jkEpisode_mLoad.currentEpisodeEntryIdx = 0;
+    }
+#endif
     
-    if ( sithGamesave_funcRead )
+    GAMESAVE_LOAD_TRACE("header accepted; restoring episode resources");
+    if ( sithGamesave_funcRead
+#ifdef TARGET_XBOX
+         && !xboxLegacySave
+#endif
+       )
         sithGamesave_funcRead();
     stdConffile_Read(SrcStr, 32);
     _strtolower(SrcStr);
@@ -173,6 +218,7 @@ int sithGamesave_LoadEntry(char *fpath)
     }
 #endif
 
+    GAMESAVE_LOAD_TRACE("episode restored; preparing world");
     if ( sithWorld_pCurrentWorld )
     {
         if ( !_strcmp(SrcStr, sithWorld_pCurrentWorld->map_jkl_fname) )
@@ -187,6 +233,7 @@ int sithGamesave_LoadEntry(char *fpath)
         goto load_fail;
     }
 LABEL_11:
+    GAMESAVE_LOAD_TRACE("world ready; resetting runtime state");
     sithSoundMixer_Reset();
     sithSurface_Startup3();
     sithEvent_Reset();
@@ -216,9 +263,11 @@ LABEL_11:
         goto skip_free_things;
     }
 
+    GAMESAVE_LOAD_TRACE("releasing current things");
     sithThing_freestuff(sithWorld_pCurrentWorld);
 
 skip_free_things:
+    GAMESAVE_LOAD_TRACE("restoring saved packets");
     // Apparently this works by interpreting a bunch of netMsg packets from the
     // savefile? Funky.
 //#ifndef LINUX_TMP
@@ -276,6 +325,7 @@ skip_free_things:
     }
 //#endif
 
+    GAMESAVE_LOAD_TRACE("saved packets restored");
     if (bIsOutdatedSave)
     {
         jkPlayer_Startup();
@@ -290,6 +340,14 @@ skip_free_things:
 
     sithThing_sub_4CCE60();
     sithPlayer_idk(0);
+#ifdef TARGET_XBOX
+    if (xboxLegacySave) {
+        /* Do not reset inventory or weapon deadlines. Reconnect the restored
+         * things to JK player data before a pending weapon selection runs. */
+        jkPlayer_Startup();
+        jkPlayer_InitSaber();
+    }
+#endif
     if ( sithGamesave_func3 )
         sithGamesave_func3();
 
@@ -305,9 +363,19 @@ skip_free_things:
 skip_dss:
     sithTime_SetMs(curMs);
     sithCamera_SetCurrentCamera(sithCamera_currentCamera);
+    GAMESAVE_LOAD_TRACE("complete");
+#ifdef TARGET_XBOX
+    {
+        extern int jkMain_xboxSmokeReloadTraceFrames;
+        extern int jkMain_xboxSmokeReloadSucceeded;
+        if (jkMain_xboxSmokeReloadTraceFrames)
+            jkMain_xboxSmokeReloadSucceeded = 1;
+    }
+#endif
     return 1;
 
 load_fail:
+    GAMESAVE_LOAD_TRACE("failed; closing world");
     stdConffile_Close();
     sithThing_sub_4CCE60();
     sithMain_Close();
@@ -482,6 +550,9 @@ int sithGamesave_Write(char *saveFname, int a2, int a3, wchar_t *saveName)
 
 int sithGamesave_Flush()
 {
+#ifdef TARGET_XBOX
+    unsigned int xboxFlushStart = stdPlatform_GetTimeMsec();
+#endif
     if ( sithGamesave_currentState == SITH_GS_LOAD )
     {
         if ( sithGamesave_LoadEntry(sithGamesave_fpath) )
@@ -512,6 +583,10 @@ int sithGamesave_Flush()
     if ( (sithPlayer_pLocalPlayerThing->thingflags & SITH_TF_DEAD) == 0 && stdConffile_OpenWriteBypass(sithGamesave_fpath) )
     {
         int multiplayerFlagsSave = sithComm_multiplayerFlags;
+#ifdef TARGET_XBOX
+        int xboxSaveWriteOk;
+        stdConffile_BufferWrite();
+#endif
         sithComm_multiplayerFlags = 4;
         stdConffile_Write((const char*)&sithGamesave_headerTmp, sizeof(sithGamesave_Header));
         if ( sithGamesave_funcWrite )
@@ -530,7 +605,19 @@ int sithGamesave_Flush()
         sithGamesave_SerializeAllThings(4);
         if ( sithGamesave_func1 )
             sithGamesave_func1();
+#ifdef TARGET_XBOX
+        xboxSaveWriteOk = stdConffile_FlushWrite();
+#endif
         stdConffile_CloseWrite();
+#ifdef TARGET_XBOX
+        XPERF("SaveWrite: %s elapsedMs=%u\n", xboxSaveWriteOk ? "complete" : "failed",
+            stdPlatform_GetTimeMsec() - xboxFlushStart);
+        if (!xboxSaveWriteOk) {
+            sithComm_multiplayerFlags = multiplayerFlagsSave;
+            sithGamesave_currentState = SITH_GS_NONE;
+            return 0;
+        }
+#endif
         _strncpy(sithGamesave_autosave_fname, stdFnames_FindMedName(sithGamesave_fpath), 0x7Fu);
         sithGamesave_autosave_fname[127] = 0;
         if ( sithGamesave_dword_835914 )
@@ -543,6 +630,12 @@ int sithGamesave_Flush()
         }
         sithComm_multiplayerFlags = multiplayerFlagsSave;
     }
+#ifdef TARGET_XBOX
+    else {
+        XPERF("SaveLoad: save write failed path=%s dead=%d\n", sithGamesave_fpath,
+            !!(sithPlayer_pLocalPlayerThing->thingflags & SITH_TF_DEAD));
+    }
+#endif
     sithGamesave_currentState = SITH_GS_NONE;
     return 0;
 }

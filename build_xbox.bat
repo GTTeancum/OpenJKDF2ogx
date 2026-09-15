@@ -207,6 +207,7 @@ for %%F in (
     src\AI\sithAIAwareness.c
     src\AI\sithAICmd.c
     src\AI\sithAIClass.c
+    src\AI\sithBot.c
     src\Devices\sithConsole.c
     src\Devices\sithControl.c
     src\Devices\sithSound.c
@@ -228,6 +229,7 @@ for %%F in (
     src\World\jkPlayer.c
     src\Devices\sithComm.c
     src\Dss\sithDSS.c
+    src\Dss\jkDSS.c
     src\Dss\sithDSSCog.c
     src\Dss\sithGamesave.c
     src\Dss\sithMulti.c
@@ -290,7 +292,11 @@ for %%F in (
     set "SRC=%%F"
     for %%N in (%%~nF) do set "OBJ=%OBJDIR%\%%N.obj"
     echo   [C++] %%F
-    "%CC%" /c /Tp "%%F" %CFLAGS% /Fo"!OBJ!" 2>&1
+    REM Renderer-only SSE1: Xbox Pentium III supports SSE, not SSE2.
+    REM Keep physics, simulation and bot translation units on their existing flags.
+    set "RENDERFLAGS="
+    for %%R in (fakeglx std3D rdCache rdClip rdPrimit3 rdModel3) do if /I "%%~nF"=="%%R" set "RENDERFLAGS=/arch:SSE"
+    "%CC%" /c /Tp "%%F" %CFLAGS% !RENDERFLAGS! /Fo"!OBJ!" 2>&1
     if errorlevel 1 (
         echo   *** FAILED: %%F
         set /a ERRORS+=1
@@ -349,6 +355,10 @@ if errorlevel 1 (
     echo  XBE GENERATION FAILED
     exit /b 1
 )
+
+REM Package multiplayer-only HUD resources in their own namespace.
+xcopy /E /I /Y "%~dp0assets\mp-hud\Resource" "%OUTDIR%\Resource\" >nul
+copy /Y "%~dp0assets\mp-hud\jkhud.txt" "%OUTDIR%\jkhud.txt" >nul
 
 REM Copy dashboard assets beside the XBE. patchxbe.py embeds these into the
 REM XBE, but some replacement dashboards also look for title-level files next

@@ -1,0 +1,5 @@
+# Use with xbox_xemu_smoke.ps1 -Traverse -AlwaysOnSoakPlanPath <this file>.
+# Each level visits cached item/actor landmarks in distinct sectors.
+LEVEL|90|1|JK1|01narshadda.jkl
+MENU|0
+LEVEL|90|1|JK1|02narshadda.jkl

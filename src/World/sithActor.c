@@ -11,12 +11,16 @@
 #include "World/sithThing.h"
 #include "World/sithSector.h"
 #include "World/sithTemplate.h"
+#include "AI/sithBot.h"
 #include "AI/sithAI.h"
 #include "AI/sithAIAwareness.h"
 #include "AI/sithAIClass.h"
 #include "Dss/sithMulti.h"
 #include "Dss/sithDSSThing.h"
 #include "jk.h"
+#ifdef TARGET_XBOX
+#include "Platform/Xbox/xbox_splitscreen.h"
+#endif
 
 void sithActor_SetMaxHeathForDifficulty(sithThing *thing)
 {
@@ -145,12 +149,20 @@ flex_t sithActor_Hit(sithThing *sender, sithThing *receiver, flex_t amount, int 
             return 0.0;
     }
 
+    if (sithBot_ShouldSuppressDamage(sender, receiver, amount, flags))
+        return 0.0;
+
+    sithBot_LogDamageEvent(sender, receiver, amount, flags);
     sender->actorParams.health -= amount;
+#ifdef TARGET_XBOX
+    xboxSplitScreen_AddDamageTint(sender, amount * 0.04);
+#else
     if ( sender == sithPlayer_pLocalPlayerThing )
     {
         fR = amount * 0.04;
         sithPlayer_AddDynamicTint(fR, 0.0, 0.0);
     }
+#endif
     if ( sender->actorParams.health >= 1.0 )
     {
 LABEL_32:

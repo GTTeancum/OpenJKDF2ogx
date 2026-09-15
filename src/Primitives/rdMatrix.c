@@ -2,6 +2,9 @@
 
 #include "jk.h"
 #include <math.h>
+#if defined(TARGET_XBOX) && !defined(EXPERIMENTAL_FIXED_POINT)
+#include <xmmintrin.h>
+#endif
 #include "General/stdMath.h"
 
 const rdMatrix34 rdroid_identMatrix34 = {{1.0, 0.0, 0.0}, 
@@ -877,10 +880,32 @@ void rdMatrix_TransformPoint44Acc(rdVector4 *a1, const rdMatrix44 *a2)
 
 void rdMatrix_TransformPointLst34(const rdMatrix34 *m, const rdVector3 *in, rdVector3 *out, int num)
 {
+#if defined(TARGET_XBOX) && !defined(EXPERIMENTAL_FIXED_POINT)
+    /* Xbox has SSE1. Pack output coordinates into lanes; never read or write
+     * a fourth component of the tightly packed three-float vertex. */
+    __m128 r, l, u, translation;
+    int i;
+    if (num <= 0) return;
+    r = _mm_set_ps(0, m->rvec.z, m->rvec.y, m->rvec.x);
+    l = _mm_set_ps(0, m->lvec.z, m->lvec.y, m->lvec.x);
+    u = _mm_set_ps(0, m->uvec.z, m->uvec.y, m->uvec.x);
+    translation = _mm_set_ps(0, m->scale.z, m->scale.y, m->scale.x);
+    for (i = 0; i < num; ++i)
+    {
+        __m128 result = _mm_add_ps(_mm_mul_ps(l, _mm_set1_ps(in[i].y)),
+                                  _mm_mul_ps(u, _mm_set1_ps(in[i].z)));
+        result = _mm_add_ps(result, _mm_mul_ps(r, _mm_set1_ps(in[i].x)));
+        result = _mm_add_ps(result, translation);
+        _mm_store_ss(&out[i].x, result);
+        _mm_store_ss(&out[i].y, _mm_shuffle_ps(result, result, _MM_SHUFFLE(1,1,1,1)));
+        _mm_store_ss(&out[i].z, _mm_shuffle_ps(result, result, _MM_SHUFFLE(2,2,2,2)));
+    }
+#else
     for (int i = 0; i < num; i++)
     {
         rdMatrix_TransformPoint34(&out[i], &in[i], m);
     }
+#endif
 }
 
 void rdMatrix_TransformPointLst44(const rdMatrix44 *m, const rdVector4 *in, rdVector4 *out, int num)

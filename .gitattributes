@@ -1,0 +1,2 @@
+# cmd.exe requires consistent Windows line endings in build scripts.
+*.bat text eol=crlf

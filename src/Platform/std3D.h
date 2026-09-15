@@ -132,9 +132,14 @@ void std3D_DrawUIClearedRectRGBA(uint8_t color_r, uint8_t color_g, uint8_t color
 int std3D_IsReady();
 #ifdef TARGET_XBOX
 void std3D_XboxSetViewport(int x, int y, int w, int h);
+void std3D_XboxBeginViewportUI(int x, int y, int w, int h);
+void std3D_XboxEndViewportUI(void);
 void std3D_XboxResetViewport(void);
 void std3D_XboxSetScreenSpaceRenderList(int enable);
+void std3D_XboxSetHudGlyphSampling(int enable);
+int std3D_XboxUsesScalarTextureLighting(const rdDDrawSurface *texture);
 void std3D_XboxDebugLogPaletteState(const char *tag);
+void std3D_XboxDrawColorEffects(void);
 int std3D_XboxCaptureBackBufferRGB(int x, int y, int w, int h, unsigned char *outRgb, int outPitch);
 #endif
 

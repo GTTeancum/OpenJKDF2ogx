@@ -340,6 +340,22 @@ void jkPlayer_Close()
 {
 }
 
+void jkPlayer_InitSaberForThing(sithThing *thing, char *sideMaterial, char *tipMaterial)
+{
+    sithThing* saberSparks;
+    sithThing* bloodSparks;
+    sithThing* wallSparks;
+
+    if (!thing || !thing->playerInfo)
+        return;
+
+    saberSparks = sithTemplate_GetEntryByName("+ssparks_saber");
+    bloodSparks = sithTemplate_GetEntryByName("+ssparks_blood");
+    wallSparks = sithTemplate_GetEntryByName("+ssparks_wall");
+    jkSaber_InitializeSaberInfo(thing, sideMaterial, tipMaterial, 0.0032, 0.0018,
+                                0.12, wallSparks, bloodSparks, saberSparks);
+}
+
 // MOTS altered
 void jkPlayer_InitSaber()
 {
@@ -367,11 +383,7 @@ void jkPlayer_InitSaber()
         playerInfoJk->jkmUnk6 = 0;
 #endif
 
-        sithThing* saberSparks = sithTemplate_GetEntryByName("+ssparks_saber");
-        sithThing* bloodSparks = sithTemplate_GetEntryByName("+ssparks_blood");
-        sithThing* wallSparks = sithTemplate_GetEntryByName("+ssparks_wall");
-        
-        jkSaber_InitializeSaberInfo(playerThings[i].actorThing, "sabergreen1.mat", "sabergreen0.mat", 0.0032, 0.0018, 0.12, wallSparks, bloodSparks, saberSparks);
+        jkPlayer_InitSaberForThing(playerThings[i].actorThing, "sabergreen1.mat", "sabergreen0.mat");
     }
 }
 
@@ -435,11 +447,7 @@ void jkPlayer_InitThings()
 
             // MOTS added: weird hack?
             if (Main_bMotsCompat && !playerInfoIter->polylineThing.polyline) {
-                sithThing* saberSparks = sithTemplate_GetEntryByName("+ssparks_saber");
-                sithThing* bloodSparks = sithTemplate_GetEntryByName("+ssparks_blood");
-                sithThing* wallSparks = sithTemplate_GetEntryByName("+ssparks_wall");
-
-                jkSaber_InitializeSaberInfo(thingIter, "saberred1.mat", "saberred0.mat", 0.0032, 0.0018, 0.12, wallSparks, bloodSparks, saberSparks);
+                jkPlayer_InitSaberForThing(thingIter, "saberred1.mat", "saberred0.mat");
             }
 
             playerInfoIter++;
@@ -838,16 +846,30 @@ int jkPlayer_ReadConf(wchar_t *name)
 void jkPlayer_SetPovModel(jkPlayerInfo *info, rdModel3 *model)
 {
     rdThing *thing; // esi
+#ifdef TARGET_XBOX
+    extern int jkMain_xboxSmokeReloadTraceFrames;
+    if (jkMain_xboxSmokeReloadTraceFrames)
+        XPERF("SaveLoad: POV set info=%p model=%p\n", info, model);
+#endif
 
     thing = &info->povModel;
     if ( info->povModel.type != 1 || info->povModel.model3 != model )
     {
+#ifdef TARGET_XBOX
+        if (jkMain_xboxSmokeReloadTraceFrames) XPERF("SaveLoad: POV free old\n");
+#endif
         rdThing_FreeEntry(&info->povModel);
+#ifdef TARGET_XBOX
+        if (jkMain_xboxSmokeReloadTraceFrames) XPERF("SaveLoad: POV initialize\n");
+#endif
         rdThing_NewEntry(thing, info->actorThing);
 
         // Added: nullptr check, for fixing UAF on second world load
         if (model) {
             rdThing_SetModel3(thing, model);
+#ifdef TARGET_XBOX
+            if (jkMain_xboxSmokeReloadTraceFrames) XPERF("SaveLoad: POV create puppet\n");
+#endif
             info->povModel.puppet = rdPuppet_New(thing);
         }
         else
@@ -1059,10 +1081,7 @@ void jkPlayer_renderSaberWeaponMesh(sithThing *thing)
 
             jkPlayer_FUN_00404fe0(thing);
 
-            sithThing* saberSparks = sithTemplate_GetEntryByName("+ssparks_saber");
-            sithThing* bloodSparks = sithTemplate_GetEntryByName("+ssparks_blood");
-            sithThing* wallSparks = sithTemplate_GetEntryByName("+ssparks_wall");
-            jkSaber_InitializeSaberInfo(thing, "saberred1.mat", "saberred0.mat", 0.0032, 0.0018, 0.12, wallSparks, bloodSparks, saberSparks);
+            jkPlayer_InitSaberForThing(thing, "saberred1.mat", "saberred0.mat");
         }
         return;
     }

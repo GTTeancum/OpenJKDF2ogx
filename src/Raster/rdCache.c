@@ -32,6 +32,18 @@ static int rdCache_totalNormalNGons = 0;
 static int rdCache_totalSolidNGons = 0;
 #endif
 
+#ifdef TARGET_XBOX
+static void rdCache_XboxBuildScalarVertex(D3DVERTEX *vertex, const rdProcEntry *face,
+                                          int index, int lightingMode, uint32_t alphaBits)
+{
+    /* Textured Xbox draws consume scalar light and alpha, never packed RGB.
+       Keep the same conversion, including valid zero-intensity vertices. */
+    vertex->lightLevel = lightingMode == 0 ? 1.0 :
+        (lightingMode == 3 ? face->vertexIntensities[index] : face->light_level_static) / 255.0;
+    vertex->color = alphaBits;
+}
+#endif
+
 int rdCache_Startup()
 {
     return 1;
@@ -356,9 +368,8 @@ int rdCache_SendFaceListToHardware()
      * colormap), the tint scalars don't produce sensible output, and the
      * filter path (v129) wholesale zeros channels.  Pal-effects are a
      * palette-era concept — skip the whole vertex-color modulation here on
-     * Xbox.  std3D's lightLevel path keeps geometry visible; the damage
-     * flash will need to be re-implemented later as a full-screen overlay
-     * if we want the red tint back. */
+     * Xbox. std3D's lightLevel path keeps geometry visible; tint, filter,
+     * and fade are applied to the completed world viewport before the HUD. */
     v0 = 0;
     v1 = 0;
     v129 = 0;
@@ -428,6 +439,10 @@ int rdCache_SendFaceListToHardware()
         if (active_6c->type & RD_FF_TEX_FILTER_NEAREST)
         {
             flags_idk_ |= 0x80000;
+        }
+        if (active_6c->type & RD_FF_DOUBLE_SIDED)
+        {
+            flags_idk_ |= 0x100000;
         }
 #endif
 
@@ -805,6 +820,11 @@ int rdCache_SendFaceListToHardware()
             iterating_6c_vtxs = active_6c->vertices;
             vertex_a = red_and_alpha << 8;
 
+#ifdef TARGET_XBOX
+            int xboxScalarTexture = active_6c->numVertices >= 3 &&
+                rdGetVertexColorMode() != 1 && std3D_XboxUsesScalarTextureLighting(tex2_arr_sel);
+#endif
+
             for (vtx_idx = 0; vtx_idx < active_6c->numVertices; vtx_idx++)
             {
 #ifdef TARGET_XBOX
@@ -881,6 +901,17 @@ int rdCache_SendFaceListToHardware()
                 rdCache_aHWVertices[rdCache_totalVerts].nz = 0.0;
 #endif
 #endif /* TARGET_XBOX */
+#ifdef TARGET_XBOX
+                if (xboxScalarTexture)
+                {
+                    rdCache_XboxBuildScalarVertex(&rdCache_aHWVertices[rdCache_totalVerts],
+                                                  active_6c, vtx_idx, lighting_capability,
+                                                  (uint32_t)vertex_a << 16);
+                    if (active_6c->colormap != rdColormap_pIdentityMap)
+                        flags_idk_ |= 0x8000;
+                    goto xbox_scalar_uv;
+                }
+#endif
                 if ( lighting_capability == 0 )
                 {
                     vertex_b = 255;
@@ -909,31 +940,11 @@ int rdCache_SendFaceListToHardware()
                             light_level = active_6c->light_level_static;
 #ifdef SDL2_RENDER
                         rdCache_aHWVertices[rdCache_totalVerts].lightLevel = light_level / 255.0;
-                        /* Self-illumination fallback for the LIGHTED (1),
-                         * DIFFUSE (2), and FULLYLIT (4) modes.  Upstream PC
-                         * engine relies on a palette-tint pass that re-bumps
-                         * vertex .color channels back up — for materials
-                         * where the engine's lit color is 0 (very common on
-                         * projectiles, glow sprites, saber edges, anything
-                         * marked "always bright"), the tint path produces
-                         * visible output.  The Xbox port skips palette tint
-                         * (the comment at the top of this file explains why)
-                         * and reads our lightLevel straight into glColor4f
-                         * as DIFFUSE — so a zero light_level_static modulates
-                         * TEXTURE * 0 = invisible.
-                         *
-                         * Fix: when light_level computes to exactly 0 in any
-                         * mode OTHER than GOURAUD (where 0 is meaningful per
-                         * vertex), force lightLevel = 1.0.  Surfaces in dim
-                         * sectors have non-zero ambient (light_level_static
-                         * > 0) so they keep their dim look untouched.
-                         * Projectile faces and glow sprites — which the .3do
-                         * loader writes with light_level_static = 0 because
-                         * they're supposed to self-illuminate — now light up
-                         * to texture-color via TEXTURE * 1.0. */
-                        if (light_level == 0 && lighting_capability != 3) {
-                            rdCache_aHWVertices[rdCache_totalVerts].lightLevel = 1.0;
-                        }
+                        /* Zero is valid for NOTLIT/DIFFUSE as well as Gouraud.
+                         * RenderLevelGeometry collapses uniformly dark Gouraud
+                         * faces to NOTLIT; making zero bright here causes a pop
+                         * when a moving light falls to zero. Explicit FULLYLIT
+                         * (mode 0) is already handled by the branch above. */
 #endif
 #ifdef TARGET_TWL
                         rdCache_aHWVertices[rdCache_totalVerts].lightLevel = (int)light_level;
@@ -1033,6 +1044,7 @@ int rdCache_SendFaceListToHardware()
                     vertex_b += (__int64)((flex_d_t)blue * blue_scalar);
                     blue = vertex_b;
                 }
+#ifndef TARGET_XBOX /* Xbox applies the fade once, after rendering the world. */
                 if ( rdroid_curColorEffects.fade < 1.0 )
                 {
                     vertex_r = (__int64)((flex_d_t)red_and_alpha * rdroid_curColorEffects.fade);
@@ -1040,6 +1052,7 @@ int rdCache_SendFaceListToHardware()
                     vertex_b = (__int64)((flex_d_t)blue * rdroid_curColorEffects.fade);
                 }
 
+#endif
                 vertex_r = stdMath_ClampInt(vertex_r, 0, 255);
                 vertex_g = stdMath_ClampInt(vertex_g, 0, 255);
                 vertex_b = stdMath_ClampInt(vertex_b, 0, 255);
@@ -1049,6 +1062,10 @@ int rdCache_SendFaceListToHardware()
                 
                 // For some reason, ny holds the vertex color.
                 rdCache_aHWVertices[rdCache_totalVerts].color = final_vertex_color;
+#ifdef TARGET_XBOX
+xbox_scalar_uv:
+#endif
+                v52 = active_6c;
                 uvs_in_pixels = v52->vertexUVs;
 
                 // DSi wants UVs in pixels
@@ -1386,12 +1403,14 @@ skip_colormap_deref:
                 green = v94;
                 blue += (__int64)((flex_d_t)blue * blue_scalar);
             }
+#ifndef TARGET_XBOX /* Xbox applies the fade once, after rendering the world. */
             if ( rdroid_curColorEffects.fade < 1.0 )
             {
                 v96 = (__int64)((flex_d_t)red_and_alpha * rdroid_curColorEffects.fade);
                 v94 = (__int64)((flex_d_t)green * rdroid_curColorEffects.fade);
                 blue = (__int64)((flex_d_t)blue * rdroid_curColorEffects.fade);
             }
+#endif
             v96 = stdMath_ClampInt(v96, 0, 0xFF);
             v94 = stdMath_ClampInt(v94, 0, 0xFF);
             v103 = blue;
@@ -1566,10 +1585,12 @@ int rdCache_TriCompare(const void* a_, const void* b_)
     if (!tex_a) return -1;
     if (!tex_b) return  1;
 
-    if ( tex_a->is_16bit == tex_b->is_16bit )
-        return (int)(tex_a - tex_b);
-    else
-        return tex_a->is_16bit != 0 ? 1 : -1;
+    if (!!tex_a->is_16bit != !!tex_b->is_16bit)
+        return tex_a->is_16bit ? 1 : -1;
+    /* Textures are separate allocations, not elements of one array.
+     * Pointer subtraction is undefined here and can truncate distinct keys
+     * to equality. Compare their integer addresses without subtracting. */
+    return ((uintptr_t)tex_a > (uintptr_t)tex_b) - ((uintptr_t)tex_a < (uintptr_t)tex_b);
 }
 #else
 int rdCache_NGonCompare(const void* a_, const void* b_)
@@ -1587,10 +1608,9 @@ int rdCache_NGonCompare(const void* a_, const void* b_)
     if (!tex_a) return -1;
     if (!tex_b) return  1;
 
-    if ( tex_a->is_16bit == tex_b->is_16bit )
-        return (int)(tex_a - tex_b);
-    else
-        return tex_a->is_16bit != 0 ? 1 : -1;
+    if (!!tex_a->is_16bit != !!tex_b->is_16bit)
+        return tex_a->is_16bit ? 1 : -1;
+    return ((uintptr_t)tex_a > (uintptr_t)tex_b) - ((uintptr_t)tex_a < (uintptr_t)tex_b);
 }
 #endif
 
@@ -1608,6 +1628,36 @@ int rdCache_ProcFaceCompare(rdProcEntry *a, rdProcEntry *b)
 // MOTS altered
 int rdCache_AddProcFace(int a1, unsigned int num_vertices, char flags)
 {
+#if defined(TARGET_XBOX) && defined(SDL2_RENDER)
+    /* Xbox projects on the GPU. Software screen bounds, edge indices and
+       aggregate damage extents have no consumers in this renderer. Keep
+       view-space depth bounds: hardware mip selection and sorting use them. */
+    if (rdCache_numProcFaces >= RDCACHE_MAX_TRIS)
+        return 0;
+
+    rdProcEntry *procFace = &rdCache_aProcFaces[rdCache_numProcFaces];
+    flex_t depthMin = 3.4e38;
+    flex_t depthMax = -3.4e38;
+    for (unsigned int i = 0; i < num_vertices; ++i) {
+        flex_t depth = procFace->vertices[i].y;
+        if (depth < depthMin) depthMin = depth;
+        if (depth > depthMax) depthMax = depth;
+    }
+    procFace->extraData = a1;
+    procFace->numVertices = num_vertices;
+    procFace->vertexColorMode = rdroid_curProcFaceUserData;
+    procFace->z_min = depthMin;
+    procFace->z_max = depthMax;
+    procFace->x_min = procFace->x_max = 0;
+    procFace->y_min = procFace->y_max = 0;
+    procFace->y_min_related = procFace->y_max_related = 0;
+    if (flags & 1) rdCache_numUsedVertices += num_vertices;
+    if (flags & 2) rdCache_numUsedTexVertices += num_vertices;
+    if (flags & 4) rdCache_numUsedIntensities += num_vertices;
+    procFace->colormap = rdColormap_pCurMap;
+    ++rdCache_numProcFaces;
+    return 1;
+#else
     int v6; // edx
     size_t current_rend_6c_idx; // eax
     rdProcEntry *procFace; // esi
@@ -1727,4 +1777,5 @@ int rdCache_AddProcFace(int a1, unsigned int num_vertices, char flags)
     if ( procFace->y_max > (unsigned int)rdCache_lrcExtent.y )
         rdCache_lrcExtent.y = procFace->y_max;
     return 1;
+#endif
 }

@@ -18,6 +18,20 @@
 #include "../../globals.h"
 #include "xbox_debug.h"
 
+extern "C" void xbox_get_color_effects(float *tint, int *filter, float *fade, int *add)
+{
+    tint[0] = (float)rdroid_curColorEffects.tint.x;
+    tint[1] = (float)rdroid_curColorEffects.tint.y;
+    tint[2] = (float)rdroid_curColorEffects.tint.z;
+    filter[0] = rdroid_curColorEffects.filter.x;
+    filter[1] = rdroid_curColorEffects.filter.y;
+    filter[2] = rdroid_curColorEffects.filter.z;
+    *fade = (float)rdroid_curColorEffects.fade;
+    add[0] = rdroid_curColorEffects.add.x;
+    add[1] = rdroid_curColorEffects.add.y;
+    add[2] = rdroid_curColorEffects.add.z;
+}
+
 extern "C" void *xbox_get_world_palette(void)
 {
     if (!sithWorld_pCurrentWorld) return 0;

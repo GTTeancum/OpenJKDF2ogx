@@ -23,6 +23,7 @@
 #include "../../Platform/wuRegistry.h"
 #include "xbox_wheels.h"
 #include "xbox_splitscreen.h"
+#include "stdPlatform.h"
 
 #define DIK_ESCAPE      0x01
 #define DIK_TAB         0x0F
@@ -176,6 +177,61 @@ int stdControl_XboxSmokeInputProbeEnabled(void)
             XDBG("SplitScreenInputProbe: enabled\n");
     }
     return g_smokeInputProbeEnabled;
+}
+
+static int stdControl_XboxFireProbeEnabled(void)
+{
+    static int enabled = -1;
+    if (enabled < 0)
+        enabled = GetFileAttributesA("D:\\xbox_smoke_fire_probe.txt") != (DWORD)-1;
+    return enabled;
+}
+
+static int stdControl_XboxFourPlayerStressEnabled(void)
+{
+    static int enabled = -1;
+    if (enabled < 0)
+        enabled = GetFileAttributesA("D:\\xbox_smoke_four_player_stress.txt") != (DWORD)-1;
+    return enabled;
+}
+
+static void stdControl_XboxFireProbeApply(int port, XINPUT_GAMEPAD *pad, unsigned int tick, int gameplay)
+{
+    static unsigned int start[4];
+    static int lastDown[4] = {-1,-1,-1,-1}, lastRawDown[4] = {-1,-1,-1,-1}, secondary = -1;
+    static int primaryOnly = -1;
+    int down, rawDown, useSecondary;
+    sithPlayerInfo *playerInfo;
+    if (secondary < 0)
+        secondary = GetFileAttributesA("D:\\xbox_smoke_secondary_fire.txt") != (DWORD)-1;
+    if (primaryOnly < 0)
+        primaryOnly = GetFileAttributesA("D:\\xbox_smoke_primary_fire.txt") != (DWORD)-1;
+    if (!start[port] && gameplay) start[port] = tick ? tick : 1;
+    rawDown = start[port] && ((tick - start[port] + port * 500U) % 6000U >= 3000U);
+    down = gameplay && rawDown;
+    useSecondary = secondary || (!primaryOnly && stdControl_XboxFourPlayerStressEnabled() && (port & 1));
+    /* Inject only process-local pad data. The normal trigger polling below
+     * must suppress it in menus; the probe no longer publishes key states. */
+    pad->bAnalogButtons[useSecondary ? XB_BTN_LT : XB_BTN_RT] = rawDown ? 255 : 0;
+    if (stdControl_XboxFourPlayerStressEnabled() && gameplay) {
+        pad->sThumbLY = 18000;
+        pad->sThumbLX = ((tick / 10000U + port) & 1) ? 12000 : -12000;
+        pad->sThumbRX = (port & 1) ? 9000 : -9000;
+    }
+    if (down != lastDown[port] || rawDown != lastRawDown[port]) {
+        playerInfo = sithPlayer_pLocalPlayerThing ? sithPlayer_pLocalPlayerThing->actorParams.playerinfo : NULL;
+        XPERF("Smoke: fire probe down=%d curMs=%u weapon=%d ammo=%.1f rawDown=%d secondary=%d port=%d\n",
+            down, sithTime_curMs, playerInfo ? playerInfo->curWeapon : -1,
+            playerInfo ? (double)playerInfo->iteminfo[11].ammoAmt : -1.0, rawDown, useSecondary, port);
+        if (stdControl_XboxFourPlayerStressEnabled() && playerInfo && playerInfo->playerThing) {
+            sithThing *thing = playerInfo->playerThing;
+            XPERF("Smoke: stress player port=%d health=%.1f sector=%d pos=(%.3f,%.3f,%.3f)\n",
+                port, (double)thing->actorParams.health, thing->sector ? thing->sector->id : -1,
+                (double)thing->position.x, (double)thing->position.y, (double)thing->position.z);
+        }
+        lastDown[port] = down;
+        lastRawDown[port] = rawDown;
+    }
 }
 
 static void stdControl_XboxSmokeInputProbeLogPhase(int port, int phase, unsigned int elapsed)
@@ -353,7 +409,7 @@ static void stdControl_ReadController(int port)
      * detection during the analog/digital button pass below. */
     memset(g_keyPress, 0, sizeof(g_keyPress));
 
-    tick = (unsigned int)GetTickCount();
+    tick = stdPlatform_GetTimeMsec();
     gameplay = (jkSmack_GetCurrentGuiState() == JK_GAMEMODE_GAMEPLAY);
     smokeProbe = stdControl_XboxSmokeInputProbeEnabled();
 
@@ -373,6 +429,13 @@ static void stdControl_ReadController(int port)
                   g_activeController,
                   jkSmack_GetCurrentGuiState());
         }
+    }
+
+    if (stdControl_XboxFireProbeEnabled() && (port == 0 || stdControl_XboxFourPlayerStressEnabled())) {
+        memset(&state, 0, sizeof(state));
+        stdControl_XboxFireProbeApply(port, &state.Gamepad, tick, gameplay);
+        g_connected = 1;
+        goto controller_state_ready;
     }
 
     /* Lazy-open controller, but keep retrying slowly.  Retail Xbox code
@@ -414,6 +477,7 @@ static void stdControl_ReadController(int port)
         g_nextOpenAttemptMs = tick + XBOX_CONTROLLER_OPEN_RETRY_MS;
         return;
     }
+controller_state_ready:
     if (!g_connected) { g_connected = 1; XDBG("stdControl: connected\n"); }
     if (g_activeController == port || !g_pads[g_activeController].connected)
         g_activeController = port;
@@ -501,8 +565,13 @@ static void stdControl_ReadController(int port)
      * (sithControl.c:2399-2400) binds INPUT_FUNC_FIRE1 to KEY_JOY1_B17
      * and INPUT_FUNC_FIRE2 to KEY_JOY1_B16, so we write directly into
      * those slots — no DIK round-trip.  RT=fire1 (rtrig), LT=fire2 (ltrig). */
-    cur = (pad->bAnalogButtons[XB_BTN_RT]    > ANALOG_THRESHOLD); prev = (g_prevAnalog[XB_BTN_RT]    > ANALOG_THRESHOLD); if (cur != prev) stdControl_SetKeydown(KEY_JOY1_B17, cur, tick);
-    cur = (pad->bAnalogButtons[XB_BTN_LT]    > ANALOG_THRESHOLD); prev = (g_prevAnalog[XB_BTN_LT]    > ANALOG_THRESHOLD); if (cur != prev) stdControl_SetKeydown(KEY_JOY1_B16, cur, tick);
+    /* Multiplayer keeps ticking behind menus. Publish the logical gameplay
+     * state every poll so entering a menu releases a held trigger even when
+     * its physical value has not changed. SetKeydown owns edge detection. */
+    cur = gameplay && (pad->bAnalogButtons[XB_BTN_RT] > ANALOG_THRESHOLD);
+    stdControl_SetKeydown(KEY_JOY1_B17, cur, tick);
+    cur = gameplay && (pad->bAnalogButtons[XB_BTN_LT] > ANALOG_THRESHOLD);
+    stdControl_SetKeydown(KEY_JOY1_B16, cur, tick);
 
     /* B stays GUI cancel outside gameplay.  In gameplay it belongs to
      * Force cycling/wheel; R3 owns crouch. */
@@ -727,6 +796,8 @@ int stdControl_XboxGetConnectedMask(void)
     }
     if (stdControl_XboxSmokeInputProbeEnabled())
         mask |= 0x0F;
+    if (stdControl_XboxFireProbeEnabled())
+        mask |= stdControl_XboxFourPlayerStressEnabled() ? 0x0F : 1;
     return mask;
 }
 
@@ -741,7 +812,7 @@ int stdControl_XboxMovieSkipRequested(int *outPort, const char **outReason)
     DWORD insertions = 0;
     DWORD removals = 0;
     DWORD mask;
-    unsigned int tick = (unsigned int)GetTickCount();
+    unsigned int tick = stdPlatform_GetTimeMsec();
     int port;
 
     if (outPort)

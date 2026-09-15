@@ -41,6 +41,7 @@
 
 #ifdef TARGET_XBOX
 #include "Platform/Xbox/xbox_debug.h"
+#include "Platform/Xbox/xbox_splitscreen.h"
 #endif
 
 #define NUM_THING_PARAMS (74) // JK is 72
@@ -323,7 +324,11 @@ void sithThing_TickAll(flex_t deltaSeconds, int deltaMs)
                               i, (void*)pThingIter->actorParams.playerinfo);
                         _pp0++; } }
 #endif
+#ifdef TARGET_XBOX
+                    xboxSplitScreen_TickPlayer(pThingIter->actorParams.playerinfo, deltaSeconds);
+#else
                     sithPlayer_Tick(pThingIter->actorParams.playerinfo, deltaSeconds);
+#endif
 #if defined(TARGET_XBOX)
                     if (xboxTickCall >= 2 && xboxTickCall <= 4 && i >= 64 && i <= 80) {
                         XDBGF("TickFocus: call=%d thing[%d] phase=playerTick post\n", xboxTickCall, i);

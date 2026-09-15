@@ -3,6 +3,7 @@ from __future__ import print_function
 
 import argparse
 import io
+import json
 import os
 import re
 import socket
@@ -52,19 +53,24 @@ def connect_monitor(port, timeout):
 
 
 def monitor_cmd(sock, command, wait=0.25):
-    sock.sendall((command + "\r\n").encode("ascii"))
-    time.sleep(wait)
+    sock.sendall((command + "\r").encode("ascii"))
     data = b""
-    sock.settimeout(0.8)
-    try:
-        while True:
+    deadline = time.monotonic() + 10.0
+    while time.monotonic() < deadline:
+        sock.settimeout(min(0.8, max(0.001, deadline - time.monotonic())))
+        try:
             chunk = sock.recv(65536)
             if not chunk:
-                break
+                raise RuntimeError("monitor closed before command completed")
             data += chunk
-    except Exception:
-        pass
-    return strip_ansi(data.decode("utf-8", errors="replace"))
+        except socket.timeout:
+            continue
+        reply = strip_ansi(data.decode("utf-8", errors="replace"))
+        # HMP returns this prompt only after completing the command. It can
+        # span packets; never infer completion from a quiet socket alone.
+        if reply.rstrip().endswith("(qemu)"):
+            return reply
+    raise RuntimeError("monitor command timed out before completion: %s" % command)
 
 
 def parse_words(text):
@@ -88,7 +94,10 @@ def read_words(sock, va, words, phys_delta):
         command = "xp"
         addr = va - phys_delta
     reply = monitor_cmd(sock, "%s/%dwx 0x%08x" % (command, words, addr), 0.25)
-    return parse_words(reply)
+    result = parse_words(reply)
+    if len(result) != words:
+        raise RuntimeError("incomplete monitor memory reply: expected %d words, got %d" % (words, len(result)))
+    return result
 
 
 def read_u32(sock, va, phys_delta):
@@ -204,7 +213,16 @@ def resolve_symbols(map_path, xbe_path):
     ]
     xbe_sections = read_xbe_sections(xbe_path) if xbe_path else None
     map_segments = read_map_segment_sections(map_path)
-    return dict((name, resolve_symbol(map_path, xbe_sections, map_segments, name)) for name in required)
+    symbols = dict((name, resolve_symbol(map_path, xbe_sections, map_segments, name)) for name in required)
+    try:
+        symbols["g_XboxClockProbe"] = resolve_symbol(map_path, xbe_sections, map_segments, "g_XboxClockProbe")
+    except RuntimeError:
+        pass  # Older builds remain readable.
+    try:
+        symbols["g_XboxClockProbeV2"] = resolve_symbol(map_path, xbe_sections, map_segments, "g_XboxClockProbeV2")
+    except RuntimeError:
+        pass
+    return symbols
 
 
 def choose_phys_delta(sock, symbols, requested):
@@ -247,10 +265,38 @@ def decode_mirror(raw, offset=0, wrapped=0):
     return raw.decode("ascii", errors="replace")
 
 
+def read_clock_probe(sock, va, phys_delta, count=6):
+    if va is None:
+        return None
+    before = time.perf_counter()
+    words = read_words(sock, va, count, phys_delta)
+    after = time.perf_counter()
+    if len(words) != count or words[0] == 0 or words[0] != words[-1] or words[0] & 1:
+        return None
+    return {"host_before": before, "host_after": after, "words": words}
+
+
+def compare_clock_probes(first, last):
+    if not first or not last:
+        return {"valid": False, "reason": "missing or torn clock sample"}
+    minimum = last["host_before"] - first["host_after"]
+    maximum = last["host_after"] - first["host_before"]
+    delta = [(b - a) & 0xffffffff for a, b in zip(first["words"], last["words"])]
+    if minimum <= 0 or delta[4] == 0 or delta[3] > 0x7fffffff:
+        return {"valid": False, "reason": "overlapping reads, no gameplay frames, or game clock reset"}
+    return {"valid": True, "host_seconds_min": minimum, "host_seconds_max": maximum,
+            "tick_ms": delta[1], "counter_us": delta[2], "game_ms": delta[3],
+            "frames": delta[4], "host_fps_min": delta[4] / maximum,
+            "host_fps_max": delta[4] / minimum,
+            "first": first, "last": last}
+
+
 def poll_port(port, symbols, args):
     sock = connect_monitor(port, args.timeout)
     try:
         phys_delta = choose_phys_delta(sock, symbols, args.phys_delta)
+        clock_first = read_clock_probe(sock, symbols.get("g_XboxClockProbeV2", symbols.get("g_XboxClockProbe")), phys_delta,
+                                       10 if "g_XboxClockProbeV2" in symbols else 6)
         values = {
             "boot_phase": read_u32(sock, symbols["g_XboxBootPhase"], phys_delta),
             "writes": read_u32(sock, symbols["g_XboxLogWriteCount"], phys_delta),
@@ -261,11 +307,16 @@ def poll_port(port, symbols, args):
             "magic0": read_u32(sock, symbols["g_XboxDebugMirrorMagic0"], phys_delta),
             "magic1": read_u32(sock, symbols["g_XboxDebugMirrorMagic1"], phys_delta),
         }
+        if values['magic0'] != MAGIC0 or values['magic1'] != MAGIC1:
+            raise RuntimeError("RAM mirror header magic mismatch; rejecting capture")
         if args.header_only:
             text = ""
         else:
             raw = read_bytes(sock, symbols["g_XboxLogMirror"], MIRROR_BYTES, phys_delta)
             text = decode_mirror(raw, values.get("offset") or 0, values.get("wrapped") or 0)
+        clock_last = read_clock_probe(sock, symbols.get("g_XboxClockProbeV2", symbols.get("g_XboxClockProbe")), phys_delta,
+                                       10 if "g_XboxClockProbeV2" in symbols else 6)
+        values["clock_probe"] = compare_clock_probes(clock_first, clock_last)
         return phys_delta, values, text
     finally:
         sock.close()
@@ -318,6 +369,7 @@ def main():
                         handle.write("%s=0x%08X\n" % (key, value))
                     else:
                         handle.write("%s=%u\n" % (key, value))
+                handle.write("ClockHost: " + json.dumps(values["clock_probe"], sort_keys=True) + "\n")
                 handle.write("\n")
                 handle.write(text)
                 if text and not text.endswith("\n"):

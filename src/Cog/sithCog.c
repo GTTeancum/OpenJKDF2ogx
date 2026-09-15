@@ -184,9 +184,15 @@ int32_t sithCog_Startup()
 // Added: Register all new COG verbs last
 int32_t sithCog_StartupEnhanced()
 {
-    if (!Main_bEnhancedCogVerbs) return 1;
-
     sithCogSymboltable* ctx = sithCog_pSymbolTable;
+
+    /* Weapon COGs use this to resolve logical weapon slots against the
+       inventory that is actually loaded. It is harmless for stock JK and
+       required when a compatible inventory relocates the weapon bins. */
+    if (!Main_bMotsCompat)
+        sithCogScript_RegisterVerb(ctx, sithCogFunction_GetWeaponBin, "getweaponbin");
+
+    if (!Main_bEnhancedCogVerbs) return 1;
 
     // Generic
     if (!Main_bMotsCompat) {
@@ -197,8 +203,6 @@ int32_t sithCog_StartupEnhanced()
 
         sithCogScript_RegisterVerb(ctx,sithCogFunction_FireProjectileData,"fireprojectiledata");
         sithCogScript_RegisterVerb(ctx,sithCogFunction_FireProjectileLocal,"fireprojectilelocal");
-
-        sithCogScript_RegisterVerb(ctx,sithCogFunction_GetWeaponBin,"getweaponbin");
 
         sithCogScript_RegisterVerb(ctx,sithCogFunction_SendMessageExRadius,"sendmessageexradius");
 
@@ -261,8 +265,10 @@ int32_t sithCog_StartupEnhanced()
 
     // Sound
     if (!Main_bMotsCompat) {
+#ifndef TARGET_XBOX
         sithCogScript_RegisterVerb(ctx, sithCogFunctionSound_PlaySoundThingLocal, "playsoundthinglocal");
         sithCogScript_RegisterVerb(ctx, sithCogFunctionSound_PlaySoundPosLocal, "playsoundposlocal");
+#endif
         
         sithCogScript_RegisterVerb(ctx,sithCogFunctionSound_PlaySoundThing,"playvoicething");
         sithCogScript_RegisterVerb(ctx,sithCogFunctionSound_PlaySoundPos,"playvoicepos");
@@ -340,7 +346,9 @@ int32_t sithCog_StartupEnhanced()
         sithCogScript_RegisterVerb(sithCog_pSymbolTable, jkCog_BeginCutscene,"jkbegincutscene");
         sithCogScript_RegisterVerb(sithCog_pSymbolTable, jkCog_EndCutscene,"jkendcutscene");
         sithCogScript_RegisterVerb(sithCog_pSymbolTable, jkCog_StartupCutscene,"jkstartupcutscene");
+#ifndef TARGET_XBOX
         sithCogScript_RegisterVerb(sithCog_pSymbolTable, jkCog_GetMultiParam,"jkgetmultiparam");
+#endif
         sithCogScript_RegisterVerb(sithCog_pSymbolTable, jkCog_InsideLeia,"insideleia");
         sithCogScript_RegisterVerb(sithCog_pSymbolTable, jkCog_CreateBubble,"jkcreatebubble");
         sithCogScript_RegisterVerb(sithCog_pSymbolTable, jkCog_DestroyBubble,"jkdestroybubble");
@@ -1409,6 +1417,19 @@ cog_flex_t sithCog_SendMessageEx(sithCog *cog, int32_t message, int32_t senderTy
     if ( !cog )
         return -9999.9873046875;
     v12 = cog->cogscript;
+#ifdef TARGET_XBOX
+    /* Stock CTF_MAIN emits completed flag events and authoritative scores to
+     * this callback. Observe them without changing the COG's execution. */
+    if (Main_numBots > 0 && message == SITH_MESSAGE_USER0 && v12 &&
+        !__strcmpi(v12->cog_fpath, "c1_ctfcallback.cog") &&
+        param0 >= 10 && param0 <= 25)
+    {
+        xbox_debug_PerfPrintf("BotCTFEvent: event=%d playerThing=%d redScore=%d goldScore=%d timeMs=%u\n",
+                              (int)param0, (int)param1, (int)param2, (int)param3,
+                              (unsigned)sithTime_curMs);
+    }
+#endif
+
     if ( (cog->flags & SITH_COG_DEBUG) != 0 )
     {
 #ifdef SITH_DEBUG_STRUCT_NAMES

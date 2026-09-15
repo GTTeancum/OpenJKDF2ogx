@@ -20,6 +20,8 @@
 #include "Engine/rdroid.h"
 #include "Engine/rdColormap.h"
 #include "Main/sithMain.h"
+#include "Main/sithCommand.h"
+#include "Engine/sithPhysics.h"
 #include "Devices/sithControl.h"
 #include "Devices/sithSoundMixer.h"
 #include "Dss/sithGamesave.h"
@@ -28,6 +30,8 @@
 #include "Engine/sithRender.h"
 #include "Engine/sithCamera.h"
 #include "Gameplay/sithTime.h"
+#include "Gameplay/sithPlayer.h"
+#include "Gameplay/sithInventory.h"
 #include "Main/jkSmack.h"
 #include "Main/jkGame.h"
 #include "Main/jkCredits.h"
@@ -54,6 +58,9 @@
 #include "World/jkPlayer.h"
 #include "Gameplay/jkSaber.h"
 #include "World/sithWorld.h"
+#include "World/sithActor.h"
+#include "World/sithThing.h"
+#include "Primitives/rdMatrix.h"
 #include "Platform/stdControl.h"
 #include "Platform/std3D.h"
 #include "Win95/Windows.h"
@@ -65,6 +72,7 @@
 #include "General/stdBitmap.h"
 #include "General/stdPalEffects.h"
 #include "General/stdString.h"
+#include "General/stdConffile.h"
 #include "World/jkPlayer.h"
 #include "Dss/jkDSS.h"
 #include "stdPlatform.h"
@@ -80,8 +88,12 @@ void std3D_XboxReleaseMovieTextures(void);
 #endif
 
 static int jkMain_xboxSmokeEscapeLoaded = 0;
+/* Bounded tracing only for the opt-in reload probe. */
+int jkMain_xboxSmokeReloadTraceFrames = 0;
+int jkMain_xboxSmokeReloadSucceeded = 0;
 static int jkMain_xboxSmokeEscapeArmed = 0;
 static int jkMain_xboxSmokeEscapeFired = 0;
+static int jkMain_xboxSmokeEscapeCycles = 1;
 static unsigned int jkMain_xboxSmokeEscapeDelayMs = 0;
 static unsigned int jkMain_xboxSmokeEscapeReadyMs = 0;
 
@@ -108,6 +120,15 @@ static void jkMain_XboxSmokeEscapeLoad(void)
     if (seconds < 1)
         seconds = 1;
     jkMain_xboxSmokeEscapeDelayMs = (unsigned int)seconds * 1000U;
+    f = fopen("D:\\xbox_smoke_menu_cycles.txt", "rb");
+    if (f) {
+        len = fread(buf, 1, sizeof(buf) - 1, f);
+        fclose(f);
+        buf[len] = 0;
+        jkMain_xboxSmokeEscapeCycles = _atoi(buf);
+        if (jkMain_xboxSmokeEscapeCycles < 1) jkMain_xboxSmokeEscapeCycles = 1;
+        if (jkMain_xboxSmokeEscapeCycles > 10) jkMain_xboxSmokeEscapeCycles = 10;
+    }
     jkMain_xboxSmokeEscapeArmed = 1;
     XPERF("Smoke: escape menu auto-open armed seconds=%d\n", seconds);
 }
@@ -115,26 +136,554 @@ static void jkMain_XboxSmokeEscapeLoad(void)
 static void jkMain_XboxSmokeEscapeOnGameplayReady(void)
 {
     jkMain_XboxSmokeEscapeLoad();
-    if (!jkMain_xboxSmokeEscapeArmed || jkMain_xboxSmokeEscapeFired)
+    if (!jkMain_xboxSmokeEscapeArmed || jkMain_xboxSmokeEscapeFired >= jkMain_xboxSmokeEscapeCycles)
         return;
     jkMain_xboxSmokeEscapeReadyMs = stdPlatform_GetTimeMsec();
 }
 
 static void jkMain_XboxSmokeEscapeTick(void)
 {
-    if (!jkMain_xboxSmokeEscapeArmed || jkMain_xboxSmokeEscapeFired)
+    if (!jkMain_xboxSmokeEscapeArmed || jkMain_xboxSmokeEscapeFired >= jkMain_xboxSmokeEscapeCycles)
         return;
     if (!jkMain_xboxSmokeEscapeReadyMs)
         return;
     if (stdPlatform_GetTimeMsec() - jkMain_xboxSmokeEscapeReadyMs < jkMain_xboxSmokeEscapeDelayMs)
         return;
 
-    jkMain_xboxSmokeEscapeFired = 1;
-    XPERF("Smoke: escape menu auto-open fired\n");
+    jkMain_xboxSmokeEscapeFired++;
+    XPERF("Smoke: escape menu auto-open fired cycle=%d\n", jkMain_xboxSmokeEscapeFired);
     if (jkGuiRend_thing_five)
         jkGuiRend_thing_four = 1;
     jkSmack_stopTick = 1;
     jkSmack_nextGuiState = JK_GAMEMODE_ESCAPE;
+}
+
+/* Opt-in regression probe. Runs wholly inside the game, through the same
+ * deferred autosave load used by respawn; it never synthesizes host input. */
+static void jkMain_XboxSmokeReloadTick(void)
+{
+    static int configured;
+    static int fired;
+    static unsigned int delayMs;
+    static unsigned int readyMs;
+    FILE *f;
+    char buf[32];
+    size_t len;
+    int seconds;
+
+    if (!configured) {
+        configured = 1;
+        f = fopen("D:\\xbox_smoke_reload_after_seconds.txt", "rb");
+        if (f) {
+            len = fread(buf, 1, sizeof(buf)-1, f);
+            fclose(f);
+            buf[len] = 0;
+            seconds = _atoi(buf);
+            if (seconds < 1) seconds = 1;
+            if (seconds > 3600) seconds = 3600;
+            delayMs = (unsigned int)seconds * 1000U;
+            readyMs = stdPlatform_GetTimeMsec();
+            XPERF("Smoke: autosave reload armed seconds=%d\n", seconds);
+        }
+    }
+    if (!delayMs || fired || sithNet_isMulti || !sithPlayer_pLocalPlayerThing)
+        return;
+    if ((unsigned int)(stdPlatform_GetTimeMsec() - readyMs) < delayMs)
+        return;
+    fired = 1;
+    jkMain_xboxSmokeReloadTraceFrames = 4;
+    XPERF("Smoke: autosave reload requested curMs=%u save='%s'\n",
+          sithTime_curMs, sithGamesave_autosave_fname);
+    sithPlayer_debug_loadauto(sithPlayer_pLocalPlayerThing);
+    XPERF("Smoke: autosave reload pending state=%d\n", sithGamesave_currentState);
+}
+
+/* Opt-in traversal uses authored player spawns, not pickup/actor positions.
+ * Item locations are not safe standing positions and trigger autoselection.
+ * AlwaysSoak controls level transitions independently. */
+static int jkMain_XboxSmokeClearance(const sithWorld *world, const sithSector *sector,
+    const rdVector3 *position, float radius)
+{
+    int i;
+    if (!sector || sector->numSurfaces < 4 || (sector->flags & SITH_SECTOR_FALLDEATH)) return 0;
+    /* Test every boundary, including non-colliding/closed adjoins. CmdWarp's
+     * point test can accept an unrelated sector beyond those boundaries. */
+    for (i = 0; i < sector->numSurfaces; ++i) {
+        const rdFace *face = &sector->surfaces[i].surfaceInfo.face;
+        const rdVector3 *origin;
+        float distance;
+        if (face->numVertices < 3 || !face->vertexPosIdx) return 0;
+        origin = &world->vertices[face->vertexPosIdx[0]];
+        distance = (position->x - origin->x) * face->normal.x +
+                   (position->y - origin->y) * face->normal.y +
+                   (position->z - origin->z) * face->normal.z;
+        if (!(distance >= radius)) return 0;
+    }
+    return 1;
+}
+
+static void jkMain_XboxSmokeTraverseTick(void)
+{
+    static int enabled = -1;
+    static char map[128];
+    static rdMatrix34 points[128];
+    static int sectors[128];
+    static int count, next;
+    static unsigned int lastMs;
+    sithWorld *world = sithWorld_pCurrentWorld;
+    sithThing *player = sithPlayer_pLocalPlayerThing;
+    unsigned int nowMs;
+    int i, j, result, slot, slots, point, scheduled, pitRescue, attempt;
+    FILE *f;
+
+    if (enabled < 0) {
+        f = fopen("D:\\xbox_smoke_traverse.txt", "rb");
+        enabled = f != NULL;
+        if (f) fclose(f);
+    }
+    if (!enabled || !world || !player ||
+        (sithNet_isMulti && !xboxSplitScreen_IsEnabled()) ||
+        sithGamesave_currentState != SITH_GS_NONE) return;
+    nowMs = stdPlatform_GetTimeMsec();
+    if (strcmp(map, world->map_jkl_fname)) {
+        stdString_SafeStrCopy(map, world->map_jkl_fname, sizeof(map));
+        count = next = 0;
+        lastMs = nowMs;
+        for (i = 0; i < jkPlayer_maxPlayers && count < 128; ++i) {
+            sithPlayerInfo *spawn = &jkPlayer_playerInfos[i];
+            if (!spawn->pSpawnSector) continue;
+            sectors[count] = spawn->pSpawnSector->id;
+            points[count++] = spawn->spawnPosOrient;
+        }
+        XPERF("Smoke: traverse map=%s authoredSpawns=%d\n", map, count);
+    }
+    if (!count) return;
+    scheduled = (unsigned int)(nowMs - lastMs) >= 5000U;
+    if (scheduled) lastMs = nowMs;
+    slots = xboxSplitScreen_IsEnabled() ? xboxSplitScreen_GetLocalPlayerCount() : 1;
+    for (slot = 0; slot < slots; ++slot) {
+        player = xboxSplitScreen_IsEnabled()
+            ? jkPlayer_playerInfos[xboxSplitScreen_GetPlayerIndexForSlot(slot)].playerThing
+            : sithPlayer_pLocalPlayerThing;
+        if (!player || !player->sector || (player->thingflags & SITH_TF_DEAD)) continue;
+        player->actorParams.typeflags |= SITH_AF_INVULNERABLE;
+        /* Authored pits kill directly, bypassing damage immunity. Rescue only
+         * this opt-in route before the normal -3.0 falling-death threshold. */
+        pitRescue = (player->sector->flags & SITH_SECTOR_FALLDEATH) &&
+            player->moveType == SITH_MT_PHYSICS && player->physicsParams.vel.z < -2.0;
+        if (!scheduled && !pitRescue) continue;
+        player->actorParams.typeflags |= SITH_AF_INVULNERABLE;
+        /* Spread local players over the route instead of stacking all four at
+         * one destination. Normal collision and control continue between warps. */
+        point = (next + slot * count / slots) % count;
+        result = 0;
+        for (attempt = 0; attempt < count; ++attempt, point = (point + 1) % count) {
+            rdVector3 destination = points[point].scale, eye;
+            rdMatrix34 orientation = points[point];
+            int previousSlot = 0, occupied = 0;
+            sithSector *target = &world->sectors[sectors[point]];
+            float radius = player->moveSize > 0.05f ? player->moveSize : 0.05f;
+            /* Reject overlap with pickups and other bodies, including hidden
+             * respawning items. A rejected destination leaves this player put. */
+            for (j = 0; j < world->numThingsLoaded; ++j) {
+                sithThing *other = &world->things[j];
+                float dx, dy, dz, separation;
+                if (other == player || (other->type != SITH_THING_ITEM &&
+                    other->type != SITH_THING_ACTOR && other->type != SITH_THING_PLAYER)) continue;
+                if (other->type == SITH_THING_PLAYER &&
+                    (!other->actorParams.playerinfo || !(other->actorParams.playerinfo->flags & 1))) continue;
+                dx = destination.x - other->position.x;
+                dy = destination.y - other->position.y;
+                dz = destination.z - other->position.z;
+                separation = radius + other->moveSize + 0.2f;
+                if (dx*dx + dy*dy + dz*dz < separation*separation) { occupied = 1; break; }
+            }
+            if (occupied) continue;
+            rdMatrix_TransformVector34(&eye, &player->actorParams.eyeOffset, &orientation);
+            eye.x += destination.x; eye.y += destination.y; eye.z += destination.z;
+            if (!jkMain_XboxSmokeClearance(world, target, &destination, radius) ||
+                !jkMain_XboxSmokeClearance(world, target, &eye, 0.04f)) continue;
+            if (xboxSplitScreen_IsEnabled()) previousSlot = xboxSplitScreen_BeginLocalOperation(slot);
+            sithThing_DetachThing(player);
+            sithThing_LeaveSector(player);
+            sithThing_SetPosAndRot(player, &destination, &orientation);
+            sithThing_EnterSector(player, target, 1, 0);
+            player->actorParams.eyePYR.x = player->actorParams.eyePYR.y = player->actorParams.eyePYR.z = 0;
+            sithPhysics_ThingStop(player);
+            sithCamera_FollowFocus(sithCamera_currentCamera);
+            if (xboxSplitScreen_IsEnabled()) xboxSplitScreen_EndLocalOperation(previousSlot);
+            result = 1;
+            break;
+        }
+        XPERF("Smoke: traverse slot=%d point=%d intendedSector=%d actualSector=%d ok=%d pitRescue=%d\n",
+            slot, point, sectors[point], player->sector ? player->sector->id : -1, result, pitRescue);
+    }
+    if (scheduled) next = (next + 1) % count;
+}
+
+static void jkMain_XboxSmokeFallTick(void)
+{
+    static int enabled = -1, fired;
+    static unsigned int delayMs = 5000U;
+    static unsigned int start;
+    unsigned int now = stdPlatform_GetTimeMsec();
+    sithWorld *world = sithWorld_pCurrentWorld;
+    sithThing *player = sithPlayer_pLocalPlayerThing;
+    FILE *f;
+    int i;
+    char args[160];
+    if (enabled < 0) {
+        f = fopen("D:\\xbox_smoke_fall.txt", "rb");
+        enabled = f != NULL;
+        if (f) {
+            unsigned int seconds = 0;
+            if (fscanf(f, "%u", &seconds) == 1 && seconds >= 5 && seconds <= 60)
+                delayMs = seconds * 1000U;
+            fclose(f);
+        }
+        start = now;
+    }
+    if (!enabled || fired || !world || !player || sithNet_isMulti ||
+        sithGamesave_currentState != SITH_GS_NONE || now - start < delayMs) return;
+    fired = 1;
+    for (i = 0; i < world->numSectors; i++) {
+        sithSector *sector = &world->sectors[i];
+        if (!(sector->flags & SITH_SECTOR_FALLDEATH)) continue;
+        stdString_snprintf(args, sizeof(args), "%.6f %.6f %.6f 0 0 0",
+            (double)sector->center.x, (double)sector->center.y, (double)sector->center.z);
+        if (!sithCommand_CmdWarp(NULL, args) || !player->sector ||
+            !(player->sector->flags & SITH_SECTOR_FALLDEATH)) continue;
+        player->physicsParams.vel.z = -4.0;
+        XPERF("Smoke: fall probe entered sector=%d position=%s\n", player->sector->id, args);
+        return;
+    }
+    XPERF("Smoke: fall probe found no reachable authored fall sector\n");
+}
+
+static void jkMain_XboxSmokeWaterTick(void)
+{
+    static int enabled = -1, nextSector, inWater, haveSpawn;
+    static unsigned int lastWarp, lastLog, wetStarted;
+    static int blendProbe, opaquePhase;
+    static sithSurface *probeSurface;
+    static unsigned int originalFaceType;
+    static rdVector3 spawn;
+    static rdMatrix34 spawnOrientation;
+    static sithSector *spawnSector;
+    static char map[128];
+    static unsigned int spawnGravity;
+    unsigned int now = stdPlatform_GetTimeMsec();
+    sithWorld *world = sithWorld_pCurrentWorld;
+    sithThing *player = sithPlayer_pLocalPlayerThing;
+    FILE *f;
+    char args[160];
+    int i;
+    if (enabled < 0) {
+        f = fopen("D:\\xbox_smoke_water.txt", "rb");
+        enabled = f != NULL;
+        if (f) fclose(f);
+        lastWarp = now;
+        f = fopen("D:\\xbox_smoke_water_blend.txt", "rb");
+        blendProbe = f != NULL;
+        if (f) fclose(f);
+    }
+    if (!enabled || !world || !player || sithNet_isMulti ||
+        sithGamesave_currentState != SITH_GS_NONE) return;
+    if (strcmp(map, world->map_jkl_fname)) {
+        stdString_SafeStrCopy(map, world->map_jkl_fname, sizeof(map));
+        haveSpawn = inWater = nextSector = 0;
+        probeSurface = NULL;
+        opaquePhase = 0;
+        lastWarp = now;
+    }
+    /* The first gameplay tick can still be falling away from the authored
+     * start. Remember a clear dry position after normal physics settles. */
+    if (!inWater && player->sector && !(player->sector->flags & 2)) {
+        rdVector3 eye;
+        rdMatrix_TransformVector34(&eye, &player->actorParams.eyeOffset, &player->lookOrientation);
+        eye.x += player->position.x; eye.y += player->position.y; eye.z += player->position.z;
+        if (jkMain_XboxSmokeClearance(world, player->sector, &player->position, player->moveSize) &&
+            jkMain_XboxSmokeClearance(world, player->sector, &eye, 0.04f)) {
+            spawn = player->position;
+            spawnSector = player->sector;
+            spawnOrientation = player->lookOrientation;
+            spawnGravity = player->physicsParams.physflags & SITH_PF_USEGRAVITY;
+            haveSpawn = 1;
+        }
+    }
+    if (!haveSpawn) return;
+    player->actorParams.typeflags |= SITH_AF_INVULNERABLE;
+    /* Include the authored water boundary in native captures, rather than
+     * observing only a horizontal underwater wall. This is probe-only. */
+    player->actorParams.eyePYR.x = inWater ? 45.0 : 0.0;
+    if (inWater && blendProbe && probeSurface) {
+        int phase = ((now - wetStarted) / 10000U) & 1;
+        if (phase != opaquePhase) {
+            opaquePhase = phase;
+            probeSurface->surfaceInfo.face.type = phase ? (originalFaceType & ~RD_FF_TEX_TRANSLUCENT) : originalFaceType;
+            XPERF("Smoke: water blend opaque=%d surface=%u\n", phase, probeSurface->index);
+        }
+    }
+    if (inWater) {
+        /* Hold the observation point instead of sinking to the floor. */
+        player->physicsParams.physflags &= ~SITH_PF_USEGRAVITY;
+        sithPhysics_ThingStop(player);
+    } else {
+        player->physicsParams.physflags = (player->physicsParams.physflags & ~SITH_PF_USEGRAVITY) | spawnGravity;
+    }
+    if (now - lastLog >= 1000U && sithCamera_currentCamera && sithCamera_currentCamera->sector) {
+        sithCamera *cam = sithCamera_currentCamera;
+        lastLog = now;
+        XPERF("Smoke: water camera sector=%d wet=%d fov=%.4f aspect=%.5f tint=(%.3f,%.3f,%.3f)\n",
+            cam->sector->id, !!(cam->sector->flags & 2), (double)cam->rdCam.fov,
+            (double)cam->rdCam.screenAspectRatio, (double)cam->sector->tint.x,
+            (double)cam->sector->tint.y, (double)cam->sector->tint.z);
+    }
+    /* Give the emulator-native capture enough time to observe the wet view.
+     * Dry stays short; this probe is visual coverage, not a performance run. */
+    if (now - lastWarp < (inWater ? 60000U : 8000U)) return;
+    lastWarp = now;
+    if (inWater) {
+        if (jkMain_XboxSmokeClearance(world, spawnSector, &spawn, player->moveSize)) {
+            sithThing_DetachThing(player);
+            sithThing_LeaveSector(player);
+            sithThing_SetPosAndRot(player, &spawn, &spawnOrientation);
+            sithThing_EnterSector(player, spawnSector, 1, 0);
+            sithPhysics_ThingStop(player);
+            if (probeSurface) probeSurface->surfaceInfo.face.type = originalFaceType;
+            probeSurface = NULL;
+            opaquePhase = inWater = 0;
+            XPERF("Smoke: water probe returned to spawn\n");
+        }
+        return;
+    }
+    for (i = 0; i < world->numSurfaces; i++) {
+        sithSurface *surface = &world->surfaces[nextSector++ % world->numSurfaces];
+        rdVector3 center = {0}, destination, eye;
+        rdVector3 angles = {0};
+        rdMatrix34 orientation;
+        int vertex;
+        if (!surface->parent_sector || !(surface->parent_sector->flags & 2) ||
+            !surface->adjoin || !surface->adjoin->sector || (surface->adjoin->sector->flags & 2) ||
+            surface->surfaceInfo.face.normal.z > -0.9 || surface->surfaceInfo.face.numVertices < 3)
+            continue;
+        for (vertex = 0; vertex < surface->surfaceInfo.face.numVertices; vertex++) {
+            rdVector3 *point = &world->vertices[surface->surfaceInfo.face.vertexPosIdx[vertex]];
+            center.x += point->x;
+            center.y += point->y;
+            center.z += point->z;
+        }
+        center.x /= surface->surfaceInfo.face.numVertices;
+        center.y /= surface->surfaceInfo.face.numVertices;
+        center.z /= surface->surfaceInfo.face.numVertices;
+        /* Wet-side normal points downward; face the center from just below
+         * and behind it so the boundary crosses the middle of the view. */
+        destination.x = center.x + surface->surfaceInfo.face.normal.x * 0.2;
+        destination.y = center.y + surface->surfaceInfo.face.normal.y * 0.2 - 0.2;
+        destination.z = center.z + surface->surfaceInfo.face.normal.z * 0.2;
+        rdMatrix_BuildRotate34(&orientation, &angles);
+        rdMatrix_TransformVector34(&eye, &player->actorParams.eyeOffset, &orientation);
+        eye.x += destination.x; eye.y += destination.y; eye.z += destination.z;
+        if (!jkMain_XboxSmokeClearance(world, surface->parent_sector, &destination, player->moveSize) ||
+            !jkMain_XboxSmokeClearance(world, surface->parent_sector, &eye, 0.04f)) continue;
+        sithThing_DetachThing(player);
+        sithThing_LeaveSector(player);
+        sithThing_SetPosAndRot(player, &destination, &orientation);
+        sithThing_EnterSector(player, surface->parent_sector, 1, 0);
+        stdString_snprintf(args, sizeof(args), "%.6f %.6f %.6f", (double)destination.x,
+            (double)destination.y, (double)destination.z);
+        sithPhysics_ThingStop(player);
+        inWater = 1;
+        wetStarted = now;
+        probeSurface = surface;
+        originalFaceType = surface->surfaceInfo.face.type;
+        opaquePhase = 0;
+        XPERF("Smoke: water boundary surface=%u drySector=%d type=0x%x material=%p center=(%.3f,%.3f,%.3f)\n",
+            surface->index, surface->adjoin->sector->id, surface->surfaceInfo.face.type,
+            surface->surfaceInfo.face.material, (double)center.x, (double)center.y, (double)center.z);
+        XPERF("Smoke: water probe entered sector=%d position=%s\n", player->sector->id, args);
+        return;
+    }
+    XPERF("Smoke: water probe found no reachable horizontal wet/dry boundary\n");
+}
+
+static void jkMain_XboxSmokeStressTick(void)
+{
+    static int enabled = -1;
+    FILE *f;
+    int slot;
+    if (enabled < 0) {
+        f = fopen("D:\\xbox_smoke_four_player_stress.txt", "rb");
+        enabled = f != NULL;
+        if (f) fclose(f);
+    }
+    if (!enabled || !xboxSplitScreen_IsEnabled()) return;
+    for (slot = 0; slot < xboxSplitScreen_GetLocalPlayerCount(); slot++) {
+        sithPlayerInfo *info = &jkPlayer_playerInfos[xboxSplitScreen_GetPlayerIndexForSlot(slot)];
+        if (!info->playerThing) continue;
+        info->playerThing->actorParams.typeflags |= SITH_AF_INVULNERABLE;
+        if (info->iteminfo[11].ammoAmt < 10.0) {
+            sithInventory_SetBinAmount(info->playerThing, 11, 100.0);
+            XPERF("Smoke: stress ammo replenished slot=%d\n", slot);
+        }
+    }
+}
+
+/* Opt-in signed-offset probe through a local player's normal palette request. */
+static void jkMain_XboxSmokeColorTick(void)
+{
+    static int enabled = -1, lastPhase = -1;
+    static unsigned int startMs;
+    unsigned int elapsed;
+    int phase;
+    sithPlayerInfo *info;
+    FILE *f;
+    if (enabled < 0) {
+        f = fopen("D:\\xbox_smoke_color.txt", "rb");
+        enabled = f != NULL;
+        if (f) fclose(f);
+        startMs = stdPlatform_GetTimeMsec();
+    }
+    if (!enabled || !xboxSplitScreen_IsEnabled() || xboxSplitScreen_GetLocalPlayerCount() < 3) return;
+    info = &jkPlayer_playerInfos[xboxSplitScreen_GetPlayerIndexForSlot(2)];
+    if (!info->playerThing || (unsigned int)info->palEffectsIdx2 >= 32) return;
+    elapsed = stdPlatform_GetTimeMsec() - startMs;
+    phase = elapsed < 15000U ? 0 : (elapsed < 45000U ? 1 : 2);
+    /* Camera-owned request avoids the damage request's positive-only decay. */
+    stdPalEffects_SetAdd(info->palEffectsIdx2, phase == 1 ? 96 : 0, phase == 1 ? -64 : 0, 0);
+    if (phase != lastPhase) {
+        XPERF("Smoke: signed color phase=%d slot=2 add=(%d,%d,0) elapsedMs=%u\n",
+              phase, phase == 1 ? 96 : 0, phase == 1 ? -64 : 0, elapsed);
+        lastPhase = phase;
+    }
+}
+
+static void jkMain_XboxSmokeDamageTick(void)
+{
+    static int enabled = -1, targetSlot;
+    static unsigned int lastMs, intervalMs = 1000U, lastLogMs, hitGameMs;
+    static int hitLogged;
+    sithThing *player = sithPlayer_pLocalPlayerThing;
+    unsigned int now = stdPlatform_GetTimeMsec();
+    FILE *f;
+    if (enabled < 0) {
+        f = fopen("D:\\xbox_smoke_damage.txt", "rb");
+        enabled = f != NULL;
+        if (f) {
+            int slot = 0;
+            unsigned int interval = 1000U;
+            fscanf(f, "%d %u", &slot, &interval);
+            if (slot >= 0 && slot <= 3) targetSlot = slot;
+            if (interval >= 1000U && interval <= 60000U) intervalMs = interval;
+            fclose(f);
+        }
+        lastMs = now;
+    }
+    if (enabled && targetSlot > 0) {
+        if (!xboxSplitScreen_IsEnabled() || targetSlot >= xboxSplitScreen_GetLocalPlayerCount()) return;
+        player = jkPlayer_playerInfos[xboxSplitScreen_GetPlayerIndexForSlot(targetSlot)].playerThing;
+    }
+    if (enabled && player && hitLogged && now - lastLogMs >= 100U &&
+        sithTime_curMs - hitGameMs <= 3000U && player->actorParams.playerinfo) {
+        stdPalEffect *effect = stdPalEffects_GetEffectPointer(player->actorParams.playerinfo->palEffectsIdx1);
+        if (effect) XPERF("Smoke: damage fade slot=%d elapsedGameMs=%u tint=%.4f health=%.1f\n",
+            targetSlot, sithTime_curMs - hitGameMs, (double)effect->tint.x, (double)player->actorParams.health);
+        lastLogMs = now;
+    }
+    if (!enabled || !player ||
+        (player->thingflags & SITH_TF_DEAD) ||
+        sithGamesave_currentState != SITH_GS_NONE ||
+        (unsigned int)(now - lastMs) < intervalMs) return;
+    lastMs = now;
+    player->actorParams.health = 100.0;
+    player->actorParams.typeflags &= ~SITH_AF_INVULNERABLE;
+    sithActor_Hit(player, player, 25.0, 1);
+    hitGameMs = sithTime_curMs;
+    hitLogged = 1;
+    XPERF("Smoke: damage applied health=%.1f sector=%d slot=%d\n",
+        (double)player->actorParams.health, player->sector ? player->sector->id : -1, targetSlot);
+}
+
+static void jkMain_XboxSmokeRoundtripTick(void)
+{
+    static int configured, enabled, phase;
+    static unsigned int start;
+    FILE *f;
+    if (!configured) {
+        configured = 1;
+        f = fopen("D:\\xbox_smoke_roundtrip.txt", "rb");
+        enabled = f != NULL;
+        if (f) fclose(f);
+        start = stdPlatform_GetTimeMsec();
+    }
+    if (!enabled || phase == 3 || sithNet_isMulti || !sithPlayer_pLocalPlayerThing ||
+        (sithPlayer_pLocalPlayerThing->thingflags & SITH_TF_DEAD) ||
+        sithGamesave_currentState != SITH_GS_NONE || jkMain_xboxSmokeReloadTraceFrames)
+        return;
+    if (phase == 0) {
+        if ((unsigned int)(stdPlatform_GetTimeMsec() - start) < 20000U) return;
+        /* Address the HDD directly: ISO boots need not map E:. The
+         * runner's snapshot disk contains this test-only file. Serialization
+         * still runs through the ordinary deferred save path and callbacks. */
+        sithGamesave_Write("issue1_roundtrip.jks", 1, 0, L"Issue 1 regression");
+        if (sithGamesave_currentState != SITH_GS_SAVE) {
+            XPERF("Smoke: roundtrip failed to queue save\n");
+            phase = 3;
+            return;
+        }
+        stdString_SafeStrCopy(sithGamesave_fpath, "\\Device\\Harddisk0\\Partition1\\issue1_roundtrip.jks", 128);
+        XPERF("Smoke: roundtrip save queued curMs=%u\n", sithTime_curMs);
+        phase = 1;
+    }
+    else if (phase == 1) {
+        if (!stdConffile_OpenReadBytesBypass("\\Device\\Harddisk0\\Partition1\\issue1_roundtrip.jks")) {
+            XPERF("Smoke: roundtrip save file missing\n");
+            phase = 3;
+            return;
+        }
+        stdConffile_Close();
+        stdString_SafeStrCopy(sithGamesave_fpath, "\\Device\\Harddisk0\\Partition1\\issue1_roundtrip.jks", 128);
+        sithGamesave_currentState = SITH_GS_LOAD;
+        jkMain_xboxSmokeReloadSucceeded = 0;
+        jkMain_xboxSmokeReloadTraceFrames = 4;
+        XPERF("Smoke: roundtrip load queued\n");
+        phase = 2;
+    }
+    else {
+        XPERF("Smoke: roundtrip resumed success=%d curMs=%u\n",
+            jkMain_xboxSmokeReloadSucceeded, sithTime_curMs);
+        phase = 3;
+    }
+}
+
+static void jkMain_XboxSmokeDeathTick(void)
+{
+    static int configured, enabled, phase;
+    static unsigned int start;
+    FILE *f;
+    sithThing *player = sithPlayer_pLocalPlayerThing;
+    if (!configured) {
+        configured = 1;
+        f = fopen("D:\\xbox_smoke_death.txt", "rb");
+        enabled = f != NULL;
+        if (f) fclose(f);
+        start = stdPlatform_GetTimeMsec();
+    }
+    if (!enabled || !player || sithNet_isMulti || phase == 2) return;
+    if (!phase && (unsigned int)(stdPlatform_GetTimeMsec() - start) >= 15000U) {
+        player->actorParams.typeflags &= ~SITH_AF_INVULNERABLE;
+        jkDev_CmdKill(NULL, NULL);
+        if (!(player->thingflags & SITH_TF_DEAD)) jkDev_CmdKill(NULL, NULL);
+        phase = (player->thingflags & SITH_TF_DEAD) ? 1 : 2;
+        XPERF("Smoke: death probe dead=%d health=%.1f curMs=%u\n",
+            phase == 1, (double)player->actorParams.health, sithTime_curMs);
+    }
+    else if (phase == 1 && !(player->thingflags & SITH_TF_DEAD) &&
+             sithGamesave_currentState == SITH_GS_NONE) {
+        XPERF("Smoke: respawn probe resumed health=%.1f curMs=%u\n",
+            (double)player->actorParams.health, sithTime_curMs);
+        phase = 2;
+    }
 }
 
 static void jkMain_XboxLogTransitionResources(const char *phase)
@@ -196,7 +745,11 @@ static void jkMain_XboxPurgeGameplayTexturesAfterClose(const char *beforePhase, 
 
 #endif
 
+#ifdef TARGET_XBOX
+#define XSL_GAMEPLAY_TRACE(label) do { if (jkMain_xboxSmokeReloadTraceFrames) XPERF("SaveLoad: gameplay %s\n", label); } while (0)
+#else
 #define XSL_GAMEPLAY_TRACE(label) do { } while (0)
+#endif
 #define XSL_GUI_TRACE(label) do { } while (0)
 
 #if defined(TARGET_TWL)
@@ -315,6 +868,13 @@ static int jkMain_CreateLocalMultiplayerHost(const char *pGobPath, const char *p
           sithNet_isMulti,
           sithNet_isServer,
           jkPlayer_maxPlayers);
+#ifdef TARGET_XBOX
+    if (Main_bAutostart)
+    {
+        g_submodeFlags |= 8u;
+        XDBG("BotMatch: local multiplayer host created; submode gameplay flag set\n");
+    }
+#endif
     return 1;
 }
 
@@ -576,14 +1136,14 @@ void jkMain_XboxAlwaysSoakOnGameplayReady(void)
     phase = &jkMain_xboxAlwaysSoakPhases[jkMain_xboxAlwaysSoakCurrent];
     jkMain_xboxAlwaysSoakWaitingForGameplay = 0;
     jkMain_xboxAlwaysSoakPhaseStartMs = stdPlatform_GetTimeMsec();
-    XPERF("Smoke: AlwaysSoak gameplay-ready cycle=%u phase=%d/%d seconds=%u players=%d episode='%s' level='%s'\n",
+    XPERF("Smoke: AlwaysSoak gameplay-ready cycle=%u phase=%d/%d seconds=%u players=%d episode='%s' level='%s' wallMs=%u\n",
           jkMain_xboxAlwaysSoakCycle,
           jkMain_xboxAlwaysSoakCurrent + 1,
           jkMain_xboxAlwaysSoakPhaseCount,
           phase->seconds,
           phase->localPlayers,
           phase->episode,
-          phase->level);
+          phase->level, jkMain_xboxAlwaysSoakPhaseStartMs);
 }
 
 void jkMain_XboxAlwaysSoakTickGameplay(void)
@@ -619,13 +1179,13 @@ void jkMain_XboxAlwaysSoakTickGameplay(void)
     if (elapsedMs < phase->seconds * 1000U)
         return;
 
-    XPERF("Smoke: AlwaysSoak phase-complete cycle=%u phase=%d/%d elapsedMs=%u episode='%s' level='%s'\n",
+    XPERF("Smoke: AlwaysSoak phase-complete cycle=%u phase=%d/%d elapsedMs=%u episode='%s' level='%s' wallMs=%u\n",
           jkMain_xboxAlwaysSoakCycle,
           jkMain_xboxAlwaysSoakCurrent + 1,
           jkMain_xboxAlwaysSoakPhaseCount,
           elapsedMs,
           phase->episode,
-          phase->level);
+          phase->level, nowMs);
 
     XPERF("Smoke: AlwaysSoak close-current-gameplay before next phase\n");
     jkMain_GameplayLeave(JK_GAMEMODE_GAMEPLAY, JK_GAMEMODE_MAIN);
@@ -1514,6 +2074,10 @@ LABEL_28:
         stdControl_ToggleCursor(1);
         JKTRACE("GameplayShow: Flush\n");
         stdControl_Flush();
+#ifdef TARGET_XBOX
+        if (Main_bAutostart)
+            sithMulti_CompleteLocalJoinForAutostart();
+#endif
         JKTRACE("GameplayShow: jkGame_Update\n");
 #ifdef TARGET_XBOX
         XDBG("MPLoadTrace: GameplayShow before warmup jkGame_Update\n");
@@ -1523,18 +2087,35 @@ LABEL_28:
         XDBG("MPLoadTrace: GameplayShow after warmup jkGame_Update\n");
 #endif
 #ifdef TARGET_XBOX
-        JKTRACE("GameplayShow: reset game clock after load/display warmup\n");
+        JKTRACE("GameplayShow: refresh frame clock after load/display warmup\n");
 #endif
-        sithTime_Startup();
+        /* Weapon cooldowns and COG timers use absolute simulation time.
+         * Preserve that timeline on menu return and after loading a save;
+         * only discard time spent loading and warming up the display. */
+        sithTime_SetMs(sithTime_curMs);
+        sithTime_physicsRolloverFrames = 0.0;
         jkMain_lastTickMs = stdPlatform_GetTimeMsec();
 #ifdef TARGET_XBOX
         JKTRACEF("GameplayShow: lastTick reset to %u\n", (unsigned)jkMain_lastTickMs);
 #endif
         JKTRACE("GameplayShow: thing_eight=1\n");
         thing_eight = 1;
+#ifdef TARGET_XBOX
+        if (Main_bAutostart)
+        {
+            sithMulti_CompleteLocalJoinForAutostart();
+            XDBG("BotMatch: autostart gameplay active\n");
+        }
+#endif
         JKTRACE("GameplayShow: done\n");
 #ifdef TARGET_XBOX
         XDBG("MPLoadTrace: GameplayShow done\n");
+        XDBGF("BotMatch: gameplay-state ready suspended=%d state=%d stopTick=%d thingEight=%d thingSix=%d\n",
+              g_app_suspended,
+              jkSmack_currentGuiState,
+              jkSmack_stopTick,
+              thing_eight,
+              thing_six);
         jkMain_XboxLogTransitionResources("gameplay-show-ready");
         jkMain_XboxSmokeEscapeOnGameplayReady();
         jkMain_XboxAlwaysSoakOnGameplayReady();
@@ -1604,11 +2185,18 @@ void jkMain_GameplayTick(int a2)
 #if defined(TARGET_XBOX) && defined(XBOX_PERF_SMOKE)
         { unsigned int perfT0 = stdPlatform_GetTimeMsec();
 #endif
+#ifdef TARGET_XBOX
+        { unsigned int profileStart = xbox_debug_ProfileClock();
+#endif
         if (sithMain_Tick()) { JKTRACE("GameplayTick: sithMain_Tick nonzero, returning\n"); XSL_GAMEPLAY_TRACE("sithMain_Tick returned nonzero"); 
 #ifdef TARGET_XBOX
             jkMain_XboxAlwaysSoakTickGameplay();
 #endif
             return; }
+#ifdef TARGET_XBOX
+          xbox_debug_ProfileAdd(XPROF_SIM, profileStart);
+        }
+#endif
 #if defined(TARGET_XBOX) && defined(XBOX_PERF_SMOKE)
           s_perfSithTickMs += stdPlatform_GetTimeMsec() - perfT0;
           s_perfSithTickCalls++;
@@ -1681,6 +2269,20 @@ void jkMain_GameplayTick(int a2)
     }
 #ifdef TARGET_XBOX
     jkMain_XboxSmokeEscapeTick();
+    jkMain_XboxSmokeTraverseTick();
+    jkMain_XboxSmokeFallTick();
+    jkMain_XboxSmokeWaterTick();
+    jkMain_XboxSmokeStressTick();
+    jkMain_XboxSmokeDamageTick();
+    jkMain_XboxSmokeColorTick();
+    jkMain_XboxSmokeRoundtripTick();
+    jkMain_XboxSmokeDeathTick();
+    jkMain_XboxSmokeReloadTick();
+    if (jkMain_xboxSmokeReloadTraceFrames > 0) {
+        --jkMain_xboxSmokeReloadTraceFrames;
+        if (!jkMain_xboxSmokeReloadTraceFrames && jkMain_xboxSmokeReloadSucceeded && sithGamesave_currentState == SITH_GS_NONE)
+            XPERF("Smoke: autosave reload resumed curMs=%u\n", sithTime_curMs);
+    }
     jkMain_XboxAlwaysSoakTickGameplay();
 #endif
 #if defined(TARGET_XBOX) && defined(XBOX_PERF_SMOKE)

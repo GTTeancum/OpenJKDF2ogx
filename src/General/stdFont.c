@@ -1297,7 +1297,13 @@ LABEL_24:
                 if (a2->monospaceW && a5a.width < a2->monospaceW) {
                     shift = (a2->monospaceW - a5a.width)/2;
                 }
+#ifdef TARGET_XBOX
+                std3D_XboxSetHudGlyphSampling(a2->charsetHead.charFirst == '0' && a2->charsetHead.charLast == ':');
+#endif
                 std3D_DrawUIBitmap(a2->pBitmap, 0, v9+shift, blit_y, &a5a, scale, alpha_maybe);
+#ifdef TARGET_XBOX
+                std3D_XboxSetHudGlyphSampling(0);
+#endif
                 //stdDisplay_VBufferCopy(a1, v10, v9, blit_y, &a5a, alpha_maybe);
                 v14 = a5a.width + a2->marginY;
                 goto LABEL_29;

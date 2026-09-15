@@ -9,6 +9,7 @@
 #include "Gui/jkGUI.h"
 #include "Gui/jkGUISetup.h"
 #include "World/jkPlayer.h"
+#include "Main/jkStrings.h"
 #include "Win95/Window.h"
 #include "types_enums.h"
 
@@ -191,6 +192,9 @@ int jkGuiGeneral_Show()
         jkGuiRend_XboxFooterAddAction(&jkGuiGeneral_menu, JKGUI_XBOX_BTN_A, 0, L"Select");
         jkGuiRend_XboxFooterAddElementAction(&jkGuiGeneral_menu, JKGUI_XBOX_BTN_B, &jkGuiGeneral_aElements[11], L"Back");
         jkGuiRend_XboxFooterAddElementAction(&jkGuiGeneral_menu, JKGUI_XBOX_BTN_START, &jkGuiGeneral_aElements[10], L"Done");
+#ifdef QOL_IMPROVEMENTS
+        jkGuiRend_XboxFooterAddElementAction(&jkGuiGeneral_menu, JKGUI_XBOX_BTN_Y, &jkGuiGeneral_aElements[16], jkStrings_GetUniStringWithFallback("GUI_ADVANCED"));
+#endif
 #endif
         v0 = jkGuiRend_DisplayAndReturnClicked(&jkGuiGeneral_menu);
 #if defined(QOL_IMPROVEMENTS)

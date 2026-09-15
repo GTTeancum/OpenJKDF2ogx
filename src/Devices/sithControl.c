@@ -1058,6 +1058,9 @@ int sithControl_HandlePlayer(sithThing *player, flex_t deltaSecs)
                     }
 #endif
                     sithConsole_PrintUniStr(v17);
+#ifdef TARGET_XBOX
+                    XPERF("Respawn: prompt issued curMs=%u\n", (unsigned)sithTime_curMs);
+#endif
                     sithConsole_AlertSound();
                     sithControl_death_msgtimer = 0;
 LABEL_39:

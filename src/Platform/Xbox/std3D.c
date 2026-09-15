@@ -1,3 +1,5 @@
+#include "xbox_video.h"
+#include "xbox_vertex_submit.h"
 /*
  * std3D.c  —  OpenJKDF2 Xbox renderer adapter.
  *
@@ -52,10 +54,15 @@ void * __stdcall wglCreateContext(void *hdc);
 int    __stdcall wglMakeCurrent(void *hdc, void *hglrc);
 int    __stdcall wglDeleteContext(void *hglrc);
 void             FakeSwapBuffers(void);
+unsigned int     stdPlatform_GetTimeMsec(void);
 
 void __stdcall glClear        (GLbitfield mask);
 void __stdcall glClearColor   (GLfloat r, GLfloat g, GLfloat b, GLfloat a);
 void __stdcall glBegin        (GLenum mode);
+void __stdcall glXboxLitVertex(float x, float y, float z, float u, float v, float light, float alpha);
+void __stdcall glXboxBeginLitTriangles(void);
+void __stdcall glXboxLitTriangles(const XboxEngineVertex *vertices,
+    const void *triangles, int triangleStride, int triangleCount, int screenSpace);
 void __stdcall glEnd          (void);
 void __stdcall glColor4f      (GLfloat r, GLfloat g, GLfloat b, GLfloat a);
 void __stdcall glColor3ubv    (const GLubyte *v);
@@ -148,10 +155,22 @@ static int g_xboxViewportW = 640;
 static int g_xboxViewportH = 480;
 static int g_xboxScreenSpaceRenderList = 0;
 static int g_xboxUiViewportOverlay = 0;
+static int g_xboxHudGlyphSampling;
+extern "C" void std3D_XboxSetHudGlyphSampling(int enable)
+{
+    g_xboxHudGlyphSampling = enable;
+}
+
 
 static void std3D_XboxApplyViewport(void)
 {
-    glViewport(g_xboxViewportX, g_xboxViewportY, g_xboxViewportW, g_xboxViewportH);
+    int width = g_xboxViewportW;
+    int left = g_xboxViewportX;
+    if (g_xboxScreenSpaceRenderList) {
+        width = (int)(width / xboxVideo_GetPixelAspectRatio());
+        left += (g_xboxViewportW - width) / 2;
+    }
+    glViewport(left, g_xboxViewportY, width, g_xboxViewportH);
 }
 
 extern "C" void std3D_XboxSetViewport(int x, int y, int w, int h)
@@ -190,6 +209,10 @@ extern "C" void std3D_XboxSetScreenSpaceRenderList(int enable)
 }
 
 #define GL_ONE                 1
+#define GL_ZERO                0
+#define GL_SRC_COLOR           0x0300
+#define GL_DST_COLOR           0x0306
+#define GL_ONE_MINUS_DST_COLOR 0x0307
 #define GL_TRUE                1
 #define GL_FALSE               0
 #define GL_SRC_ALPHA           0x0302
@@ -198,6 +221,7 @@ extern "C" void std3D_XboxSetScreenSpaceRenderList(int enable)
 #define STD3D_TRI_FLAG_CLAMP_X 0x20000
 #define STD3D_TRI_FLAG_CLAMP_Y 0x40000
 #define STD3D_TRI_FLAG_NEAREST 0x80000
+#define STD3D_TRI_FLAG_NO_CULL 0x100000
 
 #ifdef __cplusplus
 extern "C" {
@@ -229,14 +253,7 @@ extern "C" {
  *   sizeof(rdDDrawSurface) == 0xD8 (216) bytes
  *   sizeof(stdVBuffer)     == 0xD8 (216) bytes
  * ---------------------------------------------------------------------- */
-typedef struct
-{
-    float        x, y, z;
-    float        nx, ny, nz;
-    float        tu, tv;
-    unsigned int color;
-    float        lightLevel;
-} D3DVERTEX;
+typedef XboxEngineVertex D3DVERTEX;
 
 typedef struct rdDDrawSurface_tag
 {
@@ -350,6 +367,11 @@ static void *g_hglrc      = 0;
  * wglGetProcAddress("glBindTextureEXT") since FakeGL doesn't expose
  * a flat `glBindTexture` symbol at file scope. */
 static PFN_glBindTextureEXT g_pfnBindTexture = 0;
+
+int std3D_XboxUsesScalarTextureLighting(const rdDDrawSurface *texture)
+{
+    return g_pfnBindTexture && texture && texture->texture_loaded && texture->texture_id;
+}
 static PFN_glDeleteTexturesEXT g_pfnDeleteTextures = 0;
 
 /* UV out-of-range sentinel — accumulates across all engine vertex
@@ -783,7 +805,7 @@ static int          g_fps_current = 0;
 static void std3D_DrawDebugHUD(void)
 {
     char fpsBuf[16];
-    unsigned int nowMs = (unsigned int)GetTickCount();
+    unsigned int nowMs = (unsigned int)stdPlatform_GetTimeMsec();
     unsigned int elapsed;
 
     /* Roll the 1-second sampling window. */
@@ -945,7 +967,7 @@ void std3D_Present(void)
         unsigned long spanMs;
         unsigned long fps100;
 
-        nowMs = (unsigned int)GetTickCount();
+        nowMs = (unsigned int)stdPlatform_GetTimeMsec();
         if (!g_hwPerfStartMs) {
             g_hwPerfStartMs = nowMs;
         }
@@ -958,6 +980,12 @@ void std3D_Present(void)
             if (frameMs >= 100U) g_hwPerfHitches100++;
             if (frameMs >= 250U) g_hwPerfHitches250++;
             if (frameMs >= 500U) g_hwPerfHitches500++;
+            if (frameMs >= 250U) {
+                XPERF("PerfHitch: startMs=%u endMs=%u frameMs=%u drawLists=%u tris=%u texUp=%u uiUp=%u\n",
+                      g_hwPerfLastPresentMs, nowMs, frameMs,
+                      std3D_xboxFrameDrawLists, std3D_xboxFrameTris,
+                      std3D_xboxFrameTexUploads, std3D_xboxFrameBitmapUploads);
+            }
         }
         g_hwPerfLastPresentMs = nowMs;
 
@@ -974,7 +1002,7 @@ void std3D_Present(void)
             memStatus.dwLength = sizeof(memStatus);
             GlobalMemoryStatus(&memStatus);
             fps100 = (spanMs > 0) ? ((g_hwPerfFrames * 100000UL) / spanMs) : 0;
-            XPERF("PerfHW: spanMs=%lu frames=%lu fps=%lu.%02lu maxFrameMs=%u h50=%lu h100=%lu h250=%lu h500=%lu drawLists=%lu tris=%lu verts=%lu texUp=%lu uiUp=%lu cutscene=%d credits=%d memPhys=%lu memPage=%lu\n",
+            XPERF("PerfHW: spanMs=%lu frames=%lu fps=%lu.%02lu maxFrameMs=%u h50=%lu h100=%lu h250=%lu h500=%lu drawLists=%lu tris=%lu verts=%lu texUp=%lu uiUp=%lu cutscene=%d credits=%d endMs=%u memPhys=%lu memPage=%lu\n",
                   spanMs,
                   g_hwPerfFrames,
                   fps100 / 100UL,
@@ -991,6 +1019,7 @@ void std3D_Present(void)
                   g_hwPerfBitmapUploads,
                   jkCutscene_isRendering,
                   stdDisplay_xboxCreditsDebug,
+                  nowMs,
                   (unsigned long)memStatus.dwAvailPhys,
                   (unsigned long)memStatus.dwAvailPageFile);
             g_hwPerfStartMs = nowMs;
@@ -1099,6 +1128,7 @@ int std3D_AddRenderListVertices(D3DVERTEX *verts, int count)
     if (GL_numVertices + count >= STD3D_MAX_VERTICES) return 0;
     memcpy(&GL_tmpVertices[GL_numVertices], verts, count * sizeof(D3DVERTEX));
 
+#if defined(XBOX_ENABLE_DEBUG_HUD) && !defined(XBOX_PERF_SMOKE) && !defined(XBOX_COMPILE_OUT_DEBUG_FORMATS)
     /* Walk the new batch and accumulate bbox + sample first color +
      * UV out-of-range sentinel.  UVs in JK are normalized [0,1]; values
      * |tu|>2 || |tv|>2 are evidence of clip-space leakage or unit-mismatch
@@ -1119,6 +1149,8 @@ int std3D_AddRenderListVertices(D3DVERTEX *verts, int count)
         if (tu > 2.0f || tu < -1.0f || tv > 2.0f || tv < -1.0f)
             g_uvOOR++;
     }
+
+#endif
 
     GL_numVertices += count;
     std3D_DebugLineKV(8, "VERTS", GL_numVertices);
@@ -1208,11 +1240,46 @@ void std3D_ResetRenderList(void)
 extern int xbox_get_camera_params(float *fov, float *aspect,
                                   float *znear, float *zfar);
 
+static float std3D_XboxHalfFovTangent(float fov)
+{
+    static int valid;
+    static float previousFov, previousTangent;
+    /* Pure scalar cache: projection matrices and viewport state are still
+     * applied for every list. Exact comparison preserves animated FOVs. */
+    if (!valid || previousFov != fov) {
+        previousTangent = (float)tan((double)fov * (3.14159265358979 / 360.0));
+        previousFov = fov;
+        valid = 1;
+    }
+    return previousTangent;
+}
+
+static void std3D_XboxApplyFaceBlend(int flags, int textured)
+{
+    /* The PC shader discards transparent texels before inverse-alpha
+     * blending; otherwise a zero-alpha cutout would become an opaque pixel. */
+    glEnable(GL_ALPHA_TEST);
+    glAlphaFunc(GL_GREATER, (flags & 0x200) ? 0.01f : 0.5f);
+    if (textured || (flags & 0x600)) {
+        glEnable(GL_BLEND);
+        /* PC's shader premultiplies/inverts translucent RGB and alpha.
+         * FakeGL emits straight colors, so express that weighting through
+         * the fixed-function blend factors instead of using GL_ONE. */
+        if (flags & 0x200)
+            glBlendFunc(GL_ONE_MINUS_SRC_ALPHA, GL_SRC_ALPHA);
+        else
+            glBlendFunc(GL_SRC_ALPHA, GL_ONE_MINUS_SRC_ALPHA);
+    } else {
+        glDisable(GL_BLEND);
+    }
+}
+
 void std3D_DrawRenderList(void)
 {
     int i;
+    unsigned int profileSubmitStart = xbox_debug_ProfileClock();
 #if defined(TARGET_XBOX) && defined(XBOX_PERF_SMOKE)
-    unsigned long perfStartMs = (unsigned long)GetTickCount();
+    unsigned long perfStartMs = (unsigned long)stdPlatform_GetTimeMsec();
     unsigned long perfTriBegins = 0;
     unsigned long perfLineBegins = 0;
     unsigned long perfSamplerChanges = 0;
@@ -1252,6 +1319,9 @@ void std3D_DrawRenderList(void)
     std3D_xboxFrameDrawLists++;
     std3D_xboxFrameTris += (unsigned int)GL_numTris;
     std3D_xboxFrameVerts += (unsigned int)GL_numVertices;
+    /* World lighting must modulate texture color even after an unlit UI/movie
+     * pass. Do not inherit GL_REPLACE from the previous viewport/pass. */
+    glTexEnvf(GL_TEXTURE_ENV, GL_TEXTURE_ENV_MODE, (GLfloat)GL_MODULATE);
     std3D_DebugLineKV(10, "DRAWN", GL_numTris);
 #if defined(TARGET_XBOX) && defined(XBOX_PERF_SMOKE)
     perfListTris = (unsigned long)GL_numTris;
@@ -1291,8 +1361,11 @@ void std3D_DrawRenderList(void)
         float cam_znear = 1.0f/64.0f, cam_zfar = 128.0f;
         float tan_h, tan_v, half_w, half_h;
         int got_cam = xbox_get_camera_params(&cam_fov, &cam_aspect, &cam_znear, &cam_zfar);
-        tan_h  = (float)tan((double)cam_fov * (3.14159265358979 / 360.0));
+        tan_h  = std3D_XboxHalfFovTangent(cam_fov);
         tan_v  = tan_h * cam_aspect;
+        /* Anamorphic pixels widen horizontal FOV without cropping vertically.
+         * rdCamera uses the same ratio for CPU portal clipping. */
+        tan_h *= xboxVideo_GetProjectionPixelAspectRatio();
         half_w = cam_znear * tan_h;
         half_h = cam_znear * tan_v;
 
@@ -1350,14 +1423,9 @@ void std3D_DrawRenderList(void)
         }
     }
 
-    /* One glBegin/glEnd per triangle.  FakeGL's USE_BEGINEND path on Xbox
-     * (gl_fakegl.cpp:1380-1432) submits each Begin/End as its own NV2A
-     * inline-mode primitive — no buffering between draws.
-     *
-     * IMPORTANT: never batch multiple tris into a single glBegin(GL_TRIANGLES)
-     * block — fakeglx.cpp:1416 has an off-by-one (`drawMode+1`) that maps
-     * GL_TRIANGLES(4)→D3DPT_TRIANGLESTRIP(5).  3-vertex submissions render
-     * identically under either type; longer batches would stripify wrong.
+    /* Consecutive triangles with matching texture and render state share
+     * a Begin/End. The current FakeGL maps GL_TRIANGLES explicitly to
+     * D3DPT_TRIANGLELIST in both inline and buffered submission paths.
      *
      * STD3D_WIREFRAME (1=GL_LINES outline / 0=textured fill).
      * STD3D_FORCE_WHITE_UNTEX: draw untextured tris in white instead of
@@ -1370,9 +1438,6 @@ void std3D_DrawRenderList(void)
 #else
 #define STD3D_BATCH_TRI_RUNS 0
 #endif
-/* DANGEROUS PERF: batching is intentionally enabled for normal Xbox builds.
- * FakeGL Begin() now maps GL_TRIANGLES to D3DPT_TRIANGLELIST explicitly, so
- * consecutive same-state tris can share one Begin/End without stripifying. */
 /* Diagnostic: re-emit each tri as a green line overlay after the textured
  * pass.  Confirmed (via hardware test): warp is UV/affine, not tri-level. */
 #define STD3D_WIREFRAME_OVERLAY 0
@@ -1416,15 +1481,16 @@ void std3D_DrawRenderList(void)
                             && g_pfnBindTexture);
             unsigned int id = textured ? (unsigned int)t->texture->texture_id : 0u;
             int sampler_flags = textured ? (t->flags & (STD3D_TRI_FLAG_CLAMP_X | STD3D_TRI_FLAG_CLAMP_Y | STD3D_TRI_FLAG_NEAREST)) : 0;
-
             if (textured) {
                 if (t->flags != last_flags) {
 #if defined(TARGET_XBOX) && defined(XBOX_PERF_SMOKE)
                     perfFlagChanges++;
 #endif
                     glEnable(GL_BLEND);
-                    if (g_xboxScreenSpaceRenderList) glDisable(GL_CULL_FACE);
-                    else                            glEnable(GL_CULL_FACE);
+                    if (g_xboxScreenSpaceRenderList || (t->flags & STD3D_TRI_FLAG_NO_CULL))
+                        glDisable(GL_CULL_FACE);
+                    else
+                        glEnable(GL_CULL_FACE);
 
                     if (g_xboxScreenSpaceRenderList) {
                         glDepthFunc(GL_LEQUAL);
@@ -1443,8 +1509,7 @@ void std3D_DrawRenderList(void)
                     if (t->flags & 0x200) glDisable(GL_ALPHA_TEST);
                     else                  glEnable(GL_ALPHA_TEST);
 
-                    if (t->flags & 0x600) glBlendFunc(GL_ONE, GL_ONE_MINUS_SRC_ALPHA);
-                    else                  glBlendFunc(GL_SRC_ALPHA, GL_ONE_MINUS_SRC_ALPHA);
+                    std3D_XboxApplyFaceBlend(t->flags, 1);
 
                     last_flags = t->flags;
                 }
@@ -1474,12 +1539,7 @@ void std3D_DrawRenderList(void)
                 if (t->flags & 0x200) glDisable(GL_ALPHA_TEST);
                 else                  glEnable(GL_ALPHA_TEST);
 
-                if (t->flags & 0x600) {
-                    glEnable(GL_BLEND);
-                    glBlendFunc(GL_ONE, GL_ONE_MINUS_SRC_ALPHA);
-                } else {
-                    glDisable(GL_BLEND);
-                }
+                std3D_XboxApplyFaceBlend(t->flags, 0);
             }
 
             if (textured) {
@@ -1546,7 +1606,8 @@ void std3D_DrawRenderList(void)
 #if defined(TARGET_XBOX) && defined(XBOX_PERF_SMOKE)
             perfTriBegins++;
 #endif
-            glBegin(GL_TRIANGLES);
+            if (textured) glXboxBeginLitTriangles();
+            else glBegin(GL_TRIANGLES);
             /* Per-vertex lighting modulation.
              *
              * The engine writes a [0..1] monochrome light value into
@@ -1591,9 +1652,16 @@ void std3D_DrawRenderList(void)
 #define V_COLOR_B(v) (float)( (v)->color        & 0xFF) / 255.0f
 #define V_COLOR_A(v) (float)((((v)->color >> 24) & 0xFF) ? (((v)->color >> 24) & 0xFF) : 0xFF) / 255.0f
 #define V_COLOR_RGB_NONZERO(v) (((v)->color & 0x00FFFFFFu) != 0u)
+#define V_LIT_TEXTURED(v) glXboxLitVertex((v)->x, \
+    g_xboxScreenSpaceRenderList ? (v)->y : (v)->z, \
+    g_xboxScreenSpaceRenderList ? -(v)->z : -(v)->y, \
+    (v)->tu, (v)->tv, (v)->lightLevel, V_COLOR_A(v))
             {
                 int bi;
-                for (bi = i; bi < batch_end; ++bi)
+                if (textured)
+                    glXboxLitTriangles(GL_tmpVertices, &GL_tmpTris[i],
+                        sizeof(rdTri), batch_end - i, g_xboxScreenSpaceRenderList);
+                else for (bi = i; bi < batch_end; ++bi)
                 {
                     rdTri *bt = &GL_tmpTris[bi];
                     D3DVERTEX *ba = &GL_tmpVertices[bt->v1];
@@ -1601,15 +1669,9 @@ void std3D_DrawRenderList(void)
                     D3DVERTEX *bc = &GL_tmpVertices[bt->v3];
 
                     if (textured) {
-                        glColor4f(ba->lightLevel, ba->lightLevel, ba->lightLevel, V_COLOR_A(ba));
-                        glTexCoord2f(ba->tu, ba->tv);
-                        V3F_ENGINE_TO_GL(ba);
-                        glColor4f(bb->lightLevel, bb->lightLevel, bb->lightLevel, V_COLOR_A(bb));
-                        glTexCoord2f(bb->tu, bb->tv);
-                        V3F_ENGINE_TO_GL(bb);
-                        glColor4f(bc->lightLevel, bc->lightLevel, bc->lightLevel, V_COLOR_A(bc));
-                        glTexCoord2f(bc->tu, bc->tv);
-                        V3F_ENGINE_TO_GL(bc);
+                        V_LIT_TEXTURED(ba);
+                        V_LIT_TEXTURED(bb);
+                        V_LIT_TEXTURED(bc);
                     } else {
                         if (V_COLOR_RGB_NONZERO(ba)) glColor4f(V_COLOR_R(ba), V_COLOR_G(ba), V_COLOR_B(ba), V_COLOR_A(ba));
                         else                         glColor4f(ba->lightLevel, ba->lightLevel, ba->lightLevel, V_COLOR_A(ba));
@@ -1627,6 +1689,7 @@ void std3D_DrawRenderList(void)
 #undef V_COLOR_G
 #undef V_COLOR_B
 #undef V_COLOR_A
+#undef V_LIT_TEXTURED
 #undef V_COLOR_RGB_NONZERO
             i = batch_end - 1;
         }
@@ -1713,7 +1776,7 @@ void std3D_DrawRenderList(void)
 
 #if defined(TARGET_XBOX) && defined(XBOX_PERF_SMOKE)
     {
-        unsigned long nowMs = (unsigned long)GetTickCount();
+        unsigned long nowMs = (unsigned long)stdPlatform_GetTimeMsec();
         g_perfDrlMs += nowMs - perfStartMs;
         g_perfDrlCalls++;
         g_perfDrlTris += perfListTris;
@@ -1753,6 +1816,7 @@ void std3D_DrawRenderList(void)
         }
     }
 #endif
+    xbox_debug_ProfileAdd(XPROF_SUBMIT, profileSubmitStart);
 }
 
 /* ====================================================================== */
@@ -2572,7 +2636,81 @@ static void xbox_set_ui_state(int enable_blend)
     }
 }
 
-static void std3D_XboxTransformViewportUiRect(float *x, float *y, float w, float h)
+extern void xbox_get_color_effects(float *tint, int *filter, float *fade, int *add);
+
+static void xbox_draw_effect_quad(float r, float g, float b)
+{
+    glBegin(GL_TRIANGLES);
+    glColor4f(r, g, b, 1.0f);
+    glVertex3f(0, 0, 0); glVertex3f(640, 0, 0); glVertex3f(640, 480, 0);
+    glVertex3f(0, 0, 0); glVertex3f(640, 480, 0); glVertex3f(0, 480, 0);
+    glEnd();
+}
+
+void std3D_XboxDrawColorEffects(void)
+{
+    float tint[3], fade, scale[3], lower[3], upper[3], positive[3], negative[3];
+    int filter[3], add[3], filtered, i, darken = 0, brighten = 0, addPositive = 0, addNegative = 0;
+    if (!g_initialized || !g_sceneOpen) return;
+    xbox_get_color_effects(tint, filter, &fade, add);
+    filtered = filter[0] || filter[1] || filter[2];
+    for (i = 0; i < 3; ++i) {
+        /* Same channel factors as stdPalEffects_ApplyTint. Two passes
+         * allow factors above one without clamping the source color. */
+        scale[i] = 1.0f + tint[i] - 0.5f * (tint[(i+1)%3] + tint[(i+2)%3]);
+        if (filtered && !filter[i]) scale[i] *= 0.25f;
+        if (scale[i] < 0.0f) scale[i] = 0.0f;
+        if (scale[i] > 2.0f) scale[i] = 2.0f;
+        lower[i] = scale[i] < 1.0f ? scale[i] : 1.0f;
+        upper[i] = scale[i] > 1.0f ? scale[i] - 1.0f : 0.0f;
+        if (lower[i] < 1.0f) darken = 1;
+        if (upper[i] > 0.0f) brighten = 1;
+        positive[i] = add[i] > 0 ? (float)add[i] / 255.0f : 0.0f;
+        negative[i] = add[i] < 0 ? -(float)add[i] / 255.0f : 0.0f;
+        if (positive[i] > 1.0f) positive[i] = 1.0f;
+        if (negative[i] > 1.0f) negative[i] = 1.0f;
+        if (positive[i] > 0.0f) addPositive = 1;
+        if (negative[i] > 0.0f) addNegative = 1;
+    }
+    if (fade < 0.0f) fade = 0.0f;
+    if (fade > 1.0f) fade = 1.0f;
+    if (!darken && !brighten && !addPositive && !addNegative && fade == 1.0f) return;
+
+    xbox_set_ui_state(1);
+    /* Affect only this player's world viewport, even when HUD overlays
+     * use the full framebuffer to preserve their pixel size. */
+    std3D_XboxApplyViewport();
+    glDisable(GL_TEXTURE_2D);
+    if (darken) {
+        glBlendFunc(GL_ZERO, GL_SRC_COLOR);
+        xbox_draw_effect_quad(lower[0], lower[1], lower[2]);
+    }
+    if (brighten) {
+        glBlendFunc(GL_DST_COLOR, GL_ONE);
+        xbox_draw_effect_quad(upper[0], upper[1], upper[2]);
+    }
+    if (addPositive) {
+        glBlendFunc(GL_ONE, GL_ONE);
+        xbox_draw_effect_quad(positive[0], positive[1], positive[2]);
+    }
+    if (addNegative) {
+        /* FakeGL exposes additive blending only. Invert, add, invert gives
+         * max(0, destination - offset), including per-channel saturation. */
+        glBlendFunc(GL_ONE_MINUS_DST_COLOR, GL_ZERO);
+        xbox_draw_effect_quad(1.0f, 1.0f, 1.0f);
+        glBlendFunc(GL_ONE, GL_ONE);
+        xbox_draw_effect_quad(negative[0], negative[1], negative[2]);
+        glBlendFunc(GL_ONE_MINUS_DST_COLOR, GL_ZERO);
+        xbox_draw_effect_quad(1.0f, 1.0f, 1.0f);
+    }
+    if (fade < 1.0f) {
+        glBlendFunc(GL_ZERO, GL_SRC_COLOR);
+        xbox_draw_effect_quad(fade, fade, fade);
+    }
+    glBlendFunc(GL_SRC_ALPHA, GL_ONE_MINUS_SRC_ALPHA);
+}
+
+static void std3D_XboxTransformViewportUiRect(float *x, float *y, float *width, float h)
 {
     float srcX;
     float srcY;
@@ -2580,8 +2718,14 @@ static void std3D_XboxTransformViewportUiRect(float *x, float *y, float w, float
     float centerY;
     float viewportTopY;
 
-    if (!g_xboxUiViewportOverlay || !x || !y)
+    float w = *width;
+    float pixelAspect = xboxVideo_GetPixelAspectRatio();
+    if (!x || !y) return;
+    *width = w / pixelAspect;
+    if (!g_xboxUiViewportOverlay) {
+        *x = 320.0f + (*x - 320.0f) / pixelAspect;
         return;
+    }
 
     srcX = *x;
     srcY = *y;
@@ -2590,11 +2734,11 @@ static void std3D_XboxTransformViewportUiRect(float *x, float *y, float w, float
     viewportTopY = 480.0f - (float)(g_xboxViewportY + g_xboxViewportH);
 
     if (centerX > 400.0f)
-        *x = (float)g_xboxViewportX + (float)g_xboxViewportW - (640.0f - srcX);
+        *x = (float)g_xboxViewportX + (float)g_xboxViewportW - (640.0f - srcX) / pixelAspect;
     else if (centerX >= 240.0f)
-        *x = (float)g_xboxViewportX + ((float)g_xboxViewportW * 0.5f) + (srcX - 320.0f);
+        *x = (float)g_xboxViewportX + ((float)g_xboxViewportW * 0.5f) + (srcX - 320.0f) / pixelAspect;
     else
-        *x = (float)g_xboxViewportX + srcX;
+        *x = (float)g_xboxViewportX + srcX / pixelAspect;
 
     if (centerY > 320.0f)
         *y = viewportTopY + (float)g_xboxViewportH - (480.0f - srcY);
@@ -2836,6 +2980,10 @@ static void std3D_DrawMenuVBuffer8Tiled(stdVBuffer *vbuf, const rdColor24_local 
     }
 
     xbox_set_ui_state(0);
+    {
+        int menuWidth = (int)(640.0f / xboxVideo_GetPixelAspectRatio());
+        glViewport((640 - menuWidth) / 2, 0, menuWidth, 480);
+    }
     glDisable(GL_TEXTURE_2D);
     glTexEnvf(GL_TEXTURE_ENV, GL_TEXTURE_ENV_MODE, (GLfloat)GL_REPLACE);
     glClear(GL_COLOR_BUFFER_BIT | GL_DEPTH_BUFFER_BIT | GL_STENCIL_BUFFER_BIT);
@@ -3154,6 +3302,10 @@ void std3D_DrawMenuVBuffer8(stdVBuffer *vbuf, const rdColor24_local *pal)
     }
 
     xbox_set_ui_state(0);
+    {
+        int menuWidth = (int)(640.0f / xboxVideo_GetPixelAspectRatio());
+        glViewport((640 - menuWidth) / 2, 0, menuWidth, 480);
+    }
     glDisable(GL_TEXTURE_2D);
     glClear(GL_COLOR_BUFFER_BIT | GL_DEPTH_BUFFER_BIT | GL_STENCIL_BUFFER_BIT);
 
@@ -3296,6 +3448,7 @@ void std3D_DrawUIBitmapRGBA(void *pBmp_v, int mipIdx, float dstX, float dstY,
         v1 = srcY / (float)padTexH;
         u2 = (srcX + srcW) / (float)padTexW;
         v2 = (srcY + srcH) / (float)padTexH;
+
     }
 
     dstW = srcW * scaleX;
@@ -3310,7 +3463,7 @@ void std3D_DrawUIBitmapRGBA(void *pBmp_v, int mipIdx, float dstX, float dstY,
         dstH = srcH * scaleY;
     }
 
-    std3D_XboxTransformViewportUiRect(&dstX, &dstY, dstW, dstH);
+    std3D_XboxTransformViewportUiRect(&dstX, &dstY, &dstW, dstH);
 
     /* UI bitmaps that arrived as 16-bit (RGB565) encode transparency via
      * vbuf->transparent_color (typically magenta).  Their palFmt bit
@@ -3328,21 +3481,21 @@ void std3D_DrawUIBitmapRGBA(void *pBmp_v, int mipIdx, float dstX, float dstY,
      * requires bind-first so the next SetGLRenderState commits the right
      * texture stage source. */
     g_pfnBindTexture(GL_TEXTURE_2D, texId);
+    if (g_xboxHudGlyphSampling) {
+        /* Anamorphic compression can skip a whole one-pixel stem under point
+         * sampling. Integrate neighboring texels only for minified HUD digits;
+         * retain point sampling at native size and when magnifying. Geometry,
+         * glyph advances, viewport anchoring and physical size are untouched. */
+        GLfloat filter = (dstW < srcW || dstH < srcH) ? GL_LINEAR : GL_NEAREST;
+        glTexParameterf(GL_TEXTURE_2D, GL_TEXTURE_MIN_FILTER, filter);
+        glTexParameterf(GL_TEXTURE_2D, GL_TEXTURE_MAG_FILTER, (GLfloat)GL_NEAREST);
+    }
+
     glEnable(GL_TEXTURE_2D);
 
-    /* CRITICAL: textured UI MUST be one-tri-per-glBegin, matching the
-     * world DRL loop (std3D.c:1000+).  FakeGL's inline-mode off-by-one
-     * (fakeglx.cpp:1416 -- `drawMode+1`) maps GL_TRIANGLES(4) to
-     * D3DPT_TRIANGLESTRIP(5).  3-vertex submissions render identically
-     * under either type; 6-vert submissions misinterpolate UVs and
-     * render as transparent / fuchsia.
-     *
-     * Also: glColor4f goes INSIDE glBegin once per vertex, matching the
-     * world DRL's per-vertex DIFFUSE writes.  If color is set outside
-     * glBegin, FakeGL's m_OGLPrimitiveVertexBuffer.SetColor doesn't bind
-     * to any vertex and the per-tri DIFFUSE state stays at the
-     * leftover/default — which is typically fuchsia for unset vertex
-     * data on NV2A. */
+    /* FakeGL now maps GL_TRIANGLES explicitly to D3DPT_TRIANGLELIST.
+     * Submit both halves of this quad together, retaining each vertex's
+     * color/UV and the original triangle order. */
     {
         float r = (float)cr / 255.0f;
         float g = (float)cg / 255.0f;
@@ -3353,9 +3506,7 @@ void std3D_DrawUIBitmapRGBA(void *pBmp_v, int mipIdx, float dstX, float dstY,
         glColor4f(r, g, b, a); glTexCoord2f(u1, v1); glVertex3f(dstX,        dstY,        0.0f);
         glColor4f(r, g, b, a); glTexCoord2f(u2, v1); glVertex3f(dstX + dstW, dstY,        0.0f);
         glColor4f(r, g, b, a); glTexCoord2f(u2, v2); glVertex3f(dstX + dstW, dstY + dstH, 0.0f);
-        glEnd();
 
-        glBegin(GL_TRIANGLES);
         glColor4f(r, g, b, a); glTexCoord2f(u1, v1); glVertex3f(dstX,        dstY,        0.0f);
         glColor4f(r, g, b, a); glTexCoord2f(u2, v2); glVertex3f(dstX + dstW, dstY + dstH, 0.0f);
         glColor4f(r, g, b, a); glTexCoord2f(u1, v2); glVertex3f(dstX,        dstY + dstH, 0.0f);
@@ -3394,7 +3545,7 @@ void std3D_DrawUIClearedRectRGBA(unsigned char cr, unsigned char cg,
     h = (float)dstRect->height;
     if (w <= 0.0f || h <= 0.0f) return;
 
-    std3D_XboxTransformViewportUiRect(&x, &y, w, h);
+    std3D_XboxTransformViewportUiRect(&x, &y, &w, h);
 
     xbox_set_ui_state(ca < 0xFF);
     glDisable(GL_TEXTURE_2D);

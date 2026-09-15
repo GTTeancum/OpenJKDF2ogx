@@ -109,7 +109,17 @@ flex_t rdLight_CalcVertexIntensities(rdLight **meshLights, rdVector3 *localLight
             len = rdVector_Len3(&diff);
             if ( len < (*meshLightIter)->falloffMin )
             {
+#ifdef TARGET_XBOX
+                /* Len3 above already computed Normalize3Acc's denominator. */
+                if (len != 0.0)
+                {
+                    diff.x /= len;
+                    diff.y /= len;
+                    diff.z /= len;
+                }
+#else
                 rdVector_Normalize3Acc(&diff);
+#endif
                 lightMagnitude = rdVector_Dot3(vertexNormals, &diff);
                 if ( lightMagnitude > 0.0 )
                     *outLights += (light->intensity - len * scalar) * lightMagnitude;
@@ -160,7 +170,17 @@ flex_t rdLight_CalcVertexIntensities(rdLight **meshLights, rdVector3 *localLight
                 len = rdVector_Len3(&diff);
                 if ( len < (*meshLightIter)->falloffMin )
                 {
+#ifdef TARGET_XBOX
+                    /* Reuse the same length; retain zero-vector behavior. */
+                    if (len != 0.0)
+                    {
+                        diff.x /= len;
+                        diff.y /= len;
+                        diff.z /= len;
+                    }
+#else
                     rdVector_Normalize3Acc(&diff);
+#endif
                     lightMagnitude = rdVector_Dot3(vertexNormals, &diff);
                     if ( lightMagnitude > 0.0 )
                         *outLights += (light->intensity - len * scalar) * lightMagnitude;

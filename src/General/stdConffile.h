@@ -33,6 +33,10 @@ int stdConffile_OpenWriteBypass(char *a1);
 
 void stdConffile_Close();
 void stdConffile_CloseWrite();
+#ifdef TARGET_XBOX
+void stdConffile_BufferWrite(void);
+int stdConffile_FlushWrite(void);
+#endif
 int stdConffile_WriteLine(const char *line);
 int stdConffile_Write(const char* line, int amt);
 int stdConffile_Printf(char *fmt, ...);

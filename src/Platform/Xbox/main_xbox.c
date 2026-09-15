@@ -28,6 +28,7 @@ void Window_xbox_Present(void);
 extern "C" int std3D_StartScene(void);
 extern "C" int std3D_EndScene(void);
 extern "C" void std3D_Present(void);
+extern "C" unsigned int stdPlatform_GetTimeMsec(void);
 int Main_Startup(const char *cmdline);
 void stdFile_xbox_Startup(void);
 int  stdControl_Startup(void);
@@ -243,7 +244,7 @@ void __cdecl main(void)
      *    Pass empty string for default behaviour (no episode override).
      * -------------------------------------------------------------- */
     {
-        char smokeArgs[160];
+        char smokeArgs[256];
         const char *startupArgs = xbox_read_smoke_autostart_args(smokeArgs, sizeof(smokeArgs));
         if (startupArgs[0])
             xbox_debug_Printf("Smoke: Main_Startup args='%s'\n", startupArgs);
@@ -313,7 +314,7 @@ void __cdecl main(void)
         {
 #ifdef XBOX_PERF_SMOKE
         {
-            DWORD nowMs = GetTickCount();
+            DWORD nowMs = stdPlatform_GetTimeMsec();
             if (!s_perfLoopLastMs)
                 s_perfLoopLastMs = nowMs;
             if (nowMs - s_perfLoopLastMs >= 5000)
@@ -335,13 +336,13 @@ void __cdecl main(void)
 #endif
         /* if (loopCount < 5) XDBG("main: -> StartScene\n"); */
 #ifdef XBOX_PERF_SMOKE
-        { DWORD t0 = GetTickCount();
+        { DWORD t0 = stdPlatform_GetTimeMsec();
           int traceFrame = XBOX_PERF_PHASE_TRACE ? s_perfTraceNextFrame : 0;
           if (traceFrame) XPERF("PerfPhase: loop=%d before StartScene\n", loopCount);
 #endif
         std3D_StartScene();
 #ifdef XBOX_PERF_SMOKE
-          { DWORD t1 = GetTickCount();
+          { DWORD t1 = stdPlatform_GetTimeMsec();
             if (traceFrame) XPERF("PerfPhase: loop=%d after StartScene before GuiAdvance\n", loopCount);
 #endif
         /* if (loopCount < 5) XDBG("main: -> GuiAdvance\n"); */
@@ -350,19 +351,22 @@ void __cdecl main(void)
         jkMain_XboxAlwaysSoakTickGameplay();
 #endif
 #ifdef XBOX_PERF_SMOKE
-            { DWORD t2 = GetTickCount();
+            { DWORD t2 = stdPlatform_GetTimeMsec();
               if (traceFrame) XPERF("PerfPhase: loop=%d after GuiAdvance before EndScene\n", loopCount);
 #endif
         /* if (loopCount < 5) XDBG("main: -> EndScene\n"); */
         std3D_EndScene();
 #ifdef XBOX_PERF_SMOKE
-              { DWORD t3 = GetTickCount();
+              { DWORD t3 = stdPlatform_GetTimeMsec();
                 if (traceFrame) XPERF("PerfPhase: loop=%d after EndScene before Present\n", loopCount);
 #endif
         /* if (loopCount < 5) XDBG("main: -> Present\n"); */
-        std3D_Present();  /* Swap buffers AFTER EndScene, outside scene block */
+        { unsigned int profileStart = xbox_debug_ProfileClock();
+          std3D_Present();  /* Swap buffers AFTER EndScene, outside scene block */
+          xbox_debug_ProfileAdd(XPROF_PRESENT, profileStart);
+        }
 #ifdef XBOX_PERF_SMOKE
-                { DWORD t4 = GetTickCount();
+                { DWORD t4 = stdPlatform_GetTimeMsec();
                   if (traceFrame) XPERF("PerfPhase: loop=%d after Present before Sleep\n", loopCount);
 #endif
         /* if (loopCount < 5) XDBG("main: -> Sleep\n"); */
@@ -385,7 +389,7 @@ void __cdecl main(void)
         Sleep(1);
 #endif
 #ifdef XBOX_PERF_SMOKE
-                  { DWORD t5 = GetTickCount();
+                  { DWORD t5 = stdPlatform_GetTimeMsec();
                     if (traceFrame) XPERF("PerfPhase: loop=%d after Sleep\n", loopCount);
                     s_perfStartMs += (unsigned long)(t1 - t0);
                     s_perfGuiMs += (unsigned long)(t2 - t1);

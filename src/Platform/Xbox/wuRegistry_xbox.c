@@ -4,6 +4,7 @@
  */
 #include "Platform/wuRegistry.h"
 #include "jk.h"
+#include "xbox_debug.h"
 #include <stdio.h>
 #include <stdlib.h>
 #include <string.h>
@@ -15,7 +16,7 @@ const char *wuRegistry_lpSubKey = "";
 #define WUREG_XBOX_MAX_ENTRIES 96
 #define WUREG_XBOX_KEY_LEN 64
 #define WUREG_XBOX_VAL_LEN 128
-#define WUREG_XBOX_FNAME "xbox_registry.cfg"
+#define WUREG_XBOX_FNAME "U:\\xbox_registry.cfg"
 
 typedef struct XboxRegistryEntry
 {
@@ -64,9 +65,17 @@ static void wuRegistry_XboxLoad(void)
     wuRegistry_xboxLoaded = 1;
     wuRegistry_xboxNumEntries = 0;
 
-    f = fopen(WUREG_XBOX_FNAME, "r");
-    if (!f)
+    /* Title storage is writable on hardware; disc settings seed defaults.
+     * Keep the old relative location as a migration fallback. */
+    const char *path = WUREG_XBOX_FNAME;
+    f = fopen(path, "r");
+    if (!f) { path = "xbox_registry.cfg"; f = fopen(path, "r"); }
+    if (!f) { path = "D:\\xbox_registry.cfg"; f = fopen(path, "r"); }
+    if (!f) {
+        xbox_debug_Printf("XboxRegistry: no settings file; using defaults\n");
         return;
+    }
+    xbox_debug_Printf("XboxRegistry: loading path=%s\n", path);
 
     while (fgets(line, sizeof(line), f) && wuRegistry_xboxNumEntries < WUREG_XBOX_MAX_ENTRIES)
     {

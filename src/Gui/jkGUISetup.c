@@ -339,6 +339,14 @@ void jkGuiSetup_sub_412EF0(jkGuiMenu *menu, int a2)
     }
 }
 
+#ifdef TARGET_XBOX
+static void jkGuiSetupXbox_SmokeTick(jkGuiMenu *menu)
+{
+    menu->idkFunc = NULL;
+    menu->lastClicked = 100; /* General; exercise the normal Setup dispatch. */
+}
+#endif
+
 void jkGuiSetup_Show()
 {
     int i; // esi
@@ -347,6 +355,13 @@ void jkGuiSetup_Show()
 ;
     jkGuiSetup_sub_412EF0(&jkGuiSetup_menu, 0);
 #ifdef TARGET_XBOX
+    {
+        FILE *probe = fopen("D:\\xbox_smoke_setup.txt", "rb");
+        if (probe) {
+            fclose(probe);
+            jkGuiSetup_menu.idkFunc = jkGuiSetupXbox_SmokeTick;
+        }
+    }
     jkGuiRend_MenuSetReturnKeyShortcutElement(&jkGuiSetup_menu, NULL);
 #else
     jkGuiRend_MenuSetReturnKeyShortcutElement(&jkGuiSetup_menu, &jkGuiSetup_buttons[7]);

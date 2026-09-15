@@ -250,3 +250,5 @@ build/xbox/release/debug_openjkdf2.txt
 /XBOX_EFFICIENCY_SMOKE.md
 /XBOX_HACKS.md
 /xbox_hardware_resource_audit.md
+/build/xbox/issue1_validation/
+build/xbox/integration-backups/

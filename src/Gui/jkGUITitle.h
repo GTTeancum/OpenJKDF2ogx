@@ -23,6 +23,7 @@ void jkGuiTitle_LoadBarDraw(jkGuiElement *element, jkGuiMenu *menu, stdVBuffer *
 MATH_FUNC void jkGuiTitle_WorldLoadCallback(flex_t percentage);
 void jkGuiTitle_ShowLoadingStatic();
 void jkGuiTitle_ShowLoading(char *a1, wchar_t *a2);
+void jkGuiTitle_SetLoadingStatus(const wchar_t *status);
 void jkGuiTitle_LoadingFinalize();
 void jkGuiTitle_LoadingStaticFinalizeMenu();
 

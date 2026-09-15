@@ -4,8 +4,11 @@
 #include "Engine/rdroid.h"
 #include "World/sithWorld.h"
 #include "General/stdConffile.h"
+#include "Main/Main.h"
 #include "stdPlatform.h"
 #include "jk.h"
+
+#define SITHMODEL_BOT_MODEL_RESERVE 16
 
 static stdHashTable* sithModel_hashtable;
 
@@ -27,6 +30,7 @@ void sithModel_Shutdown()
 int sithModel_Load(sithWorld *world, int a2)
 {
     int numModels;
+    int modelCapacity;
     flex_t loadStep;
     flex_t loadProgress;
 
@@ -35,9 +39,14 @@ int sithModel_Load(sithWorld *world, int a2)
     stdConffile_ReadArgs();
     if ( _memcmp(stdConffile_entry.args[0].value, "world", 6u) || _memcmp(stdConffile_entry.args[1].value, "models", 7u) )
         return 0;
-    world->numModels = _atoi(stdConffile_entry.args[2].value);
-    if ( !world->numModels )
+    numModels = _atoi(stdConffile_entry.args[2].value);
+    if ( !numModels )
         return 1;
+
+    modelCapacity = numModels;
+    if (Main_numBots > 0)
+        modelCapacity += SITHMODEL_BOT_MODEL_RESERVE;
+    world->numModels = modelCapacity;
 
     world->models = (rdModel3 *)pSithHS->alloc(sizeof(rdModel3) * world->numModels);
     if ( !world->models )
@@ -49,7 +58,7 @@ int sithModel_Load(sithWorld *world, int a2)
     _memset(world->models, 0, sizeof(rdModel3) * world->numModels);
 
     sithWorld_UpdateLoadPercent(60.0);
-    loadStep = 10.0 / (flex_d_t)world->numModels;
+    loadStep = 10.0 / (flex_d_t)numModels;
     loadProgress = 60.0;
     while ( stdConffile_ReadArgs() )
     {

@@ -1,4 +1,6 @@
 #!/usr/bin/env python3
+import hashlib
+from pathlib import Path
 import argparse
 import json
 import os
@@ -75,6 +77,18 @@ def xemu_find_screenshot_flag_pointer_rva(xemu_exe):
 
     with open(xemu_exe, "rb") as f:
         data = f.read()
+    # Cache discovery by executable content so early loading captures do not
+    # wait for a full PE cross-reference scan on every invocation.
+    digest = hashlib.sha256(data).hexdigest()
+    cache_file = Path(__file__).resolve().parents[2] / "build/xemu-native-capture-cache.json"
+    try:
+        disk_cache = json.loads(cache_file.read_text())
+        if disk_cache.get("sha256") == digest:
+            pointer_rva = int(disk_cache["pointer_rva"])
+            _XEMU_SCREENSHOT_FLAG_RVA_CACHE[xemu_exe] = pointer_rva
+            return pointer_rva
+    except (OSError, ValueError, KeyError, TypeError):
+        pass
     image_base, sections = pe_sections(data)
 
     screenshot_offsets = []
@@ -138,6 +152,11 @@ def xemu_find_screenshot_flag_pointer_rva(xemu_exe):
                 pointer_va = pattern_va + 7 + disp
                 pointer_rva = pointer_va - image_base
                 _XEMU_SCREENSHOT_FLAG_RVA_CACHE[xemu_exe] = pointer_rva
+                try:
+                    cache_file.parent.mkdir(parents=True, exist_ok=True)
+                    cache_file.write_text(json.dumps(dict(sha256=digest, pointer_rva=pointer_rva)))
+                except OSError:
+                    pass
                 return pointer_rva
     return None
 

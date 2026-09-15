@@ -55,6 +55,9 @@ int jkGuiBuildMulti_Startup();
 void jkGuiBuildMulti_Shutdown();
 void jkGuiBuildMulti_Load(char *pPathOut, int pathOutLen, wchar_t *pPlayerName, wchar_t *pCharName, int bCharPath);
 int jkGuiBuildMulti_Show();
+#ifdef TARGET_XBOX
+void jkGuiBuildMulti_XboxPreviewSmoke(void);
+#endif
 int jkGuiBuildMulti_Show2(Darray *pDarray, jkGuiElement *pElement, int minIdk, int maxIdk, int idx);
 int jkGuiBuildMulti_ShowNewCharacter(int rank, int bGameFormatIsJK, int bHasNoValidChars);
 int jkGuiBuildMulti_menuNewCharacter_rankArrowButtonClickHandler(jkGuiElement *pElement, jkGuiMenu *pMenu, int32_t mouseX, int32_t mouseY, BOOL redraw);

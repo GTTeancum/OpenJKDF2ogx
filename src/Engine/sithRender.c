@@ -1,3 +1,6 @@
+#ifdef TARGET_XBOX
+#include "Platform/Xbox/xbox_video.h"
+#endif
 #include "sithRender.h"
 
 #include <math.h>
@@ -491,6 +494,9 @@ void sithRender_SetPalette(const void *palette)
 
 void sithRender_Draw()
 {
+#ifdef TARGET_XBOX
+    unsigned int profileStart = xbox_debug_ProfileClock();
+#endif
     sithSector *v2; // edi
     sithSector *v4; // eax
     flex_t a2; // [esp+0h] [ebp-28h]
@@ -767,6 +773,10 @@ void sithRender_Draw()
         }
     }
 #endif
+#ifdef TARGET_XBOX
+    xbox_debug_ProfileAdd(XPROF_CLIP, profileStart);
+    profileStart = xbox_debug_ProfileClock();
+#endif
 #if defined(TARGET_XBOX) && defined(XBOX_PERF_SMOKE)
     perfRenderClipEndMs = stdPlatform_GetTimeMsec();
 #endif
@@ -831,6 +841,10 @@ void sithRender_Draw()
         }
     }
 #endif
+#ifdef TARGET_XBOX
+    xbox_debug_ProfileAdd(XPROF_LIGHT, profileStart);
+    profileStart = xbox_debug_ProfileClock();
+#endif
 #if defined(TARGET_XBOX) && defined(XBOX_PERF_SMOKE)
     perfRenderLightEndMs = stdPlatform_GetTimeMsec();
 #endif
@@ -849,6 +863,10 @@ void sithRender_Draw()
     { static int _srl=0; if(_srl<1){ XDBGF("sithRender_Draw: RenderLevelGeo done faces=%d\n", rdCache_numProcFaces); _srl++; } }
     std3D_DebugLineKV(4, "PFACES", rdCache_numProcFaces);
 #endif
+#ifdef TARGET_XBOX
+    xbox_debug_ProfileAdd(XPROF_GEO, profileStart);
+    profileStart = xbox_debug_ProfileClock();
+#endif
 #if defined(TARGET_XBOX) && defined(XBOX_PERF_SMOKE)
     perfRenderGeoEndMs = stdPlatform_GetTimeMsec();
 #endif
@@ -862,6 +880,10 @@ void sithRender_Draw()
     // TWL: 10-20ms
     if ( sithRender_numSectors2 )
         sithRender_RenderThings();
+#ifdef TARGET_XBOX
+    xbox_debug_ProfileAdd(XPROF_THINGS, profileStart);
+    profileStart = xbox_debug_ProfileClock();
+#endif
 #if defined(TARGET_XBOX) && defined(XBOX_PERF_SMOKE)
     perfRenderThingsEndMs = stdPlatform_GetTimeMsec();
 #endif
@@ -875,6 +897,10 @@ void sithRender_Draw()
     // TWL: 0ms
     if ( sithRender_numSurfaces )
         sithRender_RenderAlphaSurfaces();
+#ifdef TARGET_XBOX
+    xbox_debug_ProfileAdd(XPROF_ALPHA, profileStart);
+    profileStart = xbox_debug_ProfileClock();
+#endif
 #if defined(TARGET_XBOX) && defined(XBOX_PERF_SMOKE)
     perfRenderAlphaEndMs = stdPlatform_GetTimeMsec();
 #endif
@@ -1208,7 +1234,7 @@ void sithRender_Clip(sithSector *sector, rdClipFrustum *frustumArg, flex_t prevA
                         flex_t d = sithRender_aVerticesTmp[_i].y;
                         flex_t s = (d == 0.0) ? 0.0 : (fovDx / d);
                         sithRender_aVerticesTmp_projected[_i].x = cx + sithRender_aVerticesTmp[_i].x * s;
-                        sithRender_aVerticesTmp_projected[_i].y = cy - sithRender_aVerticesTmp[_i].z * s;
+                        sithRender_aVerticesTmp_projected[_i].y = cy - sithRender_aVerticesTmp[_i].z * s * xboxVideo_GetPixelAspectRatio();
                         sithRender_aVerticesTmp_projected[_i].z = d;
                     }
                 }

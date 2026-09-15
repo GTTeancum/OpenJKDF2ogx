@@ -9,6 +9,36 @@ static struct HostServices* stdConffile_pHS = 0;
 static BOOL openFileIsBypass[20];
 static BOOL bOpenFileIsBypassed = 0;
 
+#ifdef TARGET_XBOX
+/* Save packets are sequential, but many contain only a four-byte field.
+ * Opt in for saves only; ordinary config writes retain immediate I/O. */
+static char stdConffile_writeBuffer[16384];
+static int stdConffile_writeBuffered;
+static int stdConffile_writeUsed;
+static int stdConffile_writeFailed;
+
+int stdConffile_FlushWrite(void)
+{
+    if (!writeFile || stdConffile_writeFailed)
+        return 0;
+    if (stdConffile_writeUsed) {
+        int wanted = stdConffile_writeUsed;
+        stdConffile_writeUsed = 0;
+        if (stdConffile_pHS->fileWrite(writeFile, stdConffile_writeBuffer, wanted) != wanted) {
+            stdConffile_writeFailed = 1;
+            return 0;
+        }
+    }
+    return 1;
+}
+
+void stdConffile_BufferWrite(void)
+{
+    if (writeFile)
+        stdConffile_writeBuffered = 1;
+}
+#endif
+
 int stdConffile_OpenRead(char *fpath)
 {
     return stdConffile_OpenMode(fpath, "r");
@@ -24,6 +54,11 @@ int stdConffile_OpenWrite(char *a1)
     writeFile = stdConffile_pHS->fileOpen(a1, "wb");
     if (writeFile)
     {
+#ifdef TARGET_XBOX
+        stdConffile_writeBuffered = 0;
+        stdConffile_writeUsed = 0;
+        stdConffile_writeFailed = 0;
+#endif
         stdString_SafeStrCopy(stdConffile_aWriteFilename, a1, 128);
         return 1;
     }
@@ -160,6 +195,10 @@ void stdConffile_CloseWrite()
 {
     if (writeFile)
     {
+#ifdef TARGET_XBOX
+        stdConffile_FlushWrite();
+        stdConffile_writeBuffered = 0;
+#endif
         stdConffile_pHS->fileClose(writeFile); // Added: std_pHS -> stdConffile_pHS
         writeFile = 0;
         stdString_SafeStrCopy(stdConffile_aWriteFilename, "NOT_OPEN", 128);
@@ -175,6 +214,24 @@ int stdConffile_Write(const char* line, int amt)
 {
     if ( !writeFile || !line )
         return 0;
+
+#ifdef TARGET_XBOX
+    if (stdConffile_writeBuffered) {
+        if (amt < 0 || stdConffile_writeFailed)
+            return 0;
+        while (amt) {
+            int copy = sizeof(stdConffile_writeBuffer) - stdConffile_writeUsed;
+            if (copy > amt) copy = amt;
+            memcpy(stdConffile_writeBuffer + stdConffile_writeUsed, line, copy);
+            stdConffile_writeUsed += copy;
+            line += copy;
+            amt -= copy;
+            if (stdConffile_writeUsed == sizeof(stdConffile_writeBuffer) && !stdConffile_FlushWrite())
+                return 0;
+        }
+        return 1;
+    }
+#endif
 
     // Added: std_pHS -> stdConffile_pHS
     return (amt) == stdConffile_pHS->fileWrite(writeFile, (void *)line, (amt));
@@ -193,6 +250,11 @@ int stdConffile_Printf(char *fmt, ...)
 
     len = __vsnprintf(printfBuffer, STDCONF_LINEBUFFER_LEN, fmt, va);
     va_end(va);
+
+#ifdef TARGET_XBOX
+    if (stdConffile_writeBuffered)
+        return stdConffile_Write(printfBuffer, len);
+#endif
 
     // Added: std_pHS -> stdConffile_pHS
     return stdConffile_pHS->fileWrite(writeFile, printfBuffer, len) == len;

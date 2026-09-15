@@ -25,8 +25,25 @@ extern "C" {
 void xbox_debug_Startup(void);
 void xbox_debug_Shutdown(void);
 void xbox_debug_Print(const char *msg);
+/* High-frequency diagnostics: RAM mirror only, without synchronous disk I/O. */
+void xbox_debug_Trace(const char *msg);
 void xbox_debug_Printf(const char *fmt, ...);
 void xbox_debug_PerfPrintf(const char *fmt, ...);
+
+/* Aggregated guest CPU/wait time; nested scopes must not be added together. */
+enum { XPROF_SIM, XPROF_WORLD, XPROF_POV, XPROF_HUD, XPROF_FLIP,
+       XPROF_CLIP, XPROF_LIGHT, XPROF_GEO, XPROF_THINGS, XPROF_ALPHA,
+       XPROF_CLEAR, XPROF_PRESENT, XPROF_SUBMIT,
+       XPROF_SIM_SOUND, XPROF_SIM_BOTS, XPROF_SIM_THINGS, XPROF_SIM_COG,
+       XPROF_MODEL_TRANSFORM, XPROF_MODEL_LIGHT, XPROF_MODEL_FACE,
+       XPROF_COUNT };
+unsigned int xbox_debug_ProfileClock(void);
+void xbox_debug_ProfileAdd(int scope, unsigned int start);
+void xbox_debug_ProfileFrame(int players, unsigned int gameMs);
+void xbox_debug_SimulationStep(double seconds);
+extern unsigned int g_XboxBotSchedulerCalls, g_XboxBotThinkCalls;
+extern unsigned int g_XboxProfileModelMeshes, g_XboxProfileModelVertices, g_XboxProfileModelFaces;
+
 
 /* On-screen debug HUD — text overlay drawn after StartScene's clear.
  * Each glyph is rendered as solid quads (3x5 bitmap font), no textures

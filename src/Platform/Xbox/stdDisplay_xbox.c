@@ -373,42 +373,44 @@ int stdDisplay_VBufferCopy(stdVBuffer *dst, stdVBuffer *src, unsigned int blit_x
 
 int stdDisplay_VBufferFill(stdVBuffer *vbuf, int fillColor, rdRect *rect)
 {
-    rdRect r;
-    int bppBytes;
-    int y;
-
-    if (!vbuf || !vbuf->surface_lock_alloc)
-        return 0;
-
-    if (rect)
-        r = *rect;
-    else
-    {
-        r.x = 0;
-        r.y = 0;
-        r.width = vbuf->format.width;
-        r.height = vbuf->format.height;
+    int x0, y0, x1, y1, bppBytes, rowBytes, y;
+    unsigned char *first;
+    if (!vbuf || !vbuf->surface_lock_alloc) return 0;
+    x0 = y0 = 0;
+    x1 = vbuf->format.width;
+    y1 = vbuf->format.height;
+    if (rect) {
+        /* Clip once, using wide sums so offscreen rectangles cannot overflow. */
+        __int64 right = (__int64)rect->x + rect->width;
+        __int64 bottom = (__int64)rect->y + rect->height;
+        if (rect->width <= 0 || rect->height <= 0 || right <= 0 || bottom <= 0)
+            return 1;
+        x0 = rect->x > 0 ? rect->x : 0;
+        y0 = rect->y > 0 ? rect->y : 0;
+        if (right < x1) x1 = (int)right;
+        if (bottom < y1) y1 = (int)bottom;
     }
-
+    if (x0 >= x1 || y0 >= y1) return 1;
     bppBytes = (vbuf->format.format.bpp == 16 || vbuf->format.format.is16bit) ? 2 : 1;
-    for (y = 0; y < r.height; ++y)
-    {
-        int dy = r.y + y;
+    rowBytes = (x1 - x0) * bppBytes;
+    first = (unsigned char *)vbuf->surface_lock_alloc
+          + y0 * vbuf->format.width_in_bytes + x0 * bppBytes;
+    if (bppBytes == 1 || (unsigned char)fillColor == (unsigned char)((unsigned int)fillColor >> 8)) {
+        if (rowBytes == vbuf->format.width_in_bytes) {
+            memset(first, (unsigned char)fillColor, rowBytes * (y1 - y0));
+            return 1;
+        }
+        memset(first, (unsigned char)fillColor, rowBytes);
+    }
+    else {
         int x;
-        if (dy < 0 || dy >= vbuf->format.height)
-            continue;
-        for (x = 0; x < r.width; ++x)
-        {
-            int dx = r.x + x;
-            unsigned char *d;
-            if (dx < 0 || dx >= vbuf->format.width)
-                continue;
-            d = (unsigned char *)vbuf->surface_lock_alloc + dy * vbuf->format.width_in_bytes + dx * bppBytes;
-            d[0] = (unsigned char)fillColor;
-            if (bppBytes == 2)
-                d[1] = (unsigned char)((unsigned int)fillColor >> 8);
+        for (x = 0; x < rowBytes; x += 2) {
+            first[x] = (unsigned char)fillColor;
+            first[x + 1] = (unsigned char)((unsigned int)fillColor >> 8);
         }
     }
+    for (y = y0 + 1; y < y1; ++y)
+        memcpy(first + (y - y0) * vbuf->format.width_in_bytes, first, rowBytes);
     return 1;
 }
 

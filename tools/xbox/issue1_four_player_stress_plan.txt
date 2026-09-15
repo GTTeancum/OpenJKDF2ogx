@@ -1,0 +1,3 @@
+# Four local players across two stock arenas. Use -FourPlayerStress.
+LEVEL|90|4|JK1MP|m2.jkl
+LEVEL|90|4|JK1MP|m4.jkl

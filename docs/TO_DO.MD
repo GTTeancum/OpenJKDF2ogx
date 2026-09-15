@@ -1,69 +1,56 @@
 # OpenJKDF2 Xbox To-Do
 
-Last updated: 2026-08-17
+## Tracked Items
 
-This is the quick-access working board for active Xbox port items. Keep it short, current, and biased toward things we still need to fix or verify.
+1. Resolve audio stalls and dropouts.
+2. Revamp setup and controls menus for console use.
+3. Resolve remaining bot navigation stalls.
+4. Complete one consolidated Xbox hardware run.
+5. Evaluate 720p output (deferred).
+6. Explore colored dynamic lighting (post-beta).
 
-## Pre-Beta Remaining
+## 1. Resolve Audio Stalls and Dropouts
 
-No must-fix pre-beta code items are currently tracked here.
+- [ ] Resolve the original audio stall/dropout when a current-build reproduction or audible-output evidence is available.
 
-## Completed Immediate Fixes
+Four-player traversal and the original multiplayer-menu scenario show healthy buffers. The latest build has not been checked audibly by the user; healthy buffers alone do not establish that the audible issue is fixed.
 
-- [x] Fix 2P split-screen HUD stretching in horizontal split.
-- [x] Fix CTF initialization in split-screen so all local players enter the correct waiting/spawn flow.
-- [x] Fix P2 weapon model rendering in split-screen.
-- [x] Fix external camera behavior in split-screen.
-- [x] Audit and fix any P1 input/control state leaking into secondary split-screen viewports.
-- [x] Confirm MotS strafe direction fix.
-- [x] Fix XEMU soak APHC mod selection; `aphc.gob` playable level is `fire-control.jkl`, not loose test map `city3.jkl`.
-- [x] Finish MP level select cleanup before the next build.
-- [x] Change score limit and time limit to sliders; `0` means infinite.
-- [x] Set default max Jedi rank to `8`.
-- [x] Use the escape/pause menu background for MP level select.
-- [x] Hide advanced options for split-screen level select.
+## 2. Revamp Setup and Controls Menus for Console Use
 
-## UI And Navigation
+Planned work, not deferred.
 
-- [x] Fix all escape/pause menu variants that overlap or bleed into the footer.
-- [x] Continue footer audit for screens still missing the console-style footer.
-- [x] Keep contextual button glyphs outside the colormap path so they stay clean.
-- [x] Verify ready-up flow: `A` joins, only P1 `Start` advances, only P1 backs out.
+- [ ] Improve controller navigation, focus and selection states, option readability, and consistent confirm/back prompts.
+- [ ] Include a dedicated controls setup menu with recognizable Xbox gamepad button icons and clear control assignments.
 
-## Rendering
+## 3. Resolve Remaining Bot Navigation Stalls
 
-- [x] Fix forcefield translucency; current MP forcefields can render as solid yellow.
+Separate unfinished work per the user's 2026-09-14 clarification: **do not continue routing work and do not revert the existing routing changes**. The elevators/FPS goal is closed. Completed lift-contact and round-trip evidence is recorded in [bot lifts and performance](bot-lifts-performance.md).
 
-## Future / Post-Beta Candidates
+- [ ] Resolve CTF routing stalls. Run `20260913_043528-bots-authored-speed-ctf` recorded no flag events in the inspected polls. Diagnose routing without restoring bot-only movement boosts.
+
+## 4. Complete One Consolidated Xbox Hardware Run
+
+- [ ] Perform one consolidated original Xbox hardware run later.
+
+Accepted XEMU fixes remain accepted; this hardware pass does not put them back on the unfinished-work board.
+
+## 5. Evaluate 720p Output
+
+- [ ] Evaluate 720p separately from the completed system-driven 16:9 support.
+
+Deferred feature.
+
+## 6. Explore Colored Dynamic Lighting
+
+Future / post-beta candidates.
 
 - [ ] Investigate colored dynamic lighting for sabers and projectiles.
 - [ ] Add a release-safe projectile light color source.
 - [ ] Make the Xbox textured render path consume RGB dynamic lighting while preserving grayscale fallback.
 - [ ] Add dynamic-light cap prioritization, favoring local-player/nearby important lights.
-- [ ] Add targeted perf logging around dynamic light rendering.
+- [ ] Add targeted performance logging when this feature is pursued.
 
-## MotS Compatibility
+---
 
-- [x] Fix MotS-only reversed strafe direction.
-- [x] Build a curated `mots_xbox_patch.gob`; do not repack the full MotS resource archive.
-- [x] Ensure `JK_.CD` is not authoritative for mode switching.
-- [x] Keep MotS force powers scoped to SP for now; MP keeps JK force powers.
-- [x] Verify SP MotS -> JK switching fully reinitializes resource and mode state.
-- [x] Verify `mots_xbox_patch.gob` is ignored in MotS mode and loaded again when returning to JK compatibility mode.
-
-## Validation And Housekeeping
-
-- [x] Include `box art.png` in the beta/release package.
-- [x] Include `OpenJKDF2xCutsceneConverter.exe` in the beta/release package beside `default.xbe` or in `cutscene_converter\`.
-- [x] Fix XMV converter packet alignment and verify regenerated JK/MotS intro XMVs through the Xbox runtime decoder in XEMU.
-- [x] Fix MotS SAN cutscene audio extraction; embedded SMUSH `IACT` audio now becomes a PCM XMV audio stream instead of silent video-only output.
-- [x] Re-run the final always-on XEMU soak after the MotS/mod-map/XMV fixes: 7203 seconds continuous, 89/89 RAM polls OK, fatal count 0, ISO cleaned, covered JK SP/MP, MotS SP/MP, 4P split-screen, and available mod maps.
-- [x] Investigate MotS `s2l1_palace.jkl` XEMU black-screen/stall; fixed per-instance AI actor allocation and verified MotS palace -> mod -> JK transition proof.
-- [x] Investigate `impsiege/impsiege.jkl` XEMU soak stall; verified gameplay-ready transition in the same MotS/mod/JK proof pass.
-- [x] Complete live System Link real-lobby proof in XEMU or XEMU+Xbox.
-  - [x] Audit against UC2 secure XNet/session flow.
-  - [x] Reset stale System Link launch/session state after stop/game close.
-  - [x] Pass deterministic two-XEMU 4+4 local-player smoke harness.
-  - [x] Pass live two-XEMU real-lobby discovery/secure-launch proof using the pcap backend; local UDP stayed at `peers=0`, multicast failed monitor setup and should not be treated as the proof path.
-- [x] Revisit resource cleanup across menu-to-menu, menu-to-level, level-to-cutscene, and level-to-level transitions.
-- [x] Keep generated logs, smoke outputs, and temporary assets out of commits unless explicitly useful.
+Last updated: 2026-09-14. This is the authoritative board for unfinished work only.
+Completed-work evidence: [issue fixes](xbox-issue-1.md), [bot integration](bots-system-widescreen.md), [multiplayer HUD and setup verification](local-multiplayer-hud-verification.md), and [bot lifts and performance](bot-lifts-performance.md).

@@ -581,11 +581,18 @@ void sithCogFunctionSound_Startup(sithCogSymboltable* ctx)
 {
     sithCogScript_RegisterVerb(ctx, sithCogFunctionSound_PlaySong, "playsong");
     sithCogScript_RegisterVerb(ctx, sithCogFunctionSound_PlaySoundThing, "playsoundthing");
-    if (Main_bMotsCompat) {
+    /* Xbox force-power scripts use the local variant in JK as well. */
+#ifndef TARGET_XBOX
+    if (Main_bMotsCompat)
+#endif
+    {
         sithCogScript_RegisterVerb(ctx, sithCogFunctionSound_PlaySoundThingLocal, "playsoundthinglocal");
     }
     sithCogScript_RegisterVerb(ctx, sithCogFunctionSound_PlaySoundPos, "playsoundpos");
-    if (Main_bMotsCompat) {
+#ifndef TARGET_XBOX
+    if (Main_bMotsCompat)
+#endif
+    {
         sithCogScript_RegisterVerb(ctx, sithCogFunctionSound_PlaySoundPosLocal, "playsoundposlocal");
     }
     sithCogScript_RegisterVerb(ctx, sithCogFunctionSound_PlaySoundLocal, "playsoundlocal");

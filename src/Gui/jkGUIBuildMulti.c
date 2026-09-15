@@ -40,6 +40,26 @@
 #include "types.h"
 #include "types_enums.h"
 
+#ifdef TARGET_XBOX
+/* Explicit frontend-only smoke fixture; never emits host input. */
+static int jkGuiBuildMulti_previewProbe;
+static unsigned int jkGuiBuildMulti_previewProbeStart;
+static void jkGuiBuildMulti_PreviewSelectTick(jkGuiMenu *menu)
+{
+    menu->lastClicked = jkGuiBuildMulti_previewProbe == 1 ? 1 : -1;
+    jkGuiBuildMulti_previewProbe = 2;
+}
+void jkGuiBuildMulti_XboxPreviewSmoke(void)
+{
+    jkGuiBuildMulti_previewProbe = 1;
+    jkGuiBuildMulti_previewProbeStart = 0;
+    stdPlatform_Printf("ModelPreviewProbe: begin\n");
+    jkGuiBuildMulti_Show();
+    jkGuiBuildMulti_previewProbe = 0;
+    stdPlatform_Printf("ModelPreviewProbe: returned\n");
+}
+#endif
+
 // MOTS added
 int jkGuiBuildMulti_jediRank = 0;
 int32_t jkGuiBuildMulti_bRendering = 0;
@@ -2237,6 +2257,18 @@ int jkGuiBuildMulti_HandleXboxController(jkGuiMenu *pMenu, int focusDir)
 
 void jkGuiBuildMulti_sub_41A120(jkGuiMenu *pMenu)
 {
+#ifdef TARGET_XBOX
+    if (jkGuiBuildMulti_previewProbe) {
+        unsigned int now = stdPlatform_GetTimeMsec();
+        if (!jkGuiBuildMulti_previewProbeStart) {
+            jkGuiBuildMulti_previewProbeStart = now;
+            stdPlatform_Printf("ModelPreviewProbe: visible\n");
+        }
+        if (now - jkGuiBuildMulti_previewProbeStart >= 45000U)
+            pMenu->lastClicked = -1;
+    }
+#endif
+
     if ( g_app_suspended )
         jkGuiRend_UpdateAndDrawClickable(&jkGuiBuildMulti_buttons[6], pMenu, 1);
 }
@@ -2395,6 +2427,11 @@ int jkGuiBuildMulti_Show()
         jkGuiBuildMulti_sub_41D680(&jkGuiBuildMulti_menuEditCharacter, jkGuiBuildMulti_menuEditCharacter_buttons[3].selectedTextEntry);
         v3 = 1;
 #ifdef TARGET_XBOX
+        jkGuiBuildMulti_menuEditCharacter.idkFunc = jkGuiBuildMulti_previewProbe ? jkGuiBuildMulti_PreviewSelectTick : NULL;
+        if (jkGuiBuildMulti_previewProbe && !v2) {
+            stdPlatform_Printf("ModelPreviewProbe: no existing character\n");
+            jkGuiBuildMulti_previewProbe = 2;
+        }
         jkGuiBuildMulti_menuEditCharacter_buttons[12].bIsVisible = 0;
         jkGuiBuildMulti_menuEditCharacter_buttons[13].bIsVisible = 0;
         jkGuiBuildMulti_menuEditCharacter_buttons[14].bIsVisible = 0;
@@ -2451,10 +2488,14 @@ int jkGuiBuildMulti_Show()
                         wPlayerName,
                         1);
                     jkGuiBuildMulti_ShowEditCharacter(0);
+#ifdef TARGET_XBOX
+                    if (!jkGuiBuildMulti_previewProbe)
+#endif
                     jkPlayer_MPCWrite(&jkPlayer_playerInfos[playerThingIdx], jkPlayer_playerShortName, wPlayerName);
 #ifdef TARGET_XBOX
                     XDBG("ProfilePortrait: post edit regenerate request\n");
-                    jkGuiBuildMulti_XboxWriteLatestOrGeneratePortraitCache(wPlayerName);
+                    if (!jkGuiBuildMulti_previewProbe)
+                        jkGuiBuildMulti_XboxWriteLatestOrGeneratePortraitCache(wPlayerName);
 #endif
                     v1 = jkGuiBuildMulti_menuEditCharacter_buttons[3].selectedTextEntry;
                 }

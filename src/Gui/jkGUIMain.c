@@ -547,9 +547,19 @@ static int jkGuiMain_XboxReadyCount(void)
     return count;
 }
 
+/* Marker-scoped virtual buttons for the real ready-screen handlers. */
+static int jkGuiMain_localMatchProbePlayers;
+static unsigned int jkGuiMain_localMatchProbeStarted;
+
 static int jkGuiMain_XboxReadyReadEdge(int slot, int key, int *prev)
 {
     int down = stdControl_XboxGetControllerKeyDown(slot, key) ? 1 : 0;
+    if (jkGuiMain_localMatchProbePlayers) {
+        unsigned int elapsed = stdPlatform_GetTimeMsec() - jkGuiMain_localMatchProbeStarted;
+        down = slot < jkGuiMain_localMatchProbePlayers &&
+            ((key == KEY_JOY1_B1 && elapsed >= 10000 && elapsed < 11000) ||
+             (slot == 0 && key == KEY_JOY1_B7 && elapsed >= 25000 && elapsed < 26000));
+    }
     int edge = down && !*prev;
     *prev = down;
     return edge;
@@ -661,6 +671,8 @@ static void jkGuiMain_XboxReadyTick(jkGuiMenu *menu)
     int mask;
 
     mask = stdControl_XboxGetConnectedMask();
+    if (jkGuiMain_localMatchProbePlayers)
+        mask = (1 << jkGuiMain_localMatchProbePlayers) - 1;
     for (slot = 0; slot < XBOX_SPLITSCREEN_MAX_LOCAL_PLAYERS; slot++)
     {
         if (!(mask & (1 << slot)))
@@ -771,6 +783,20 @@ static int jkGuiMain_XboxShowSplitReady(void)
     jkGuiMain_XboxReadySetStatus(0);
     jkGuiMain_xboxReadyStartRequested = 0;
     jkGuiMain_XboxReadyPrimeEdges();
+    jkGuiMain_localMatchProbePlayers = 0;
+    {
+        FILE *probe = fopen("D:\\xbox_smoke_local_match.txt", "rb");
+        int count = 0;
+        if (probe) {
+            fscanf(probe, "%d", &count);
+            fclose(probe);
+            if (count >= 1 && count <= 4) {
+                jkGuiMain_localMatchProbePlayers = count;
+                jkGuiMain_localMatchProbeStarted = stdPlatform_GetTimeMsec();
+                XDBGF("LocalMatchProbe: ready players=%d virtual A then Start\n", count);
+            }
+        }
+    }
 
     jkGuiRend_MenuSetReturnKeyShortcutElement(&jkGuiMain_xboxReadyMenu, 0);
     jkGuiRend_MenuSetEscapeKeyShortcutElement(&jkGuiMain_xboxReadyMenu, 0);
@@ -865,6 +891,7 @@ static int jkGuiMain_XboxShowSplitReady(void)
         }
     }
 
+    jkGuiMain_localMatchProbePlayers = 0;
     jkGuiRend_DarrayFree(&jkGuiMain_xboxReadyCharacters);
     for (i = 0; i < XBOX_SPLITSCREEN_MAX_LOCAL_PLAYERS; i++)
         jkGuiMain_XboxReadyFreePortrait(i);
@@ -1556,6 +1583,21 @@ void jkGuiMain_Show()
 #endif
         )
     {
+#ifdef TARGET_XBOX
+        static int localMatchProbeDone;
+        if (!localMatchProbeDone && jkGuiMain_XboxMarkerExists("D:\\xbox_smoke_local_match.txt")) {
+            localMatchProbeDone = 1;
+            jkGuiMain_XboxStartLocalMultiplayerTest();
+            return;
+        }
+        static int previewProbeDone;
+        if (!previewProbeDone && jkGuiMain_XboxMarkerExists("D:\\xbox_smoke_model_preview.txt")) {
+            previewProbeDone = 1;
+            jkGuiBuildMulti_XboxPreviewSmoke();
+            jkGui_SetModeMenu(jkGui_stdBitmaps[JKGUI_BM_BK_MAIN]->palette);
+        }
+
+#endif
         if (Main_bMotsCompat) {
             jkGuiMain_elements[4].bIsVisible = Main_bDevMode; // MOTS added
         }

@@ -11,11 +11,21 @@
 
 #ifdef QOL_IMPROVEMENTS
 extern int32_t Main_bDedicatedServer;
+extern int32_t Main_bAutostart;
 extern int32_t Main_bHeadless;
 extern int32_t Main_bVerboseNetworking;
 extern int32_t Main_bMotsCompat;
 extern int32_t Main_bDwCompat;
 extern int32_t Main_bEnhancedCogVerbs;
+extern int32_t Main_numBots;
+extern int32_t Main_botMatchSeconds;
+extern int32_t Main_botCamPlayer;
+extern int32_t Main_botLiftProbe;
+extern int32_t Main_botProfile;
+extern int32_t Main_splitFullWidth;
+extern int32_t Main_localPlayers;
+extern char Main_strEpisode[129];
+extern char Main_strMap[132];
 #endif
 
 #ifdef TARGET_XBOX

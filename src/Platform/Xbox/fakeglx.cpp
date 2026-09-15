@@ -1,3 +1,10 @@
+#include "xbox_debug.h"
+#include "xbox_vertex_submit.h"
+#include <xmmintrin.h>
+#ifndef XBOX_BUFFERED_LIT_TRIANGLES
+/* Dedicated textured-triangle submission; 0 selects the immediate fallback. */
+#define XBOX_BUFFERED_LIT_TRIANGLES 1
+#endif
 /*
 Copyright (C) 2000 Jack Palevich.
 
@@ -30,6 +37,13 @@ Foundation, Inc., 59 Temple Place - Suite 330, Boston, MA  02111-1307, USA.
 #include "stdio.h"
 
 extern "C" void Con_Printf (char *fmt, ...);
+
+static float g_xboxVideoPixelAspect = 1.0f;
+extern "C" float xboxVideo_GetPixelAspectRatio(void)
+{
+    return g_xboxVideoPixelAspect;
+}
+
 
 #pragma warning( disable : 4244 )
 #pragma warning( disable : 4820 )
@@ -318,13 +332,11 @@ float Clamp(float x) {
 #endif
 
 // Converts a floating point value to a long.
-_declspec(naked) long Truncate(float f)
+inline long Truncate(float f)
 {
-    _asm
-    {
-        cvttss2si eax, [esp+4]
-        ret 4
-    }
+    /* Let the compiler preserve the calling convention. The former naked
+     * cdecl helper used ret 4, causing its caller to pop the argument twice. */
+    return _mm_cvtt_ss2si(_mm_set_ss(f));
 }
 
 static D3DBLEND GLToDXSBlend(GLenum glBlend){
@@ -505,6 +517,15 @@ public:
 	void DirtyTexture(int textureID){
 		for(int i = 0; i < m_maxStages;i++){
 			m_stage[i].DirtyTexture(textureID);
+		}
+		m_dirty = true;
+	}
+
+	void UnbindTexture(GLuint textureID){
+		for(int i = 0; i < m_maxStages; i++){
+			if (m_stage[i].GetCurrentTexture() == textureID) {
+				m_stage[i].SetCurrentTexture(0);
+			}
 		}
 		m_dirty = true;
 	}
@@ -1417,6 +1438,8 @@ public:
 	OGLPrimitiveVertexBuffer(){
 		m_pD3DDev = 0;
         m_needEnd = false;
+        m_buffered = false; m_batchCount = 0; m_extraU = m_extraV = 0;
+        m_floatColorValid = false;
 	}
 
 	~OGLPrimitiveVertexBuffer(){
@@ -1425,12 +1448,15 @@ public:
 	void Release() {
 		m_pD3DDev = 0;
 		m_needEnd = false;
+        m_buffered = false; m_batchCount = 0; m_extraU = m_extraV = 0;
+		m_floatColorValid = false;
 	}
 
 	HRESULT Initialize(LPDIRECT3DDEVICE pD3DDev, DX_DIRECT3D* pD3D, bool hardwareTandL, DWORD typeDesc){
 		m_pD3DDev = pD3DDev;
         m_vertexTypeDesc = typeDesc;
         m_pD3DDev->SetVertexShader(m_vertexTypeDesc);
+		m_floatColorValid = false;
 		return S_OK;
 	}
 
@@ -1446,35 +1472,59 @@ public:
     }
 
 	inline void SetColor(GLubyte r, GLubyte g, GLubyte b, GLubyte a){
-		m_pD3DDev->SetVertexData4ub(D3DVSDE_DIFFUSE, r, g, b, a);
+		m_floatColorValid = false;
+		if (m_buffered) { m_batchColor = ((DWORD)a<<24)|((DWORD)r<<16)|((DWORD)g<<8)|b; return; }
+        m_pD3DDev->SetVertexData4ub(D3DVSDE_DIFFUSE, r, g, b, a);
 	}
 
 	inline void SetColor(GLubyte r, GLubyte g, GLubyte b){
-		m_pD3DDev->SetVertexData4ub(D3DVSDE_DIFFUSE, r, g, b, 0xff);
+		m_floatColorValid = false;
+		SetColor(r, g, b, (GLubyte)255);
 	}
 
     inline void SetColor(float r, float g, float b, float a){
-		m_pD3DDev->SetVertexData4f(D3DVSDE_DIFFUSE, r, g, b, a);
+		/* Inline vertex attributes persist until changed. Flat-lit faces
+		 * commonly repeat this color for every vertex in a batch. */
+		if (m_floatColorValid && m_floatColor[0] == r && m_floatColor[1] == g &&
+			m_floatColor[2] == b && m_floatColor[3] == a) return;
+		if (m_buffered) m_batchColor = D3DRGBFAST(Clamp(r), Clamp(g), Clamp(b), Clamp(a));
+        else m_pD3DDev->SetVertexData4f(D3DVSDE_DIFFUSE, r, g, b, a);
+		m_floatColor[0] = r; m_floatColor[1] = g;
+		m_floatColor[2] = b; m_floatColor[3] = a;
+		m_floatColorValid = true;
 	}
 
     inline void SetColor(float r, float g, float b){
-		m_pD3DDev->SetVertexData4f(D3DVSDE_DIFFUSE, r, g, b, 1.0f);
+		SetColor(r, g, b, 1.0f);
 	}
 
 	inline void SetTextureCoord0(float u, float v){
+        if (m_buffered) { m_batchU = u; m_batchV = v; return; }
         m_pD3DDev->SetVertexData2f(9, u, v);
 	}
 
 	inline void SetTextureCoord(int textStage, float u, float v){
+        if (textStage == 1) { m_extraU=u; m_extraV=v; if (m_buffered) return; }
+        if (m_buffered && textStage == 0) { m_batchU = u; m_batchV = v; return; }
         m_pD3DDev->SetVertexData2f(9+textStage, u, v);
 	}
 
 	inline void SetVertex(float x, float y, float z){
+        if (m_buffered) {
+            LitVertex *vertex = &m_batch[m_batchCount++];
+            vertex->x=x; vertex->y=y; vertex->z=z;
+            vertex->color=m_batchColor; vertex->u=m_batchU; vertex->v=m_batchV;
+            vertex->u1=m_extraU; vertex->v1=m_extraV;
+            if (m_batchCount == 768) FlushLitBatch();
+            return;
+        }
         m_pD3DDev->SetVertexData4f(-1, x, y, z, 1.0f);
 	}
 
 	inline void Begin(GLuint drawMode){
 		D3DPRIMITIVETYPE dptPrimitiveType;
+		/* Do not rely on attribute state surviving a batch/state boundary. */
+		m_floatColorValid = false;
 		switch (drawMode) {
 		case GL_POINTS: dptPrimitiveType = D3DPT_POINTLIST; break;
 		case GL_LINES: dptPrimitiveType = D3DPT_LINELIST; break;
@@ -1488,7 +1538,66 @@ public:
         m_needEnd = true;
 	}
 
+    void SetLitTriangles(const XboxEngineVertex *vertices, const void *triangles,
+                         int triangleStride, int triangleCount, bool screenSpace) {
+        const char *triangle = (const char *)triangles;
+        for (int t = 0; t < triangleCount; ++t, triangle += triangleStride) {
+            int indices[3];
+            memcpy(indices, triangle, sizeof(indices));
+            for (int i = 0; i < 3; ++i) {
+                const XboxEngineVertex *input = &vertices[indices[i]];
+                unsigned int alphaByte = input->color >> 24;
+                float alpha = (float)(alphaByte ? alphaByte : 255) / 255.0f;
+                if (m_buffered) {
+                    float light = input->lightLevel;
+                    /* This path is monochrome: convert luminance once, then
+                     * replicate its bits exactly as D3DRGBFAST would. Keep
+                     * the ordinary float-color state valid for mixed calls. */
+                    if (!m_floatColorValid || m_floatColor[0] != light ||
+                        m_floatColor[1] != light || m_floatColor[2] != light ||
+                        m_floatColor[3] != alpha) {
+                        DWORD gray = (DWORD)Truncate(Clamp(light) * 255.0f);
+                        DWORD opacity = (DWORD)Truncate(Clamp(alpha) * 255.0f);
+                        m_batchColor = (opacity << 24) | (gray << 16) | (gray << 8) | gray;
+                        m_floatColor[0] = m_floatColor[1] = m_floatColor[2] = light;
+                        m_floatColor[3] = alpha;
+                        m_floatColorValid = true;
+                    }
+                    LitVertex *vertex = &m_batch[m_batchCount++];
+                    vertex->x = input->x;
+                    vertex->y = screenSpace ? input->y : input->z;
+                    vertex->z = screenSpace ? -input->z : -input->y;
+                    vertex->color = m_batchColor;
+                    vertex->u = m_batchU = input->tu;
+                    vertex->v = m_batchV = input->tv;
+                    vertex->u1 = m_extraU; vertex->v1 = m_extraV;
+                    if (m_batchCount == 768) FlushLitBatch();
+                } else {
+                    SetColor(input->lightLevel, input->lightLevel, input->lightLevel, alpha);
+                    SetTextureCoord0(input->tu, input->tv);
+                    SetVertex(input->x, screenSpace ? input->y : input->z,
+                              screenSpace ? -input->z : -input->y);
+                }
+            }
+        }
+    }
+
+    bool BeginLitBatch() {
+        /* Only explicit XYZ/diffuse/one- or two-UV triangle layouts. */
+        if (m_vertexTypeDesc != (D3DFVF_XYZ | D3DFVF_DIFFUSE | D3DFVF_TEX1)
+            && m_vertexTypeDesc != (D3DFVF_XYZ | D3DFVF_DIFFUSE | D3DFVF_TEX2)) return false;
+        static int logged=0;
+        if (!logged) { xbox_debug_PerfPrintf("LitBatch: enabled fvf=0x%lx capacity=768 stride=32\n", m_vertexTypeDesc); logged=1; }
+        End();
+        m_buffered=true; m_batchCount=0; m_floatColorValid=false;
+        m_batchColor=0xffffffff; m_batchU=m_batchV=0;
+        return true;
+    }
+
 	inline void End(){
+        if (m_buffered) {
+            FlushLitBatch(); m_buffered=false; m_floatColorValid=false;
+        }
         if (m_needEnd)
         {
             m_pD3DDev->End();
@@ -1497,9 +1606,22 @@ public:
 	}
 
 private:
+    struct LitVertex { float x,y,z; DWORD color; float u,v,u1,v1; };
+    void FlushLitBatch() {
+        int count=m_batchCount-m_batchCount%3;
+        if (count) m_pD3DDev->DrawVerticesUP(D3DPT_TRIANGLELIST, count, m_batch, sizeof(LitVertex));
+        m_batchCount=0;
+    }
+    bool m_buffered;
+    int m_batchCount;
+    DWORD m_batchColor;
+    float m_batchU,m_batchV,m_extraU,m_extraV;
+    LitVertex m_batch[768];
     LPDIRECT3DDEVICE m_pD3DDev;
     DWORD m_vertexTypeDesc;
     bool m_needEnd;
+    bool m_floatColorValid;
+    float m_floatColor[4];
 };
 
 #endif // USE_BEGINEND
@@ -1569,6 +1691,8 @@ private:
 
 	bool m_viewMatrixStateDirty;
 	D3DXMATRIX m_d3dViewMatrix;
+	D3DMATRIX m_submittedTransforms[4];
+	unsigned int m_submittedTransformMask;
 
 	OGLPrimitiveVertexBuffer m_OGLPrimitiveVertexBuffer;
 
@@ -1661,6 +1785,15 @@ private:
 		params.FullScreen_RefreshRateInHz= 60;
 		params.hDeviceWindow             = m_hwndMain;
         params.FullScreen_PresentationInterval = D3DPRESENT_INTERVAL_IMMEDIATE;
+        if (XGetVideoFlags() & XC_VIDEO_FLAGS_WIDESCREEN) {
+            params.Flags |= D3DPRESENTFLAG_WIDESCREEN;
+            g_xboxVideoPixelAspect = 4.0f / 3.0f;
+        } else {
+            g_xboxVideoPixelAspect = 1.0f;
+        }
+        Con_Printf("XboxVideo: system aspect=%s pixelAspect=%.6f\n",
+                   g_xboxVideoPixelAspect > 1.0f ? "16:9" : "4:3", g_xboxVideoPixelAspect);
+
 
 #endif
 
@@ -1792,6 +1925,7 @@ public:
 		m_projectionMatrixStack->LoadIdentity();
 		m_textureMatrixStack->LoadIdentity();
 		m_modelViewMatrixStateDirty = true;
+		m_submittedTransformMask = 0;
 		m_projectionMatrixStateDirty = true;
 		m_textureMatrixStateDirty = true;
 		m_currentMatrixStateDirty = &m_modelViewMatrixStateDirty;
@@ -1960,7 +2094,7 @@ public:
 		}
 	}
 
-	void glBegin (GLenum mode){
+	void glBegin (GLenum mode, bool bufferedLit=false){
 		if ( m_needBeginScene ){
 			m_needBeginScene = false;
 			HRESULT hr = m_pD3DDev->BeginScene();
@@ -1991,7 +2125,10 @@ public:
 			if ( typeDesc != m_OGLPrimitiveVertexBuffer.GetVertexTypeDesc()) {
 				m_OGLPrimitiveVertexBuffer.Initialize(m_pD3DDev, m_pD3D, m_hardwareTandL, typeDesc);
 			}
-			m_OGLPrimitiveVertexBuffer.Begin(mode);
+			#ifdef USE_BEGINEND
+            if (!bufferedLit || !m_OGLPrimitiveVertexBuffer.BeginLitBatch())
+#endif
+                m_OGLPrimitiveVertexBuffer.Begin(mode);
 			if (g_xboxDrawDiagBudget > 0) {
 				Con_Printf("CutsceneTrace: glBegin mode=0x%x tex2d=%d curTex=%u dirty=%d stages=%d blend=%d depth=%d cull=%d alpha=%d vp=%d,%d,%d,%d drawLeft=%d\n",
 					(unsigned int)mode,
@@ -2035,9 +2172,13 @@ public:
 			if ( !texture ) {
 				continue;
 			}
-			m_textureState.DirtyTexture(texture);
+			// GL deletion unbinds the name from every stage. Keeping the old
+			// stage binding made a recycled ID skip glBindTexture, uploading
+			// its replacement into texture zero and drawing a white quad.
+			m_textureState.UnbindTexture(texture);
 			m_textures.DeleteTexture(texture);
 		}
+		m_textures.BindTexture(m_textureState.GetCurrentTexture());
 		SetRenderStateDirty();
 	}
 
@@ -2101,6 +2242,32 @@ public:
 	inline void glColor3ubv (const GLubyte *v){
 		m_OGLPrimitiveVertexBuffer.SetColor(v[0], v[1], v[2]);
 	}
+
+    void glXboxBeginLitTriangles() {
+        glBegin(GL_TRIANGLES, XBOX_BUFFERED_LIT_TRIANGLES != 0);
+    }
+
+    void glXboxLitTriangles(const XboxEngineVertex *vertices, const void *triangles,
+                           int triangleStride, int triangleCount, bool screenSpace) {
+#ifdef USE_BEGINEND
+        m_OGLPrimitiveVertexBuffer.SetLitTriangles(vertices, triangles,
+            triangleStride, triangleCount, screenSpace);
+#else
+        const char *triangle = (const char *)triangles;
+        for (int t = 0; t < triangleCount; ++t, triangle += triangleStride) {
+            int indices[3];
+            memcpy(indices, triangle, sizeof(indices));
+            for (int i = 0; i < 3; ++i) {
+                const XboxEngineVertex *v = &vertices[indices[i]];
+                unsigned int a = v->color >> 24;
+                glColor4f(v->lightLevel, v->lightLevel, v->lightLevel,
+                          (float)(a ? a : 255) / 255.0f);
+                glTexCoord2f(v->tu, v->tv);
+                glVertex3f(v->x, screenSpace ? v->y : v->z, screenSpace ? -v->z : -v->y);
+            }
+        }
+#endif
+    }
 
 	inline void glColor4f (GLfloat red, GLfloat green, GLfloat blue, GLfloat alpha){
 		m_OGLPrimitiveVertexBuffer.SetColor(red, green, blue, alpha);
@@ -2983,19 +3150,19 @@ private:
 		}
 		if ( m_modelViewMatrixStateDirty ) {
 			m_modelViewMatrixStateDirty = false;
-			m_pD3DDev->SetTransform( D3DTS_WORLD, m_modelViewMatrixStack->GetTop() );
+			SubmitTransform(0, D3DTS_WORLD, m_modelViewMatrixStack->GetTop());
 		}
 		if ( m_viewMatrixStateDirty ) {
 			m_viewMatrixStateDirty = false;
-			m_pD3DDev->SetTransform( D3DTS_VIEW, & m_d3dViewMatrix );
+			SubmitTransform(1, D3DTS_VIEW, &m_d3dViewMatrix);
 		}
 		if ( m_projectionMatrixStateDirty ) {
 			m_projectionMatrixStateDirty = false;
-			m_pD3DDev->SetTransform( D3DTS_PROJECTION, m_projectionMatrixStack->GetTop() );
+			SubmitTransform(2, D3DTS_PROJECTION, m_projectionMatrixStack->GetTop());
 		}
 		if ( m_textureMatrixStateDirty ) {
 			m_textureMatrixStateDirty = false;
-			m_pD3DDev->SetTransform( D3DTS_TEXTURE0, m_textureMatrixStack->GetTop() );
+			SubmitTransform(3, D3DTS_TEXTURE0, m_textureMatrixStack->GetTop());
 		}
 		if ( m_bViewPortDirty ) {
 			m_bViewPortDirty = false;
@@ -3007,6 +3174,16 @@ private:
 			viewData.MinZ = m_glDepthRangeNear;
 			viewData.MaxZ = m_glDepthRangeFar;
 			m_pD3DDev->SetViewport(&viewData);
+		}
+	}
+
+	void SubmitTransform(unsigned int slot, D3DTRANSFORMSTATETYPE type, const D3DMATRIX* matrix) {
+		const unsigned int bit = 1U << slot;
+		if ((m_submittedTransformMask & bit) &&
+			memcmp(&m_submittedTransforms[slot], matrix, sizeof(*matrix)) == 0) return;
+		if (SUCCEEDED(m_pD3DDev->SetTransform(type, matrix))) {
+			memcpy(&m_submittedTransforms[slot], matrix, sizeof(*matrix));
+			m_submittedTransformMask |= bit;
 		}
 	}
 
@@ -3501,6 +3678,24 @@ void APIENTRY glColor4f (GLfloat red, GLfloat green, GLfloat blue, GLfloat alpha
 	gFakeGL->glColor4f(red, green, blue, alpha);
 }
 
+/* One ABI crossing for the engine's common scalar-lit textured vertex.
+ * Keep the ordinary attribute setters and their color-state cache. */
+extern "C" void APIENTRY glXboxBeginLitTriangles() {
+    gFakeGL->glXboxBeginLitTriangles();
+}
+
+extern "C" void APIENTRY glXboxLitTriangles(const XboxEngineVertex *vertices,
+    const void *triangles, int triangleStride, int triangleCount, int screenSpace) {
+    gFakeGL->glXboxLitTriangles(vertices, triangles, triangleStride, triangleCount, screenSpace != 0);
+}
+
+extern "C" void APIENTRY glXboxLitVertex(GLfloat x, GLfloat y, GLfloat z,
+                             GLfloat u, GLfloat v, GLfloat light, GLfloat alpha){
+    gFakeGL->glColor4f(light, light, light, alpha);
+    gFakeGL->glTexCoord2f(u, v);
+    gFakeGL->glVertex3f(x, y, z);
+}
+
 void APIENTRY glColor4fv (const GLfloat *v){
 	gFakeGL->glColor4fv(v);
 }
@@ -3869,6 +4064,15 @@ extern "C" void FGL_SetAAType(int mstype)
         	params.FullScreen_RefreshRateInHz= 60;
         	params.hDeviceWindow             = NULL;
             params.FullScreen_PresentationInterval = D3DPRESENT_INTERVAL_IMMEDIATE;
+        if (XGetVideoFlags() & XC_VIDEO_FLAGS_WIDESCREEN) {
+            params.Flags |= D3DPRESENTFLAG_WIDESCREEN;
+            g_xboxVideoPixelAspect = 4.0f / 3.0f;
+        } else {
+            g_xboxVideoPixelAspect = 1.0f;
+        }
+        Con_Printf("XboxVideo: system aspect=%s pixelAspect=%.6f\n",
+                   g_xboxVideoPixelAspect > 1.0f ? "16:9" : "4:3", g_xboxVideoPixelAspect);
+
 
             HRESULT hr = D3DDevice_Reset(&params);
 

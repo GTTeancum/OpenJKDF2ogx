@@ -5,9 +5,24 @@
 #include "Platform/Xbox/xbox_splitscreen.h"
 #endif
 
+#ifdef TARGET_XBOX
+extern int jkMain_xboxSmokeReloadTraceFrames;
+#define XSL_TRACE_UPDATE(label) do { if (jkMain_xboxSmokeReloadTraceFrames) XPERF("SaveLoad: tick %s\n", label); } while (0)
+#else
 #define XSL_TRACE_UPDATE(label) do { } while (0)
+#endif
 #include "Main/jkGame.h"
 #include "Main/Main.h"
+#ifdef TARGET_XBOX
+/* Opt-in stage attribution; calls and ordering are identical when disabled. */
+#define XSIM_CALL(scope, call) do { unsigned int startUs = 0; \
+    if (Main_botProfile) startUs = xbox_debug_ProfileClock(); \
+    call; \
+    if (Main_botProfile) xbox_debug_ProfileAdd(scope, startUs); } while (0)
+#else
+#define XSIM_CALL(scope, call) do { call; } while (0)
+#endif
+#include "Gui/jkGUITitle.h"
 #include "World/sithWorld.h"
 #include "World/jkPlayer.h"
 #include "Engine/sithCollision.h"
@@ -21,6 +36,7 @@
 #include "AI/sithAI.h"
 #include "AI/sithAIClass.h"
 #include "AI/sithAIAwareness.h"
+#include "AI/sithBot.h"
 #include "Gameplay/sithEvent.h"
 #include "Gameplay/sithInventory.h"
 #include "Engine/sithRender.h"
@@ -55,7 +71,33 @@
 // Added: FoV fixes
 flex_t sithMain_lastAspect = 1.0;
 
+static void sithMain_BotNavigationStatus(SithBotNavPhase phase);
+
 #ifdef TARGET_XBOX
+/* Disk logging is synchronous on Xbox. Aggregate catch-up overruns instead
+ * of making a slow frame pay for another write on every iteration. */
+static void sithMain_XboxLogCatchup(uint32_t frames, uint32_t deltaMs)
+{
+    static uint32_t lastReportMs;
+    static uint32_t overruns;
+    static uint32_t maxFrames;
+    static uint32_t maxDeltaMs;
+    static int started;
+    uint32_t now = stdPlatform_GetTimeMsec();
+
+    ++overruns;
+    if (frames > maxFrames) maxFrames = frames;
+    if (deltaMs > maxDeltaMs) maxDeltaMs = deltaMs;
+    if (started && (uint32_t)(now - lastReportMs) < 5000U)
+        return;
+
+    XPERF("SithMain: capped fixed-step catchup overruns=%u maxFrames=%u maxDeltaMs=%u\n",
+          overruns, maxFrames, maxDeltaMs);
+    lastReportMs = now;
+    started = 1;
+    overruns = maxFrames = maxDeltaMs = 0;
+}
+
 static void sithMain_XboxLogMotsInventoryBin(sithThing *player, int binIdx)
 {
     sithPlayerInfo *playerInfo;
@@ -391,6 +433,23 @@ int sithMain_Mode1Init_3(char *fpath)
 #ifdef TARGET_XBOX
     XDBGF("MPLoadTrace: sithMain_Mode1Init_3 after sithMulti_Startup multi=%d server=%d\n", sithNet_isMulti, sithNet_isServer);
 #endif
+    if (Main_numBots > 0)
+    {
+        wchar_t botStatus[64];
+
+        jk_snwprintf(botStatus,
+                     sizeof(botStatus) / sizeof(botStatus[0]),
+                     L"Preparing %d bots",
+                     Main_numBots);
+        jkGuiTitle_SetLoadingStatus(botStatus);
+        sithBot_PrepareNavigation(sithMain_BotNavigationStatus);
+        jk_snwprintf(botStatus,
+                     sizeof(botStatus) / sizeof(botStatus[0]),
+                     L"Starting %d bots",
+                     Main_numBots);
+        jkGuiTitle_SetLoadingStatus(botStatus);
+        jkGuiTitle_WorldLoadCallback(100.0);
+    }
     g_sithMode = 1;
 #ifdef TARGET_XBOX
     XDBG("MPLoadTrace: sithMain_Mode1Init_3 done\n");
@@ -485,6 +544,7 @@ int sithMain_tickEndMs;
 // MOTS altered
 int sithMain_Tick()
 {
+    static int botTickGateLogged = 0;
 #if 0
     if (sithWorld_pCurrentWorld) {
         for (int i = 0; i < sithWorld_pCurrentWorld->numKeyframesLoaded; i++) {
@@ -503,6 +563,23 @@ int sithMain_Tick()
     {
         sithTime_Tick();
         sithComm_Sync();
+#ifdef TARGET_XBOX
+        if (Main_numBots > 0 && botTickGateLogged < 12)
+        {
+            char botTickDbg[256];
+            _snprintf(botTickDbg, sizeof(botTickDbg),
+                      "BotMatch: tick-gate submode=0x%X multi=%d server=%d bots=%d world=%p mode=%d deltaMs=%u\n",
+                      g_submodeFlags,
+                      sithNet_isMulti,
+                      sithNet_isServer,
+                      Main_numBots,
+                      sithWorld_pCurrentWorld,
+                      g_sithMode,
+                      sithTime_deltaMs);
+            xbox_debug_Print(botTickDbg);
+            botTickGateLogged++;
+        }
+#endif
 
 #ifdef TARGET_TWL
         // Fallback to stepped 30Hz physics if ms delta is very high
@@ -525,8 +602,7 @@ int sithMain_Tick()
 #ifdef TARGET_XBOX
             if (wholeFramesToApply > 8)
             {
-                XPERF("SithMain: capped fixed-step catchup submode frames=%u deltaMs=%u\n",
-                      wholeFramesToApply, sithTime_deltaMs);
+                sithMain_XboxLogCatchup(wholeFramesToApply, sithTime_deltaMs);
                 wholeFramesToApply = 8;
                 sithTime_physicsRolloverFrames = 0.0;
             }
@@ -542,7 +618,10 @@ int sithMain_Tick()
             for (uint32_t i = 0; i < wholeFramesToApply; i++)
             {
                 sithSurface_Tick(sithTime_deltaSeconds);
-                sithThing_TickAll(sithTime_deltaSeconds, sithTime_deltaMs);
+#ifdef TARGET_XBOX
+                xbox_debug_SimulationStep(sithTime_deltaSeconds);
+#endif
+                XSIM_CALL(XPROF_SIM_THINGS, sithThing_TickAll(sithTime_deltaSeconds, sithTime_deltaMs));
             }
 
             sithTime_deltaSeconds = tmp;
@@ -552,7 +631,11 @@ int sithMain_Tick()
 #endif
         {
             sithSurface_Tick(sithTime_deltaSeconds);
-            sithThing_TickAll(sithTime_deltaSeconds, sithTime_deltaMs);
+
+#ifdef TARGET_XBOX
+            xbox_debug_SimulationStep(sithTime_deltaSeconds);
+#endif
+            XSIM_CALL(XPROF_SIM_THINGS, sithThing_TickAll(sithTime_deltaSeconds, sithTime_deltaMs));
         }
         sithConsole_AdvanceLogBuf();
         return 1;
@@ -585,8 +668,7 @@ int sithMain_Tick()
 #ifdef TARGET_XBOX
             if (wholeFramesToApply > 8)
             {
-                XPERF("SithMain: capped fixed-step catchup frames=%u deltaMs=%u\n",
-                      wholeFramesToApply, sithTime_deltaMs);
+                sithMain_XboxLogCatchup(wholeFramesToApply, sithTime_deltaMs);
                 wholeFramesToApply = 8;
                 sithTime_physicsRolloverFrames = 0.0;
             }
@@ -642,7 +724,7 @@ int sithMain_Tick()
 #ifdef TARGET_XBOX
 #endif
                 XSL_TRACE_UPDATE("fixed before sound");
-                sithSoundMixer_Tick(sithTime_deltaSeconds);
+                XSIM_CALL(XPROF_SIM_SOUND, sithSoundMixer_Tick(sithTime_deltaSeconds));
 #ifdef TARGET_XBOX
 #endif
                 XSL_TRACE_UPDATE("fixed after sound before event");
@@ -664,6 +746,8 @@ int sithMain_Tick()
                     sithAI_TickAll();
                     XSL_TRACE_UPDATE("fixed after ai");
                 }
+                if (sithNet_isMulti && sithNet_isServer)
+                    XSIM_CALL(XPROF_SIM_BOTS, sithBot_TickAll(sithTime_deltaSeconds, sithTime_deltaMs));
 
 #ifdef TARGET_XBOX
 #endif
@@ -672,7 +756,10 @@ int sithMain_Tick()
 #ifdef TARGET_XBOX
 #endif
                 XSL_TRACE_UPDATE("fixed after surface before things");
-                sithThing_TickAll(sithTime_deltaSeconds, sithTime_deltaMs);
+#ifdef TARGET_XBOX
+                xbox_debug_SimulationStep(sithTime_deltaSeconds);
+#endif
+                XSIM_CALL(XPROF_SIM_THINGS, sithThing_TickAll(sithTime_deltaSeconds, sithTime_deltaMs));
 #ifdef TARGET_XBOX
 #endif
                 XSL_TRACE_UPDATE("fixed after things before mots");
@@ -680,7 +767,7 @@ int sithMain_Tick()
 #ifdef TARGET_XBOX
 #endif
                 XSL_TRACE_UPDATE("fixed after mots before cog");
-                sithCogScript_TickAll();
+                XSIM_CALL(XPROF_SIM_COG, sithCogScript_TickAll());
 #ifdef TARGET_XBOX
 #endif
                 XSL_TRACE_UPDATE("fixed after cog");
@@ -703,7 +790,7 @@ int sithMain_Tick()
 #ifdef TARGET_XBOX
 #endif
             XSL_TRACE_UPDATE("normal before sound");
-            sithSoundMixer_Tick(sithTime_deltaSeconds);
+            XSIM_CALL(XPROF_SIM_SOUND, sithSoundMixer_Tick(sithTime_deltaSeconds));
             XSL_TRACE_UPDATE("normal after sound before event");
             sithEvent_Advance();
             XSL_TRACE_UPDATE("normal after event before comm");
@@ -721,6 +808,9 @@ int sithMain_Tick()
                 sithAI_TickAll();
                 XSL_TRACE_UPDATE("normal after ai");
             }
+
+            if (sithNet_isMulti && sithNet_isServer)
+                XSIM_CALL(XPROF_SIM_BOTS, sithBot_TickAll(sithTime_deltaSeconds, sithTime_deltaMs));
 
             XSL_TRACE_UPDATE("normal before surface");
             sithSurface_Tick(sithTime_deltaSeconds);
@@ -760,12 +850,16 @@ int sithMain_Tick()
             }
 
             XSL_TRACE_UPDATE("normal after controls before things");
-            sithThing_TickAll(sithTime_deltaSeconds, sithTime_deltaMs);
+
+#ifdef TARGET_XBOX
+            xbox_debug_SimulationStep(sithTime_deltaSeconds);
+#endif
+            XSIM_CALL(XPROF_SIM_THINGS, sithThing_TickAll(sithTime_deltaSeconds, sithTime_deltaMs));
             XSL_TRACE_UPDATE("normal after things before mots");
             sithThing_MotsTick(0x1F, 0, 0);
 
             XSL_TRACE_UPDATE("normal after mots before cog");
-            sithCogScript_TickAll();
+            XSIM_CALL(XPROF_SIM_COG, sithCogScript_TickAll());
             XSL_TRACE_UPDATE("normal after cog");
         }
 
@@ -955,4 +1049,44 @@ void sithMain_AutoSave()
         sithGamesave_Write(v5, 1, 0, 0);
         sithTime_Startup();
     }
+}
+static void sithMain_BotNavigationStatus(SithBotNavPhase phase)
+{
+    wchar_t status[64];
+    flex_t progress;
+
+    switch (phase)
+    {
+        case SITHBOT_NAV_CHECKING_CACHE:
+            stdString_SafeWStrCopy(status, L"Checking bot routes", 64);
+            progress = 91.0;
+            break;
+        case SITHBOT_NAV_ANALYZING_MAP:
+            stdString_SafeWStrCopy(status, L"Analyzing map routes", 64);
+            progress = 93.0;
+            break;
+        case SITHBOT_NAV_CONNECTING_ROUTES:
+            stdString_SafeWStrCopy(status, L"Connecting bot routes", 64);
+            progress = 96.0;
+            break;
+        case SITHBOT_NAV_SAVING_CACHE:
+            stdString_SafeWStrCopy(status, L"Saving bot navigation", 64);
+            progress = 98.0;
+            break;
+        case SITHBOT_NAV_READY_FROM_CACHE:
+            stdString_SafeWStrCopy(status, L"Bot navigation loaded", 64);
+            progress = 99.0;
+            break;
+        case SITHBOT_NAV_READY_GENERATED:
+            stdString_SafeWStrCopy(status, L"Bot navigation ready", 64);
+            progress = 99.0;
+            break;
+        default:
+            stdString_SafeWStrCopy(status, L"Preparing bot navigation", 64);
+            progress = 90.0;
+            break;
+    }
+
+    jkGuiTitle_SetLoadingStatus(status);
+    jkGuiTitle_WorldLoadCallback(progress);
 }

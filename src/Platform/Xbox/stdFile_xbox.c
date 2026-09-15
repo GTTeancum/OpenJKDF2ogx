@@ -250,7 +250,10 @@ static void xbox_TranslatePath(const char *in, char *out, int outSize)
         }
     }
 
-    if (in[1] == ':')
+    /* Native device paths must remain absolute too (disc boots may not
+     * have dashboard drive-letter mappings for writable HDD partitions). */
+    if (in[1] == ':' || _strnicmp(in, "\\Device\\", 8) == 0 ||
+        _strnicmp(in, "\\??\\", 4) == 0)
     {
         strncpy(out, in, outSize - 1);
         out[outSize - 1] = '\0';
@@ -756,7 +759,14 @@ static void xbox_assertStub(const char *a, const char *b, int c) { (void)a;(void
 static void *xbox_alloc(unsigned int sz)               { return malloc(sz); }
 static void  xbox_free(void *p)                        { free(p); }
 static void *xbox_realloc(void *p, unsigned int sz)    { return realloc(p, sz); }
-static unsigned int xbox_getTimerTick(void)            { return (unsigned int)GetTickCount(); }
+#ifdef __cplusplus
+extern "C" {
+#endif
+extern unsigned int stdPlatform_GetTimeMsec(void);
+#ifdef __cplusplus
+}
+#endif
+static unsigned int xbox_getTimerTick(void)            { return stdPlatform_GetTimeMsec(); }
 static void *xbox_allocHandle(size_t sz)               { return malloc(sz); }
 static void  xbox_freeHandle(void *p)                  { free(p); }
 static void *xbox_reallocHandle(void *p, size_t sz)    { return realloc(p, sz); }
@@ -778,7 +788,7 @@ extern HostServices *std_pHS;
 
 static void *g_xboxHS[] =
 {
-    (void*)1000,                    /* some_float: GetTickCount ticks per second */
+    (void*)1000,                    /* some_float: engine timer milliseconds per second */
     (void*)xbox_printStub,          /* messagePrint    */
     (void*)xbox_printStub,          /* statusPrint     */
     (void*)xbox_printStub,          /* warningPrint    */

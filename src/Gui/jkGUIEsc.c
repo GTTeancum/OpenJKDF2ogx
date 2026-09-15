@@ -1,4 +1,9 @@
+#include "Gui/jkGUINetHost.h"
 #include "jkGUIEsc.h"
+#ifdef TARGET_XBOX
+#include "Platform/Xbox/xbox_debug.h"
+#include "Platform/Xbox/xbox_splitscreen.h"
+#endif
 
 #include "General/Darray.h"
 #include "General/stdBitmap.h"
@@ -135,7 +140,66 @@ static int jkGuiEsc_XboxPollKonami(void)
 
 static void jkGuiEsc_XboxTick(jkGuiMenu *menu)
 {
-    (void)menu;
+    static int probe = -1;
+    static unsigned int entered;
+    static flex_t entryAmmo;
+    static flex_t slotEntry[4], slotMin[4], slotMax[4];
+    static int probeSlots;
+    FILE *f;
+    if (probe < 0) {
+        f = fopen("D:\\xbox_smoke_menu_return.txt", "rb");
+        probe = f != NULL;
+        if (f) fclose(f);
+        f = fopen("D:\\xbox_smoke_setup.txt", "rb");
+        if (f) { probe = 2; fclose(f); }
+        f = fopen("D:\\xbox_smoke_bot_setup.txt", "rb");
+        if (f) { probe = 3; fclose(f); }
+    }
+    if (probe) {
+        if (!entered) {
+            entered = stdPlatform_GetTimeMsec();
+            entryAmmo = sithPlayer_pLocalPlayerThing && sithPlayer_pLocalPlayerThing->actorParams.playerinfo
+                ? sithPlayer_pLocalPlayerThing->actorParams.playerinfo->iteminfo[11].ammoAmt : -1.0;
+            probeSlots = xboxSplitScreen_IsEnabled() ? xboxSplitScreen_GetLocalPlayerCount() : 0;
+            if (probeSlots > 4) probeSlots = 4;
+            for (int slot = 0; slot < probeSlots; slot++) {
+                int index = xboxSplitScreen_GetPlayerIndexForSlot(slot);
+                slotEntry[slot] = slotMin[slot] = slotMax[slot] = jkPlayer_playerInfos[index].iteminfo[11].ammoAmt;
+            }
+        }
+        for (int slot = 0; slot < probeSlots; slot++) {
+            int index = xboxSplitScreen_GetPlayerIndexForSlot(slot);
+            flex_t ammo = jkPlayer_playerInfos[index].iteminfo[11].ammoAmt;
+            if (ammo < slotMin[slot]) slotMin[slot] = ammo;
+            if (ammo > slotMax[slot]) slotMax[slot] = ammo;
+        }
+        if ((unsigned int)(stdPlatform_GetTimeMsec() - entered) >= 3000U) {
+            if (probe == 3) {
+                jkMultiEntry3 setupEntry;
+                memset(&setupEntry, 0, sizeof(setupEntry));
+                jkGuiNetHost_ShowXboxSplitScreen(&setupEntry);
+                probe = 0;
+            }
+            menu->lastClicked = probe == 2 ? JKGUIESC_SETUP : JKGUIESC_RETURNTOGAME;
+            entered = 0;
+            if (probe == 2) {
+                probe = 0;
+                XPERF("Smoke: escape setup probe fired\n");
+            }
+            else {
+                for (int slot = 0; slot < probeSlots; slot++) {
+                    int index = xboxSplitScreen_GetPlayerIndexForSlot(slot);
+                    XPERF("Smoke: menu slot=%d entryAmmo=%.1f minAmmo=%.1f maxAmmo=%.1f exitAmmo=%.1f\n",
+                        slot, (double)slotEntry[slot], (double)slotMin[slot], (double)slotMax[slot],
+                        (double)jkPlayer_playerInfos[index].iteminfo[11].ammoAmt);
+                }
+                flex_t exitAmmo = sithPlayer_pLocalPlayerThing && sithPlayer_pLocalPlayerThing->actorParams.playerinfo
+                    ? sithPlayer_pLocalPlayerThing->actorParams.playerinfo->iteminfo[11].ammoAmt : -1.0;
+                XPERF("Smoke: escape menu return fired entryAmmo=%.1f exitAmmo=%.1f\n",
+                    (double)entryAmmo, (double)exitAmmo);
+            }
+        }
+    }
     jkGuiEsc_XboxPollKonami();
 }
 

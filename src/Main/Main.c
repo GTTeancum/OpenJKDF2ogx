@@ -2,6 +2,7 @@
 
 #ifdef TARGET_XBOX
 #include "xbox_debug.h"
+#include "Platform/Xbox/xbox_splitscreen.h"
 extern uint32_t g_app_suspended;
 #else
 #define xbox_debug_Print(msg) ((void)0)
@@ -129,6 +130,13 @@ int32_t Main_bVerboseNetworking = 0;
 int32_t Main_bMotsCompat = 0;
 int32_t Main_bDwCompat = 0;
 int32_t Main_bEnhancedCogVerbs = 0;
+int32_t Main_numBots = 0;
+int32_t Main_botMatchSeconds = 0;
+int32_t Main_botCamPlayer = 0;
+int32_t Main_botLiftProbe = 0;
+int32_t Main_botProfile = 0;
+int32_t Main_splitFullWidth = 0;
+int32_t Main_localPlayers = 1;
 char Main_strEpisode[129];
 char Main_strMap[128+4];
 #endif
@@ -194,6 +202,28 @@ int Main_StartupDedicated(int bFullyDedicated)
     jkGuiNetHost_SaveSettings();
     jkGuiNetHost_LoadSettings();
 
+#ifdef TARGET_XBOX
+    if (!bFullyDedicated && Main_localPlayers > 1)
+    {
+        xboxSplitScreen_SetRequestedLocalPlayerCount(Main_localPlayers);
+        xboxSplitScreen_Enable();
+    }
+#endif
+
+    if (Main_numBots > 0) {
+        int desiredMaxPlayers = Main_numBots + Main_localPlayers;
+        if (desiredMaxPlayers > JKPLAYER_NUM_INFOS)
+            desiredMaxPlayers = JKPLAYER_NUM_INFOS;
+        if (jkGuiNetHost_maxPlayers < desiredMaxPlayers)
+            jkGuiNetHost_maxPlayers = desiredMaxPlayers;
+        jkGuiNetHost_gameFlags |= MULTIMODEFLAG_SINGLE_LEVEL;
+        jkGuiNetHost_gameFlags &= ~(MULTIMODEFLAG_SCORELIMIT | MULTIMODEFLAG_TIMELIMIT);
+        jkGuiNetHost_scoreLimit = 0;
+        jkGuiNetHost_timeLimit = 0;
+        if (jkGuiNetHost_tickRate <= 0)
+            jkGuiNetHost_tickRate = 180;
+    }
+
     // Fake player
     stdString_SafeWStrCopy(jkGuiMultiplayer_mpcInfo.name, L"", 32);
     stdString_SafeStrCopy(jkGuiMultiplayer_mpcInfo.model, "ky.3do", 32);
@@ -240,6 +270,10 @@ int Main_StartupDedicated(int bFullyDedicated)
     v34.maxPlayers = jkGuiNetHost_maxPlayers;
     v34.sessionFlags = jkGuiNetHost_sessionFlags;
     v34.multiModeFlags = jkGuiNetHost_gameFlags;
+    if (Main_bAutostart && !__strcmpi(v34.episodeGobName, "JK1CTF"))
+    {
+        v34.multiModeFlags = MULTIMODEFLAG_TEAMS | MULTIMODEFLAG_2 | MULTIMODEFLAG_100;
+    }
     v34.maxRank = jkGuiNetHost_maxRank;
     v34.scoreLimit = jkGuiNetHost_scoreLimit;
     v34.timeLimit = jkGuiNetHost_timeLimit;
@@ -363,6 +397,22 @@ int Main_Startup(const char *cmdline)
     xbox_debug_Print("Main_Startup: globals set, parsing cmdline...\n");
     Main_ParseCmdLine((char *)cmdline);
     xbox_debug_Print("Main_Startup: cmdline parsed\n");
+#ifdef TARGET_XBOX
+    {
+        char botArgsDbg[256];
+        _snprintf(botArgsDbg, sizeof(botArgsDbg),
+                  "Smoke: parsed autostart=%d mp=%d episode='%s' map='%s' bots=%d seconds=%d botcam=%d locals=%d\n",
+                  Main_bAutostart,
+                  !Main_bAutostartSp,
+                  Main_strEpisode,
+                  Main_strMap,
+                  Main_numBots,
+                  Main_botMatchSeconds,
+                  Main_botCamPlayer,
+                  Main_localPlayers);
+        xbox_debug_Print(botArgsDbg);
+    }
+#endif
 #ifdef TARGET_TWL
     Main_bNoHUD = 1;
 #endif
@@ -655,6 +705,13 @@ void Main_Shutdown()
     Main_bVerboseNetworking = 0;
     Main_bDwCompat = 0;
     Main_bEnhancedCogVerbs = 0;
+    Main_numBots = 0;
+    Main_botMatchSeconds = 0;
+    Main_botCamPlayer = 0;
+    Main_botLiftProbe = 0;
+    Main_botProfile = 0;
+    Main_splitFullWidth = 0;
+    Main_localPlayers = 1;
     memset(Main_strEpisode, 0, sizeof(Main_strEpisode));
     memset(Main_strMap, 0, sizeof(Main_strMap));
 
@@ -801,6 +858,57 @@ void Main_ParseCmdLine(char *cmdline)
         {
             char* pArgNext = _strtok(0, " \t");
             stdString_SafeStrCopy(Main_strMap, pArgNext, 0x80);
+        }
+        else if (!__strcmpi(pArgTok, "-bots") || !__strcmpi(pArgTok, "/bots") )
+        {
+            char* pArgNext = _strtok(0, " \t");
+            Main_numBots = pArgNext ? _atoi(pArgNext) : 0;
+            if (Main_numBots < 0)
+                Main_numBots = 0;
+            if (Main_numBots > 8)
+                Main_numBots = 8;
+        }
+        else if (!__strcmpi(pArgTok, "-botmatch-seconds") || !__strcmpi(pArgTok, "/botmatch-seconds") )
+        {
+            char* pArgNext = _strtok(0, " \t");
+            Main_botMatchSeconds = pArgNext ? _atoi(pArgNext) : 0;
+            if (Main_botMatchSeconds < 0)
+                Main_botMatchSeconds = 0;
+        }
+        else if (!__strcmpi(pArgTok, "-bot-profile"))
+        {
+            Main_botProfile = 1;
+        }
+        else if (!__strcmpi(pArgTok, "-split-fullwidth"))
+        {
+            /* A/B performance comparison; normal 3P/4P uses pillarboxing. */
+            Main_splitFullWidth = 1;
+        }
+        else if (!__strcmpi(pArgTok, "-bot-corridor-probe"))
+        {
+            Main_botLiftProbe = 2;
+        }
+        else if (!__strcmpi(pArgTok, "-bot-lift-probe"))
+        {
+            Main_botLiftProbe = 1;
+        }
+        else if (!__strcmpi(pArgTok, "-botcam") || !__strcmpi(pArgTok, "/botcam") )
+        {
+            char* pArgNext = _strtok(0, " \t");
+            Main_botCamPlayer = pArgNext ? _atoi(pArgNext) : 1;
+            if (Main_botCamPlayer < 1)
+                Main_botCamPlayer = 1;
+            if (Main_botCamPlayer >= JKPLAYER_NUM_INFOS)
+                Main_botCamPlayer = JKPLAYER_NUM_INFOS - 1;
+        }
+        else if (!__strcmpi(pArgTok, "-localplayers") || !__strcmpi(pArgTok, "/localplayers") )
+        {
+            char* pArgNext = _strtok(0, " \t");
+            Main_localPlayers = pArgNext ? _atoi(pArgNext) : 1;
+            if (Main_localPlayers < 1)
+                Main_localPlayers = 1;
+            if (Main_localPlayers > 4)
+                Main_localPlayers = 4;
         }
         else if (!__strcmpi(pArgTok, "-headless") || !__strcmpi(pArgTok, "/headless") )
         {

@@ -47,6 +47,7 @@ void stdPalEffects_SetAdd(int idx, int r, int g, int b);
 void stdPalEffects_SetFade(int idx, flex_t fade);
 MATH_FUNC void stdPalEffects_UpdatePalette(const void *palette);
 void stdPalEffects_GatherEffects();
+void stdPalEffects_GatherEffectsMasked(uint32_t excludedRequests);
 MATH_FUNC void stdPalEffects_ApplyTint(rdColor24 *aPalette, flex_t tintR, flex_t tintG, flex_t tintB);
 void stdPalEffects_ResetEffect(stdPalEffect *effect);
 

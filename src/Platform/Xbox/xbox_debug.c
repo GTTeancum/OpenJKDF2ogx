@@ -88,10 +88,13 @@ static int xbox_debug_ShouldLogText(const char *msg)
     if (!strncmp(msg, "XSL", 3)) return 1;
     if (!strncmp(msg, "XmvDbg:", 7)) return 1;
     if (!strncmp(msg, "SplitScreen", 11)) return 1;
+    if (!strncmp(msg, "BotNav:", 7)) return 1;
+    if (!strncmp(msg, "BotMatch:", 9)) return 1;
     if (!strncmp(msg, "main:", 5)) return 1;
     if (!strncmp(msg, "Main_Startup:", 13)) return 1;
     if (!strncmp(msg, "TitleShowLoading:", 17)) return 1;
     if (!strncmp(msg, "TitleLoad:", 10)) return 1;
+    if (!strncmp(msg, "SaveLoad:", 9)) return 1;
     if (strstr(msg, "FATAL")) return 1;
     if (strstr(msg, "Exception")) return 1;
     if (strstr(msg, "E_OUTOFMEMORY")) return 1;
@@ -192,6 +195,12 @@ void xbox_debug_Shutdown(void)
     }
 }
 
+void xbox_debug_Trace(const char *msg)
+{
+    if (msg)
+        xbox_debug_MirrorWrite(msg);
+}
+
 void xbox_debug_Print(const char *msg)
 {
     DWORD len;
@@ -226,6 +235,7 @@ void xbox_debug_Print(const char *msg)
             !strncmp(msg, "SplitScreen", 11) ||
             !strncmp(msg, "main:", 5) || !strncmp(msg, "Main_Startup:", 13) ||
             !strncmp(msg, "TitleLoad:", 10) ||
+            !strncmp(msg, "SaveLoad:", 9) ||
             strstr(msg, "FATAL") ||
             strstr(msg, "Exception") || strstr(msg, "E_OUTOFMEMORY") ||
             strstr(msg, "D3D Error") || strstr(msg, "FAILED") ||
@@ -264,3 +274,99 @@ void xbox_debug_PerfPrintf(const char *fmt, ...)
  * because the engine global sithWorld_pCurrentWorld is emitted with C++
  * name mangling by globals.c (compiled with /Tp) and a C-linkage TU
  * cannot resolve its symbol. */
+
+
+/* Sequence, tick ms, counter us, game ms, rendered frames, physics steps,
+ * physics microseconds, bot scheduler calls, individual bot thinks, sequence.
+ * The monitor accepts only matching even sequence values. */
+volatile unsigned int g_XboxClockProbeV2[10];
+static unsigned int g_physicsSteps;
+static double g_physicsUs;
+unsigned int g_XboxBotSchedulerCalls, g_XboxBotThinkCalls;
+unsigned int g_XboxProfileModelMeshes, g_XboxProfileModelVertices, g_XboxProfileModelFaces;
+
+void xbox_debug_SimulationStep(double seconds)
+{
+    ++g_physicsSteps;
+    g_physicsUs += seconds * 1000000.0;
+}
+
+static unsigned int g_clockProbeFrames;
+static unsigned long g_profileUs[XPROF_COUNT];
+static unsigned int g_profileFrames;
+static unsigned int g_profileLastMs;
+static unsigned int g_profileLastUs;
+static unsigned int g_profilePreviousFrameMs;
+
+unsigned int xbox_debug_ProfileClock(void)
+{
+    LARGE_INTEGER counter;
+    static double ticksToUs;
+    if (!ticksToUs) {
+        LARGE_INTEGER frequency;
+        QueryPerformanceFrequency(&frequency);
+        ticksToUs = 1000000.0 / (double)frequency.QuadPart;
+    }
+    QueryPerformanceCounter(&counter);
+    /* Wrap at roughly 71 minutes; unsigned subtraction preserves short spans. */
+    return (unsigned int)((unsigned __int64)((double)counter.QuadPart * ticksToUs));
+}
+
+void xbox_debug_ProfileAdd(int scope, unsigned int start)
+{
+    if (scope >= 0 && scope < XPROF_COUNT)
+        g_profileUs[scope] += xbox_debug_ProfileClock() - start;
+}
+
+void xbox_debug_ProfileFrame(int players, unsigned int gameMs)
+{
+    unsigned int now = GetTickCount();
+    unsigned int nowUs = xbox_debug_ProfileClock();
+    unsigned int sequence = g_XboxClockProbeV2[0] + 2U;
+    g_XboxClockProbeV2[0] = sequence - 1U;
+    g_XboxClockProbeV2[1] = now;
+    g_XboxClockProbeV2[2] = nowUs;
+    g_XboxClockProbeV2[3] = gameMs;
+    g_XboxClockProbeV2[4] = ++g_clockProbeFrames;
+    g_XboxClockProbeV2[5] = g_physicsSteps;
+    g_XboxClockProbeV2[6] = (unsigned int)((unsigned __int64)g_physicsUs);
+    g_XboxClockProbeV2[7] = g_XboxBotSchedulerCalls;
+    g_XboxClockProbeV2[8] = g_XboxBotThinkCalls;
+    g_XboxClockProbeV2[9] = sequence;
+    g_XboxClockProbeV2[0] = sequence;
+    /* Drop startup and windows crossing a menu/load pause. Their work does
+     * not have a matching set of measured gameplay frames. */
+    if (!g_profileLastMs || now - g_profilePreviousFrameMs >= 1000U) {
+        memset(g_profileUs, 0, sizeof(g_profileUs));
+        g_XboxProfileModelMeshes = g_XboxProfileModelVertices = g_XboxProfileModelFaces = 0;
+        g_profileFrames = 0;
+        g_profileLastMs = now;
+        g_profileLastUs = nowUs;
+        g_profilePreviousFrameMs = now;
+        return;
+    }
+    g_profilePreviousFrameMs = now;
+    ++g_profileFrames;
+    if (now - g_profileLastMs >= 10000) {
+        XPERF("PerfSplit: players=%d frames=%u tickSpanMs=%u counterSpanUs=%u simUs=%lu worldUs=%lu povUs=%lu hudUs=%lu flipUs=%lu clipUs=%lu lightUs=%lu geoUs=%lu thingsUs=%lu alphaUs=%lu clearUs=%lu submitUs=%lu presentUs=%lu\n",
+              players, g_profileFrames, now - g_profileLastMs, nowUs - g_profileLastUs,
+              g_profileUs[0], g_profileUs[1],
+              g_profileUs[2], g_profileUs[3], g_profileUs[4], g_profileUs[5],
+              g_profileUs[6], g_profileUs[7], g_profileUs[8], g_profileUs[9],
+              g_profileUs[10], g_profileUs[XPROF_SUBMIT], g_profileUs[11]);
+        if (g_profileUs[XPROF_SIM_BOTS] || g_profileUs[XPROF_SIM_THINGS])
+            XPERF("PerfSim: soundUs=%lu botsUs=%lu actorPhysicsUs=%lu cogUs=%lu\n",
+                  g_profileUs[XPROF_SIM_SOUND], g_profileUs[XPROF_SIM_BOTS],
+                  g_profileUs[XPROF_SIM_THINGS], g_profileUs[XPROF_SIM_COG]);
+        if (g_XboxProfileModelMeshes)
+            XPERF("PerfModel: sampleEvery=8 meshes=%u vertices=%u faces=%u transformUs=%lu lightUs=%lu faceUs=%lu\n",
+                  g_XboxProfileModelMeshes, g_XboxProfileModelVertices, g_XboxProfileModelFaces,
+                  g_profileUs[XPROF_MODEL_TRANSFORM], g_profileUs[XPROF_MODEL_LIGHT],
+                  g_profileUs[XPROF_MODEL_FACE]);
+        g_XboxProfileModelMeshes = g_XboxProfileModelVertices = g_XboxProfileModelFaces = 0;
+        memset(g_profileUs, 0, sizeof(g_profileUs));
+        g_profileFrames = 0;
+        g_profileLastMs = now;
+        g_profileLastUs = nowUs;
+    }
+}

@@ -2,6 +2,8 @@
 
 #ifdef TARGET_XBOX
 extern "C" void xbox_debug_Printf(const char*, ...);
+#include "Platform/Xbox/xbox_debug.h"
+extern int jkMain_xboxSmokeReloadTraceFrames;
 #endif
 
 #include "World/sithThing.h"
@@ -1147,6 +1149,13 @@ void sithWeapon_handle_inv_msgs(sithThing *player)
     int v6; // eax
     sithItemDescriptor *v7; // eax
     int v9; // [esp-18h] [ebp-1Ch]
+#ifdef TARGET_XBOX
+    if (jkMain_xboxSmokeReloadTraceFrames)
+        XPERF("SaveLoad: weapon selected=%d pending=%d activate=%d mode=%d mount=%.3f fire=%.3f now=%.3f\n",
+            sithInventory_GetCurWeapon(player), sithWeapon_8BD024, sithWeapon_8BD05C,
+            sithWeapon_CurWeaponMode, (double)sithWeapon_mountWait,
+            (double)sithWeapon_fireWait, (double)sithTime_curSeconds);
+#endif
 
     //printf("%x %x %f %f %f\n", sithWeapon_8BD024, sithWeapon_8BD05C, sithWeapon_mountWait, sithWeapon_fireWait, sithTime_curSeconds);
 

@@ -1,0 +1,2 @@
+# Use with -FireProbe -OpenEscapeAfterSeconds 4 -MenuReturn.
+LEVEL|120|2|JK1MP|m2.jkl

@@ -8,6 +8,15 @@
 #include "Platform/std3D.h"
 #include "Engine/sithRender.h"
 #include "World/jkPlayer.h"
+extern int jkGuiBuildMulti_bRendering;
+#ifdef TARGET_XBOX
+#include "Platform/Xbox/xbox_video.h"
+static flex_t rdCamera_XboxPixelAspect(void)
+{
+    return jkGuiBuildMulti_bRendering ? 1.0f : xboxVideo_GetProjectionPixelAspectRatio();
+}
+#endif
+
 
 static rdVector3 rdCamera_camRotation;
 static flex_t rdCamera_mipmapScalar = 1.0; // MOTS added
@@ -99,7 +108,6 @@ int rdCamera_SetCurrent(rdCamera *camera)
     return 1;
 }
 
-extern int jkGuiBuildMulti_bRendering;
 int rdCamera_SetFOV(rdCamera *camera, flex_t fovVal)
 {
     if ( fovVal < 5.0 )
@@ -260,9 +268,15 @@ int rdCamera_BuildFOV(rdCamera *camera)
             
             flex_t tangent = stdMath_Tan(camera->fov * 0.5);
             camera->fovDx = project_width_half / tangent;
+#ifdef TARGET_XBOX
+            camera->fovDx /= rdCamera_XboxPixelAspect();
+#endif
 
             flex_t fovDx = camera->fovDx;
             flex_t fovDy = camera->fovDx;
+#ifdef TARGET_XBOX
+    fovDy *= rdCamera_XboxPixelAspect();
+#endif
 
             // UBSAN fixes
             if (fovDy == 0) {
@@ -323,6 +337,9 @@ int rdCamera_BuildClipFrustum(rdCamera *camera, rdClipFrustum *outClip, signed i
     
     flex_t fovDx = camera->fovDx;
     flex_t fovDy = camera->fovDx;
+#ifdef TARGET_XBOX
+    fovDy *= rdCamera_XboxPixelAspect();
+#endif
 
     // UBSAN fixes
     if (fovDy == 0) {

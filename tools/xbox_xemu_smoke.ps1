@@ -1,5 +1,6 @@
 param(
     [int]$DurationSeconds = 300,
+    [ValidateSet("System", "4:3", "16:9")][string]$SystemAspect = "System",
     [int]$PollIntervalSeconds = 15,
     [string]$RunLabel = "xemu-smoke",
     [int]$MonitorPort = 4477,
@@ -7,19 +8,47 @@ param(
     [string]$AutoStartLevel = "",
     [string]$AutoStartArgs = "",
     [switch]$DisableMusic,
+    [switch]$MuteHostAudio,
     [switch]$DisableCutscenes,
     [string]$AlwaysOnSoakPlanPath = "",
     [int]$OpenEscapeAfterSeconds = 0,
+    [ValidateRange(1, 10)][int]$MenuCycles = 1,
+    [int]$ReloadAfterSeconds = 0,
     [int]$ScreenshotEverySeconds = 0,
     [switch]$InputProbe,
+    [switch]$Traverse,
+    [switch]$FireProbe,
+    [switch]$FourPlayerStress,
+    [ValidateSet('Mixed', 'Primary', 'Secondary')][string]$FireProbeMode = 'Mixed',
+    [switch]$Roundtrip,
+    [switch]$DeathProbe,
+    [switch]$DamageProbe,
+    [switch]$ColorProbe,
+    [switch]$AudioProbe,
+    [ValidateRange(0, 3)][int]$DamageProbeSlot = 0,
+    [ValidateRange(1000, 60000)][int]$DamageProbeIntervalMs = 1000,
+    [ValidateRange(5, 60)][int]$FallProbeDelaySeconds = 5,
+    [switch]$SetupProbe,
+    [switch]$BotSetupProbe,
+    [switch]$ModelPreviewProbe,
+    [switch]$TeamMatch,
+    [switch]$FallProbe,
+    [switch]$WaterProbe,
+    [switch]$WaterBlendProbe,
+    [switch]$MenuReturn,
     [switch]$KeepIso,
     [string]$RuntimeSource = "C:\Games\Emulators\CXBX\openJKDF2x",
     [string]$XemuRoot = "C:\Games\Emulators\Xemu",
     [string]$HddPath = "C:\Games\Emulators\Xemu\HDD\xbox_hdd.qcow2",
-    [string]$WorkRoot = ""
+    [string]$WorkRoot = "",
+    [string]$InstanceRoot = "",
+    [switch]$SnapshotDisk,
+    [switch]$MonitorScreenshots,
+    [switch]$NoHostInput
 )
 
 $ErrorActionPreference = "Stop"
+if ($FourPlayerStress) { $FireProbe = $true }
 
 $RepoRoot = (Resolve-Path (Join-Path $PSScriptRoot "..")).Path
 $BuildRoot = Join-Path $RepoRoot "build\xbox"
@@ -38,6 +67,9 @@ $RunDir = Join-Path $OutRoot "$Timestamp-$SafeLabel"
 $LatestPollDir = Join-Path $RunDir "latest_poll"
 $SummaryPath = Join-Path $RunDir "summary.txt"
 $InstanceDir = Join-Path $XemuRoot "OpenJKDF2Smoke"
+if (![string]::IsNullOrWhiteSpace($InstanceRoot)) {
+    $InstanceDir = [System.IO.Path]::GetFullPath($InstanceRoot)
+}
 $ConfigPath = Join-Path $InstanceDir "xemu.toml"
 $EepromPath = Join-Path $InstanceDir "EEPROM\eeprom_smoke.bin"
 $ScreenshotDir = Join-Path $RunDir "screenshots"
@@ -123,7 +155,7 @@ function Invoke-HmpCommand([int]$Port, [string]$Command, [int]$TimeoutMs = 2500)
             [void]$stream.Read($buffer, 0, $buffer.Length)
         }
         $writer = New-Object System.IO.StreamWriter($stream, [System.Text.Encoding]::ASCII)
-        $writer.NewLine = "`n"
+        $writer.NewLine = "`r`n"
         $writer.AutoFlush = $true
         $writer.WriteLine($Command)
         Start-Sleep -Milliseconds 700
@@ -222,10 +254,14 @@ function New-Stage {
     }
 
     New-Item -ItemType Directory -Force -Path $StagePath | Out-Null
-    robocopy $RuntimeSource $StagePath /E /NFL /NDL /NJH /NJS /NP /XD Logs Screenshots /XF debug_openjkdf2.txt CxbxDebug.txt KrnlDebug.txt | Out-Null
+    robocopy $RuntimeSource $StagePath /E /NFL /NDL /NJH /NJS /NP /XD Logs Screenshots /XF debug_openjkdf2.txt CxbxDebug.txt KrnlDebug.txt xbox_smoke_mute_audio.txt | Out-Null
     if ($LASTEXITCODE -gt 7) {
         throw "robocopy runtime staging failed with exit code $LASTEXITCODE"
     }
+
+    # Package the namespaced multiplayer HUD; stock resource paths stay intact.
+    Copy-Item -LiteralPath (Join-Path $RepoRoot "assets/mp-hud/Resource") -Destination $StagePath -Recurse -Force
+    Copy-Item -LiteralPath (Join-Path $RepoRoot "assets/mp-hud/jkhud.txt") -Destination $StagePath -Force
 
     Copy-Item -LiteralPath $XbePath -Destination (Join-Path $StagePath "default.xbe") -Force
     foreach ($dashboardAsset in @("TitleImage.xbx", "SaveImage.xbx", "TitleMeta.xbx")) {
@@ -250,9 +286,72 @@ function New-Stage {
     }
     if ($OpenEscapeAfterSeconds -gt 0) {
         Set-Content -LiteralPath (Join-Path $StagePath "xbox_smoke_escape_after_seconds.txt") -Value ([string]$OpenEscapeAfterSeconds) -Encoding ASCII
+        Set-Content -LiteralPath (Join-Path $StagePath "xbox_smoke_menu_cycles.txt") -Value ([string]$MenuCycles) -Encoding ASCII
+    }
+    if ($ReloadAfterSeconds -gt 0) {
+        Set-Content -LiteralPath (Join-Path $StagePath "xbox_smoke_reload_after_seconds.txt") -Value ([string]$ReloadAfterSeconds) -Encoding ASCII
     }
     if ($InputProbe) {
         Set-Content -LiteralPath (Join-Path $StagePath "xbox_smoke_input_probe.txt") -Value "1" -Encoding ASCII
+    }
+    if ($Traverse) {
+        Set-Content -LiteralPath (Join-Path $StagePath "xbox_smoke_traverse.txt") -Value "1" -Encoding ASCII
+    }
+    if ($FireProbe) {
+        Set-Content -LiteralPath (Join-Path $StagePath "xbox_smoke_fire_probe.txt") -Value "1" -Encoding ASCII
+        if ($FireProbeMode -eq 'Secondary') {
+            Set-Content -LiteralPath (Join-Path $StagePath "xbox_smoke_secondary_fire.txt") -Value "1" -Encoding ASCII
+        }
+        if ($FireProbeMode -eq 'Primary') {
+            Set-Content -LiteralPath (Join-Path $StagePath "xbox_smoke_primary_fire.txt") -Value "1" -Encoding ASCII
+        }
+    }
+    if ($FourPlayerStress) {
+        Set-Content -LiteralPath (Join-Path $StagePath "xbox_smoke_four_player_stress.txt") -Value "1" -Encoding ASCII
+    }
+    if ($Roundtrip) {
+        Set-Content -LiteralPath (Join-Path $StagePath "xbox_smoke_roundtrip.txt") -Value "1" -Encoding ASCII
+    }
+    if ($DeathProbe) {
+        Set-Content -LiteralPath (Join-Path $StagePath "xbox_smoke_death.txt") -Value "1" -Encoding ASCII
+    }
+    if ($DamageProbe) {
+        Set-Content -LiteralPath (Join-Path $StagePath "xbox_smoke_damage.txt") -Value "$DamageProbeSlot $DamageProbeIntervalMs" -Encoding ASCII
+    }
+    if ($AudioProbe) {
+        Set-Content -LiteralPath (Join-Path $StagePath "xbox_smoke_audio.txt") -Value "1" -Encoding ASCII
+    }
+    if ($ColorProbe) {
+        Set-Content -LiteralPath (Join-Path $StagePath "xbox_smoke_color.txt") -Value "1" -Encoding ASCII
+    }
+    if ($TeamMatch) {
+        $teamRegistryPath = Join-Path $StagePath "xbox_registry.cfg"
+        $teamRegistryLines = @()
+        if (Test-Path -LiteralPath $teamRegistryPath) {
+            $teamRegistryLines = @(Get-Content -LiteralPath $teamRegistryPath | Where-Object { $_ -notmatch '^(?i:bIsTeams)=' })
+        }
+        @($teamRegistryLines; "bIsTeams=1") | Set-Content -LiteralPath $teamRegistryPath -Encoding ASCII
+    }
+    if ($ModelPreviewProbe) {
+        Set-Content -LiteralPath (Join-Path $StagePath "xbox_smoke_model_preview.txt") -Value "1" -Encoding ASCII
+    }
+    if ($BotSetupProbe) {
+        Set-Content -LiteralPath (Join-Path $StagePath "xbox_smoke_bot_setup.txt") -Value "1" -Encoding ASCII
+    }
+    if ($SetupProbe) {
+        Set-Content -LiteralPath (Join-Path $StagePath "xbox_smoke_setup.txt") -Value "1" -Encoding ASCII
+    }
+    if ($FallProbe) {
+        Set-Content -LiteralPath (Join-Path $StagePath "xbox_smoke_fall.txt") -Value "$FallProbeDelaySeconds" -Encoding ASCII
+    }
+    if ($WaterBlendProbe) {
+        Set-Content -LiteralPath (Join-Path $StagePath "xbox_smoke_water_blend.txt") -Value "1" -Encoding ASCII
+    }
+    if ($WaterProbe) {
+        Set-Content -LiteralPath (Join-Path $StagePath "xbox_smoke_water.txt") -Value "1" -Encoding ASCII
+    }
+    if ($MenuReturn) {
+        Set-Content -LiteralPath (Join-Path $StagePath "xbox_smoke_menu_return.txt") -Value "1" -Encoding ASCII
     }
     if ($DisableMusic) {
         Set-Content -LiteralPath (Join-Path $StagePath "xbox_smoke_disable_music.txt") -Value "1" -Encoding ASCII
@@ -292,7 +391,18 @@ function Initialize-XemuInstance {
         }
     }
     Copy-Item -LiteralPath $EepromSource -Destination $EepromPath -Force
+    if ($SystemAspect -ne "System") {
+        & python (Join-Path $RepoRoot "scripts/xbox/set_test_eeprom_aspect.py") --test-copy $EepromPath --aspect $SystemAspect
+        if ($LASTEXITCODE -ne 0) { throw "Test EEPROM aspect configuration failed" }
+    }
 
+
+    $backgroundInput = if ($NoHostInput) { "false" } else { "true" }
+    $controllerBinding = if ($NoHostInput) { "" } else { "keyboard" }
+    # Match the host window to the disposable Xbox EEPROM's aspect. XEMU's
+    # default 1280x960 window adds bars around correctly rendered 16:9 output.
+    $testVideoFlags = [BitConverter]::ToUInt32([IO.File]::ReadAllBytes($EepromPath), 0x94)
+    $testWindowSize = if (($testVideoFlags -band 0x10000) -ne 0) { '1280x720' } else { '1280x960' }
     $config = @"
 [general]
 show_welcome = false
@@ -304,9 +414,16 @@ last_viewed_menu_index = 1
 [general.updates]
 check = false
 
+[display.window]
+startup_size = '$testWindowSize'
+
+[display.ui]
+aspect_ratio = 'auto'
+fit = 'scale'
+
 [input]
 auto_bind = false
-background_input_capture = true
+background_input_capture = $backgroundInput
 
 [input.keyboard_controller_scancode_map]
 a = 4
@@ -319,7 +436,7 @@ dpad_right = 8
 
 [input.bindings]
 port1_driver = 'usb-xbox-gamepad'
-port1 = 'keyboard'
+port1 = '$controllerBinding'
 port2_driver = 'usb-xbox-gamepad'
 port3_driver = 'usb-xbox-gamepad'
 port4_driver = 'usb-xbox-gamepad'
@@ -404,7 +521,20 @@ try {
     Start-Sleep -Milliseconds 500
 
     $args = @("-config_path", $ConfigPath, "-monitor", "tcp:127.0.0.1:$MonitorPort,server,nowait")
-    $proc = Start-Process -FilePath $XemuExe -ArgumentList $args -WorkingDirectory $InstanceDir -WindowStyle Hidden -PassThru
+    if ($SnapshotDisk) { $args += "-snapshot" }
+    $previousAudioDriver = $env:SDL_AUDIO_DRIVER
+    $previousAudioDriver2 = $env:SDL_AUDIODRIVER
+    try {
+        if ($MuteHostAudio) {
+            $env:SDL_AUDIO_DRIVER = 'dummy'
+            $env:SDL_AUDIODRIVER = 'dummy'
+        }
+        $proc = Start-Process -FilePath $XemuExe -ArgumentList $args -WorkingDirectory $InstanceDir -WindowStyle Hidden -PassThru -RedirectStandardOutput (Join-Path $RunDir 'xemu.stdout.txt') -RedirectStandardError (Join-Path $RunDir 'xemu.stderr.txt')
+    }
+    finally {
+        $env:SDL_AUDIO_DRIVER = $previousAudioDriver
+        $env:SDL_AUDIODRIVER = $previousAudioDriver2
+    }
     try {
         $proc.PriorityClass = "BelowNormal"
     }
@@ -427,7 +557,14 @@ try {
         $pollErr = Join-Path $RunDir ("poll_{0:D3}.err.txt" -f $pollIndex)
         $latestPath = Join-Path $LatestPollDir ("port{0}_openjkdf2_ram_log.txt" -f $MonitorPort)
 
-        & python $PollScript --ports ([string]$MonitorPort) --map $MapPath --xbe $XbePath --out-dir $LatestPollDir --timeout 3 *> $pollOut
+        # Windows PowerShell turns native stderr into ErrorRecords. A transient
+        # monitor error must reach the failure branch, not terminate the run.
+        $previousErrorPreference = $ErrorActionPreference
+        try {
+            $ErrorActionPreference = 'Continue'
+            & python $PollScript --ports ([string]$MonitorPort) --map $MapPath --xbe $XbePath --out-dir $LatestPollDir --timeout 3 *> $pollOut
+        }
+        finally { $ErrorActionPreference = $previousErrorPreference }
         if ($LASTEXITCODE -eq 0 -and (Test-Path -LiteralPath $latestPath)) {
             $pollOkCount++
             $snapshot = Join-Path $RunDir ("ram_poll_{0:D3}_{1:D4}s.txt" -f $pollIndex, $elapsed)
@@ -445,7 +582,13 @@ try {
         if ((Get-Date) -ge $nextScreenshot) {
             $shot = Join-Path $ScreenshotDir ("shot_{0:D4}s.png" -f $elapsed)
             try {
-                $shotDetail = Invoke-XemuNativeScreenshot $proc.Id $XemuExe $ScreenshotDir $shot
+                if ($MonitorScreenshots) {
+                    $shot = [System.IO.Path]::ChangeExtension($shot, ".ppm")
+                    $shotDetail = Invoke-XemuScreendump $MonitorPort $shot $InstanceDir
+                }
+                else {
+                    $shotDetail = Invoke-XemuNativeScreenshot $proc.Id $XemuExe $ScreenshotDir $shot
+                }
                 Set-Content -LiteralPath (Join-Path $RunDir ("screenshot_{0:D4}s.txt" -f $elapsed)) -Value $shotDetail -Encoding ASCII
             }
             catch {
@@ -497,6 +640,12 @@ $fatalPatterns = @(
     "failed 0x"
 )
 $fatalCount = Count-Matches $ramLogs $fatalPatterns
+$reloadResumed = $false
+if ($ReloadAfterSeconds -gt 0) {
+    # The game emits this only after successful restoration and later frames.
+    # Earlier stage messages can wrap out of the bounded RAM log.
+    $reloadResumed = (Count-Matches $ramLogs @("Smoke: autosave reload resumed")) -gt 0
+}
 $reached = Get-ReachedStates $ramLogs
 $screenshotCount = @(
     Get-ChildItem -LiteralPath $ScreenshotDir -Include "*.png", "*.ppm" -File -ErrorAction SilentlyContinue
@@ -515,10 +664,34 @@ $summary = @(
     "autoStartLevel=$AutoStartLevel",
     "autoStartArgs=$AutoStartArgs",
     "disableMusic=$([bool]$DisableMusic)",
+    "muteHostAudio=$([bool]$MuteHostAudio)",
+    "systemAspect=$SystemAspect",
     "disableCutscenes=$([bool]$DisableCutscenes)",
     "alwaysOnSoakPlanPath=$AlwaysOnSoakPlanPath",
     "openEscapeAfterSeconds=$OpenEscapeAfterSeconds",
+    "menuCycles=$MenuCycles",
+    "reloadAfterSeconds=$ReloadAfterSeconds",
+    "reloadResumed=$reloadResumed",
+    "snapshotDisk=$([bool]$SnapshotDisk)",
+    "noHostInput=$([bool]$NoHostInput)",
     "inputProbe=$([bool]$InputProbe)",
+    "traverse=$([bool]$Traverse)",
+    "fireProbe=$([bool]$FireProbe)",
+    "fourPlayerStress=$([bool]$FourPlayerStress)",
+    "fireProbeMode=$FireProbeMode",
+    "roundtrip=$([bool]$Roundtrip)",
+    "deathProbe=$([bool]$DeathProbe)",
+    "damageProbe=$([bool]$DamageProbe)",
+    "colorProbe=$([bool]$ColorProbe)",
+    "audioProbe=$([bool]$AudioProbe)",
+    "damageProbeSlot=$DamageProbeSlot",
+    "setupProbe=$([bool]$SetupProbe)",
+    "botSetupProbe=$([bool]$BotSetupProbe)",
+    "teamMatch=$([bool]$TeamMatch)",
+    "fallProbe=$([bool]$FallProbe)",
+    "waterProbe=$([bool]$WaterProbe)",
+    "waterBlendProbe=$([bool]$WaterBlendProbe)",
+    "menuReturn=$([bool]$MenuReturn)",
     "runtimeSource=$RuntimeSource",
     "xbe=$XbePath",
     "map=$MapPath",
@@ -546,6 +719,13 @@ elseif ($lastPollError) {
 Set-Content -LiteralPath $SummaryPath -Value $summary -Encoding UTF8
 Get-Content -LiteralPath $SummaryPath
 
-if ($pollOkCount -eq 0 -or $fatalCount -gt 0) {
+if ($pollOkCount -eq 0 -or $fatalCount -gt 0 -or ($ReloadAfterSeconds -gt 0 -and !$reloadResumed) -or
+    ($Roundtrip -and !(Test-AnyPattern $ramLogs "Smoke: roundtrip resumed success=1")) -or
+    ($DeathProbe -and !(Test-AnyPattern $ramLogs "Smoke: respawn probe resumed")) -or
+    ($FallProbe -and (!(Test-AnyPattern $ramLogs "Smoke: fall probe entered") -or
+        !(Test-AnyPattern $ramLogs "FallDeath: fade complete"))) -or
+    ($WaterProbe -and (!(Test-AnyPattern $ramLogs "Smoke: water probe entered") -or
+        !(Test-AnyPattern $ramLogs "Smoke: water probe returned to spawn") -or
+        !(Test-AnyPattern $ramLogs "Smoke: water camera sector=[0-9]+ wet=1")))) {
     exit 1
 }

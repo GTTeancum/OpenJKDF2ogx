@@ -32,14 +32,14 @@ struct embeddedResource_t { const char* name; const void* data; unsigned int siz
 const embeddedResource_t* const embeddedResource_aFiles = 0;
 const unsigned int embeddedResource_aFiles_num = 0;
 
+HostServices* std_pHS = 0;
+HostServices* pHS = 0;
+
 /* ================================================================
    Everything below uses C linkage so names match what C callers expect.
    The C++ globals above intentionally use C++ mangling.
    ================================================================ */
 /* All globals and stubs — C++ linkage to match callers */
-HostServices* std_pHS = 0;
-HostServices* pHS = 0;
-
 /* ================================================================
    MSVC RUNTIME HELPERS - not in XDK CRT, need manual provision
    ================================================================ */
@@ -246,11 +246,7 @@ int  jkGuiControlOptions_Shutdown(void) STUB0
 
 /* jkCutscene is compiled for Xbox. */
 
-/* jkDSS — needs networking */
-int  jkDSS_Startup(void) STUB0
-int  jkDSS_Shutdown(void) STUB0
-void jkDSS_SendEndLevel(void) STUBV
-void jkDSS_wrap_SendSaberInfo_alt(void) STUBV
+/* jkDSS also owns save/load callbacks; use the real implementation. */
 
 /* jkControl_Startup, jkControl_Shutdown — real impls in src/Main/jkControl.c (now in build) */
 
@@ -471,8 +467,16 @@ int Window_MessageLoop(void)
      * made animated post-menu draws visibly fight the 8-bit menu buffer.
      * Initial paints and focus/click redraws already present explicitly.
      */
-    if (!xbox_windowHandler)
-        stdDisplay_DDrawGdiSurfaceFlip();
+    {
+        static DWORD lastMenuPresentMs;
+        DWORD nowMs = GetTickCount();
+        /* Present the cached menu on idle ticks too. This is not WM_PAINT:
+         * controls are not repainted and post-menu overlays stay ordered. */
+        if (!xbox_windowHandler || (DWORD)(nowMs - lastMenuPresentMs) >= 33U) {
+            stdDisplay_DDrawGdiSurfaceFlip();
+            lastMenuPresentMs = nowMs;
+        }
+    }
     return 0;
 }
 int Window_ShowCursorUnwindowed(int a) { (void)a; return 1; }
@@ -530,7 +534,6 @@ extern "C" {
 //    { (void)c; (void)x1; (void)y1; (void)x2; (void)y2; (void)col; (void)mask; return 0; }
 void jkQuakeConsole_ExecuteCommand(const char* pCmd)                        { (void)pCmd; }
 void jkQuakeConsole_PrintLine(const char* pLine)                            { (void)pLine; }
-void jkDSS_SendSetTeam(short team)                                          { (void)team; }
 /* jkGuiSetup_Show is now provided by the real setup menu implementation. */
 //void jkGuiSetup_Show(void)                                                  { }
 /* jkGuiMap_Show is now provided by the real map GUI implementation. */

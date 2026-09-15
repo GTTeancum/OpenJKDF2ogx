@@ -303,6 +303,9 @@ int jkGame_Update()
     }
 #endif
     jkPlayer_DrawPov();
+#ifdef TARGET_XBOX
+    std3D_XboxDrawColorEffects();
+#endif
     jkGame_Update_DrawPov = stdPlatform_GetTimeMsec();
 
 #if 1
@@ -392,6 +395,11 @@ int jkGame_Update()
         s_xboxHudGateDbg++;
     }
 #endif
+#ifdef TARGET_XBOX
+    /* Both single-player and single-local-player multiplayer use this path.
+     * Anchor their HUDs to the full viewport, preserving physical proportions. */
+    std3D_XboxBeginViewportUI(0, 0, 640, 480);
+#endif
     if (!Main_bMotsCompat) {
         if ( (playerThings[playerThingIdx].actorThing->actorParams.typeflags & SITH_AF_NOHUD) == 0 ) {
             jkHud_Draw();
@@ -415,6 +423,9 @@ int jkGame_Update()
 
     jkDev_BlitLogToScreen();
     jkHudInv_Draw();
+#ifdef TARGET_XBOX
+    std3D_XboxEndViewportUI();
+#endif
 #if !defined(SDL2_RENDER) && !defined(TARGET_TWL)
     if ( Video_modeStruct.b3DAccel )
         std3D_DrawOverlay();
@@ -453,6 +464,9 @@ int jkGame_Update()
     */
 
     jkGame_Update_End = stdPlatform_GetTimeMsec();
+#ifdef TARGET_XBOX
+    xbox_debug_ProfileFrame(1, sithTime_curMs);
+#endif
 
 #if defined(TARGET_XBOX) && defined(XBOX_PERF_SMOKE)
     {

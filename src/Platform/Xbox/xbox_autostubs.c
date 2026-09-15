@@ -16,7 +16,6 @@
 //int jkCredits_Show(void) { return 0; }
 //int jkCredits_Skip(void) { return 0; }
 //int jkCredits_Tick(void) { return 0; }
-int jkDSS_wrap_SendSaberInfo_alt(void) { return 0; }
 /* jkDev is now provided by the real in-game message/debug-log implementation. */
 //int jkDev_Open(void) { return 0; }
 /* jkGuiDialog_YesNoDialog, jkGuiForce_Show — real GUI implementations now compiled. */
@@ -57,7 +56,6 @@ void jk_ShowCursor(int a) { (void)a; }
 /* jkCredits_* is now provided by the real credits implementation. */
 //void jkCredits_Shutdown(void) { }
 //void jkCredits_Startup(char * a0) { }
-void jkDSS_Shutdown(void) { }
 /* jkDev is now provided by the real in-game message/debug-log implementation. */
 //void jkDev_Shutdown(void) { }
 //void jkDev_Startup(void) { }
@@ -184,13 +182,7 @@ struct jkPlayerInfo;
 
 /* jkSaber */
 
-/* jkDSS — multiplayer state-sync packets, no-op on Xbox single-player */
-void  __cdecl jkDSS_SendJKEnableSaber(sithThing*)                     { }
-void  __cdecl jkDSS_SendJKPrintUniString(int, unsigned int)           { }
-void  __cdecl jkDSS_SendJKSetWeaponMesh(sithThing*)                   { }
-void  __cdecl jkDSS_SendSetSaberInfo(sithThing*)                      { }
-void  __cdecl jkDSS_SendSetSaberInfo2(sithThing*)                     { }
-void  __cdecl jkDSS_SendSetSaberInfoMots(sithThing*, int)             { }
+/* jkDSS packets are also used by saves; the real implementation is linked. */
 
 /* sithInventory, sithWeapon, sithTrackThing, sithAI, sithActor, sithPuppet —
  * real impls now in build (src/Gameplay, src/World, src/AI, src/Engine). */

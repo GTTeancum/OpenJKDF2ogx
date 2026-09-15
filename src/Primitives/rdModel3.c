@@ -16,6 +16,8 @@
 #include "Primitives/rdDebug.h"
 
 #ifdef TARGET_XBOX
+#include "Main/Main.h"
+#include "Platform/Xbox/xbox_debug.h"
 extern "C" void xbox_debug_Printf(const char* fmt, ...);
 #endif
 
@@ -1300,6 +1302,11 @@ void rdModel3_DrawMesh(rdMesh *meshIn, rdMatrix34 *mat)
     rdVector3 vertex;
     rdMatrix34 matInv;
     rdMatrix34 out;
+#ifdef TARGET_XBOX
+    /* Opt-in sampling avoids timing every mesh in normal play. */
+    int profileMesh = Main_botProfile && ((rdroid_frameTrue & 7) == 0);
+    unsigned int profileStart;
+#endif
 
     pCurMesh = meshIn;
 
@@ -1329,9 +1336,23 @@ void rdModel3_DrawMesh(rdMesh *meshIn, rdMatrix34 *mat)
         return;
     }
 
+#ifdef TARGET_XBOX
+    if (profileMesh) {
+        ++g_XboxProfileModelMeshes;
+        g_XboxProfileModelVertices += pCurMesh->numVertices;
+        g_XboxProfileModelFaces += pCurMesh->numFaces;
+        profileStart = xbox_debug_ProfileClock();
+    }
+#endif
     rdMatrix_Multiply34(&out, &rdCamera_pCurCamera->view_matrix, mat);
     rdMatrix_TransformPointLst34(&out, pCurMesh->vertices, aView, pCurMesh->numVertices);
     rdMatrix_InvertOrtho34(&matInv, mat);
+#ifdef TARGET_XBOX
+    if (profileMesh) {
+        xbox_debug_ProfileAdd(XPROF_MODEL_TRANSFORM, profileStart);
+        profileStart = xbox_debug_ProfileClock();
+    }
+#endif
 
     rdModel3_geometryMode = pCurMesh->geometryMode;
     if ( rdModel3_geometryMode >= curGeometryMode )
@@ -1456,6 +1477,12 @@ void rdModel3_DrawMesh(rdMesh *meshIn, rdMatrix34 *mat)
         }
     }
 
+#ifdef TARGET_XBOX
+    if (profileMesh) {
+        xbox_debug_ProfileAdd(XPROF_MODEL_LIGHT, profileStart);
+        profileStart = xbox_debug_ProfileClock();
+    }
+#endif
     // This is about 1/2 of the render time for E-11, 1/4 for saber
     // Before this is about 1/2 the render time for saber
     rdMatrix_TransformPoint34(&localCamera, &rdCamera_camMatrix.scale, &matInv);
@@ -1489,6 +1516,9 @@ void rdModel3_DrawMesh(rdMesh *meshIn, rdMatrix34 *mat)
         rdModel3_DrawFace(face, flags);
         ++face;
     }
+#ifdef TARGET_XBOX
+    if (profileMesh) xbox_debug_ProfileAdd(XPROF_MODEL_FACE, profileStart);
+#endif
 }
 
 // MOTS altered (RGB lights)

@@ -179,6 +179,9 @@ void sithPlayer_ResetPalEffects()
 
 void sithPlayer_Tick(sithPlayerInfo *playerInfo, flex_t a2)
 {
+#ifdef TARGET_XBOX
+    extern int jkMain_xboxSmokeReloadTraceFrames;
+#endif
     int v2; // edi
     sithThing *v3; // esi
     stdPalEffect *pPalEffect; // ebx
@@ -190,6 +193,9 @@ void sithPlayer_Tick(sithPlayerInfo *playerInfo, flex_t a2)
     v2 = (__int64)(a2 * 256.0 - -0.5);
     if ( playerInfo == sithPlayer_pLocalPlayer )
     {
+#ifdef TARGET_XBOX
+        if (jkMain_xboxSmokeReloadTraceFrames) XPERF("SaveLoad: player palette info=%p effect=%d\n", playerInfo, playerInfo->palEffectsIdx1);
+#endif
         v3 = playerInfo->playerThing;
         pPalEffect = stdPalEffects_GetEffectPointer(playerInfo->palEffectsIdx1);
         if ( pPalEffect->tint.x != 0.0 )
@@ -216,9 +222,20 @@ void sithPlayer_Tick(sithPlayerInfo *playerInfo, flex_t a2)
         {
             pPalEffect->add.z = stdMath_ClampInt(pPalEffect->add.z - v2, 0, 255);
         }
+#ifdef TARGET_XBOX
+        if (jkMain_xboxSmokeReloadTraceFrames) XPERF("SaveLoad: player weapon messages\n");
+#endif
         sithWeapon_handle_inv_msgs(v3);
+#ifdef TARGET_XBOX
+        if (jkMain_xboxSmokeReloadTraceFrames) XPERF("SaveLoad: player inventory fire\n");
+#endif
         sithInventory_SendFire(v3);
-        if ( !v3->attach_flags )
+#ifdef TARGET_XBOX
+        if (jkMain_xboxSmokeReloadTraceFrames) XPERF("SaveLoad: player fall check\n");
+#endif
+        /* A corpse still moving through a pit must not restart the fade and
+         * keep pushing the respawn prompt deadline into the future. */
+        if ( !v3->attach_flags && !(v3->thingflags & SITH_TF_DEAD) )
         {
             v14 = v3->actorParams.typeflags;
             if ( (v14 & SITH_AF_FALLING_TO_DEATH) == 0 && v3->moveType == SITH_MT_PHYSICS && v3->physicsParams.vel.z < -3.0 )
@@ -228,7 +245,7 @@ void sithPlayer_Tick(sithPlayerInfo *playerInfo, flex_t a2)
                     if ( (v3->sector->flags & SITH_SECTOR_FALLDEATH) != 0 && !(g_debugmodeFlags & DEBUGFLAG_NOCLIP)) // Added: noclip
                     {
 #ifdef TARGET_XBOX
-                        XDBGF("FallDeath: begin thing=%d sector=%p pos=(%.3f,%.3f,%.3f) vel=(%.3f,%.3f,%.3f)\n",
+                        XPERF("FallDeath: begin thing=%d sector=%p pos=(%.3f,%.3f,%.3f) vel=(%.3f,%.3f,%.3f)\n",
                               v3->thingIdx,
                               (void*)v3->sector,
                               (double)v3->position.x,
@@ -254,7 +271,7 @@ void sithPlayer_Tick(sithPlayerInfo *playerInfo, flex_t a2)
                 if (v3 == sithPlayer_pLocalPlayerThing && !sithNet_isMulti)
                 {
 #ifdef TARGET_XBOX
-                    XDBGF("FallDeath: fade complete, entering death prompt thing=%d curMs=%u fade=%.3f\n",
+                    XPERF("FallDeath: fade complete, entering death prompt thing=%d curMs=%u fade=%.3f\n",
                           v3->thingIdx,
                           (unsigned)sithTime_curMs,
                           (double)pPalEffect->fade);

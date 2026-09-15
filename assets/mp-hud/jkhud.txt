@@ -1,0 +1,71 @@
+=JEDI KNIGHT MOD================================================
+
+Title                   : JK HUD Revamp
+Author                  : Quib Mask
+Date                    : 2007/09/11
+
+Description             : A remade HUD that's readable at modern resolutions.
+                          Also includes a new in-game Message Font.
+	
+How to Install          : Use Patch Commander.
+
+How to Uninstall        : Delete files you unzipped (jkhud.gob &/or jkhud.txt, etc.).
+
+Additional Credits to   : e8rail.tga & e8xgirder.tga
+                          Name: evil lair's Quake 3:Arena texture set 8
+                          Short Name: evil8:prototype
+                          Author: Yves Allaire aka "evil lair"
+                          Email: hfx@planetquake.com
+                          URL: http://planetquake.com/hfx
+
+================================================================
+
+* Play Information *
+
+JK version required     : Jedi Knight Basic
+
+New BMs                 : Yes (8)
+New COGs                : Yes (1)
+New SFTs                : Yes (6)
+
+XXXXX Important XXXXX
+
+Because the JK HUD Revamp is a type of hack, other players do not need the same files in order to
+play together. Make sure the people you're playing with are aware you're using the JK HUD Revamp.
+
+XXXXXXXXXXXXXXXXXXXXX
+
+* Modification Details *
+
+Left HUD Window
+Top Green Numeric Readout = Shields
+Bottom Red Numeric Readout = Health
+Left Vertical Red Gauge = Health (5 status levels + empty)
+Center Green Gauge = Shields (10 status levels + empty)
+Top Left Yellow Indicators = Super Shield Status (on)
+
+Right HUD Window
+Top Red Numeric Readout = Ammo
+Bottom Red Graphical Readout = Mana (15 status levels + empty)
+Right Vertical White Gauge = Fieldlight Status (off or on)
+Center Green Indicators = Batteries (8 status levels + empty)
+
+* Bugs *
+
+Having 200 or more health will display a single tiny digit above the red health gauge.
+Having 10 or more of an item will display invalid characters in the item selection UI.
+Neither of these situations occur within the standard parameters of basic Jedi Knight.
+
+================================================================
+
+* Copyright / Permissions *
+
+You MAY use these hacks in patches, TCs, and/or modifications.
+
+THIS HACK IS NOT MADE, DISTRIBUTED, OR SUPPORTED BY LUCASARTS ENTERTAINMENT
+COMPANY (duh). ELEMENTS TM & (C) LUCASARTS ENTERTAINMENT COMPANY.
+
+You MAY distribute this hack, provided you include this file, with
+no modifications. You may distribute this file in any electronic
+format (BBS, Diskette, CD, etc) as long as you include this file
+intact, with NO charge (other than incidental charges for time spent on-line).

@@ -42,6 +42,7 @@ static void (*stdPlatform_UnlockHandle)(uint32_t) = (void*)stdPlatform_UnlockHan
 int stdPrintf(int (*a1)(const char *, ...), const char *a2, int line, const char *fmt, ...);
 int stdPlatform_Printf(const char *fmt, ...);
 uint32_t stdPlatform_GetTimeMsec(void);
+uint64_t Linux_TimeUs(void);
 #elif defined(PLATFORM_POSIX)
 uint64_t Linux_TimeUs();
 int stdPrintf(int (*a1)(const char *, ...), const char *a2, int line, const char *fmt, ...);
