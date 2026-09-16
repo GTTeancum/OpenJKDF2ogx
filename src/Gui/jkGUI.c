@@ -513,6 +513,10 @@ void jkGui_sub_412E20(jkGuiMenu *menu, int a2, int a3, int a4)
             element->textType = 12;
 #endif
             element->type = ELEMENT_TEXTBUTTON;
+#ifdef TARGET_XBOX
+            if (element->drawFuncOverride == jkGuiRend_XboxDrawActiveTab)
+                element->drawFuncOverride = NULL;
+#endif
         }
     }
 
@@ -527,6 +531,9 @@ void jkGui_sub_412E20(jkGuiMenu *menu, int a2, int a3, int a4)
             element->textType = 13;
 #endif
             element->type = ELEMENT_TEXT;
+#ifdef TARGET_XBOX
+            element->drawFuncOverride = jkGuiRend_XboxDrawActiveTab;
+#endif
         }
     }
     menu->lastMouseOverClickable = 0;

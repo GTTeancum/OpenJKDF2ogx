@@ -12,5 +12,12 @@ void jkGuiSetup_sub_412EF0(jkGuiMenu *menu, int a2);
 void jkGuiSetup_Show();
 void jkGuiSetup_Startup();
 void jkGuiSetup_Shutdown();
+#ifdef TARGET_XBOX
+int jkGuiSetup_XboxIsSubmenu(jkGuiMenu *menu);
+int jkGuiSetup_XboxFocus(jkGuiMenu *menu, int dir);
+int jkGuiSetup_XboxMenuTab(jkGuiMenu *menu);
+void jkGuiSetup_XboxChangeMenu(jkGuiMenu *menu, int direction);
+void jkGuiSetup_XboxProbeMenu(jkGuiMenu *menu);
+#endif
 
 #endif // _JKGUISETUP_H

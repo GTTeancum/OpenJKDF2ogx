@@ -19,8 +19,7 @@ Four-player traversal and the original multiplayer-menu scenario show healthy bu
 
 Planned work, not deferred.
 
-- [ ] Improve controller navigation, focus and selection states, option readability, and consistent confirm/back prompts.
-- [ ] Include a dedicated controls setup menu with recognizable Xbox gamepad button icons and clear control assignments.
+- [ ] Complete console layout and readability cleanup on the remaining General, Gameplay, Display, and Sound pages.
 
 ## 3. Resolve Remaining Bot Navigation Stalls
 
@@ -52,5 +51,5 @@ Future / post-beta candidates.
 
 ---
 
-Last updated: 2026-09-14. This is the authoritative board for unfinished work only.
-Completed-work evidence: [issue fixes](xbox-issue-1.md), [bot integration](bots-system-widescreen.md), [multiplayer HUD and setup verification](local-multiplayer-hud-verification.md), and [bot lifts and performance](bot-lifts-performance.md).
+Last updated: 2026-09-15. This is the authoritative board for unfinished work only.
+Completed-work evidence: [issue fixes](xbox-issue-1.md), [bot integration](bots-system-widescreen.md), [multiplayer HUD and setup verification](local-multiplayer-hud-verification.md), [bot lifts and performance](bot-lifts-performance.md), and [console controls menu](console-controls-menu.md).

@@ -176,10 +176,12 @@ void jkGuiRend_FocusElementDir(jkGuiMenu *pMenu, int32_t dir);
 void jkGuiRend_UpdateController();
 #ifdef TARGET_XBOX
 void jkGuiRend_XboxFooterBegin(jkGuiMenu *menu);
+void jkGuiRend_XboxDrawActiveTab(jkGuiElement *element, jkGuiMenu *menu, stdVBuffer *vbuf, BOOL redraw);
 void jkGuiRend_XboxFooterClear(void);
 void jkGuiRend_XboxFooterAddAction(jkGuiMenu *menu, int32_t button, int32_t clickId, const wchar_t *label);
 void jkGuiRend_XboxFooterAddElementAction(jkGuiMenu *menu, int32_t button, jkGuiElement *element, const wchar_t *label);
 void jkGuiRend_XboxSetInitialFocus(jkGuiMenu *menu, jkGuiElement *element);
+int32_t jkGuiRend_XboxFooterInvokeButton(jkGuiMenu *menu, int32_t button);
 #endif
 
 #endif // _JKGUIREND_H

@@ -18,6 +18,8 @@
 #include "Gui/jkGUI.h"
 #include "Gui/jkGUIEsc.h"
 #include "Gui/jkGUIBuildMulti.h"
+#include "Gui/jkGUIXboxControls.h"
+#include "Gui/jkGUISetup.h"
 #include "stdPlatform.h"
 #include "jk.h"
 #include "types.h"
@@ -109,7 +111,7 @@ static void jkGuiRend_XboxFooterPostMenuDraw(void *ctx);
 static void jkGuiRend_XboxFooterEnsureDefault(jkGuiMenu *menu);
 static int32_t jkGuiRend_XboxIsFooterControl(jkGuiElement *element);
 static int32_t jkGuiRend_XboxFooterInvokeElement(jkGuiMenu *menu, jkGuiElement *element);
-static int32_t jkGuiRend_XboxFooterInvokeButton(jkGuiMenu *menu, int32_t button);
+int32_t jkGuiRend_XboxFooterInvokeButton(jkGuiMenu *menu, int32_t button);
 static int32_t jkGuiRend_XboxApplyInitialFocus(jkGuiMenu *menu);
 static void jkGuiRend_XboxUnloadButtonGlyphs(void);
 #endif
@@ -494,6 +496,56 @@ static void jkGuiRend_XboxRefreshFooterDarkRemap(void)
     jkGuiRend_xboxFooterDarkRemapChecksum = jkGuiRend_paletteChecksum;
 }
 
+static void jkGuiRend_XboxDrawFocusBorder(stdVBuffer *vbuf, const rdRect *rect, uint8_t color)
+{
+    rdRect edge = *rect;
+    /* Widescreen menus shrink 640 source pixels to a 480-pixel viewport.
+       A two-pixel outline survives point sampling at every horizontal phase. */
+    jkGuiRend_DrawRect(vbuf, &edge, color);
+    if (rect->width > 2 && rect->height > 2) {
+        edge = *rect;
+        edge.x++; edge.y++; edge.width -= 2; edge.height -= 2;
+        jkGuiRend_DrawRect(vbuf, &edge, color);
+    }
+}
+
+static uint8_t jkGuiRend_XboxDrawFocusBackground(stdVBuffer *vbuf, const rdRect *rect)
+{
+    static uint8_t warm[256], amber;
+    static int checksum = -1;
+    int x, y, i;
+    if (checksum != jkGuiRend_paletteChecksum) {
+        rdColor24 color;
+        for (i = 0; i < 256; i++) {
+            color.r = stdDisplay_masterPalette[i].r * 20 / 100 + 74;
+            color.g = stdDisplay_masterPalette[i].g * 20 / 100 + 33;
+            color.b = stdDisplay_masterPalette[i].b * 20 / 100 + 3;
+            warm[i] = jkGuiRend_XboxNearestMenuColor(&color);
+        }
+        color.r = 255; color.g = 177; color.b = 32;
+        amber = jkGuiRend_XboxNearestMenuColor(&color);
+        checksum = jkGuiRend_paletteChecksum;
+    }
+    stdDisplay_VBufferLock(vbuf);
+    for (y = rect->y; y < rect->y + rect->height; y++) {
+        uint8_t *row = (uint8_t*)vbuf->surface_lock_alloc + y * vbuf->format.width_in_bytes;
+        for (x = rect->x; x < rect->x + rect->width; x++)
+            row[x] = warm[row[x]];
+    }
+    stdDisplay_VBufferUnlock(vbuf);
+    return amber;
+}
+
+void jkGuiRend_XboxDrawActiveTab(jkGuiElement *element, jkGuiMenu *menu, stdVBuffer *vbuf, BOOL redraw)
+{
+    uint8_t amber;
+    if (redraw) jkGuiRend_CopyVBuffer(menu, &element->rect);
+    amber = jkGuiRend_XboxDrawFocusBackground(vbuf, &element->rect);
+    jkGuiRend_XboxDrawFocusBorder(vbuf, &element->rect, amber);
+    stdFont_Draw3(vbuf, menu->fonts[element->textType], element->rect.y, &element->rect,
+                  element->selectedTextEntry, element->wstr, 1);
+}
+
 static void jkGuiRend_XboxDrawFooterBackdrop(stdVBuffer *vbuf)
 {
     int32_t y;
@@ -728,6 +780,16 @@ static void jkGuiRend_XboxFooterDraw(jkGuiMenu *menu)
     if (!menu || menu != jkGuiRend_xboxFooterMenu || jkGuiRend_xboxFooterActionCount <= 0 || !jkGuiRend_menuBuffer)
         return;
 
+    if (jkGuiSetup_XboxMenuTab(menu)) {
+        int hasTriggers = 0;
+        for (i = 0; i < jkGuiRend_xboxFooterActionCount; i++)
+            if (jkGuiRend_xboxFooterActions[i].button == JKGUI_XBOX_BTN_LT) hasTriggers = 1;
+        if (!hasTriggers) {
+            jkGuiRend_XboxFooterAddAction(menu, JKGUI_XBOX_BTN_LT, 0, L"");
+            jkGuiRend_XboxFooterAddAction(menu, JKGUI_XBOX_BTN_RT, 0, L"Menus");
+        }
+    }
+
     font = menu->fonts[2] ? menu->fonts[2] : menu->fonts[3];
     if (!font)
         return;
@@ -767,6 +829,12 @@ static void jkGuiRend_XboxFooterDraw(jkGuiMenu *menu)
             totalW += widths[i];
         totalW += gap * (validCount - 1);
     }
+    if (totalW > jkGuiRend_menuBuffer->format.width - 22) {
+        iconW = 32;
+        gap = 4;
+        for (i = 0; i < jkGuiRend_xboxFooterActionCount; i++)
+            if (widths[i]) widths[i] -= JKGUI_XBOX_FOOTER_ICON_W - iconW;
+    }
 
     x = JKGUI_XBOX_FOOTER_LEFT;
 
@@ -774,6 +842,7 @@ static void jkGuiRend_XboxFooterDraw(jkGuiMenu *menu)
     {
         jkGuiRendXboxFooterAction *action = &jkGuiRend_xboxFooterActions[i];
         rdRect glyphRect;
+        int32_t advance = widths[i] + gap;
         if (widths[i] <= 0)
             continue;
 
@@ -790,12 +859,19 @@ static void jkGuiRend_XboxFooterDraw(jkGuiMenu *menu)
                 jkGuiRend_xboxFooterGlyphDraws[jkGuiRend_xboxFooterGlyphDrawCount].bitmap = jkGuiRend_xboxButtonBitmaps[action->button];
                 jkGuiRend_xboxFooterGlyphDraws[jkGuiRend_xboxFooterGlyphDrawCount].rect = drawRect;
                 jkGuiRend_xboxFooterGlyphDrawCount++;
+                /* LT/RT is one hint. Account for transparent bitmap padding
+                   as well, halving the visible gap from the previous layout. */
+                if (action->button == JKGUI_XBOX_BTN_LT
+                    && (!action->label || !action->label[0])
+                    && i + 1 < jkGuiRend_xboxFooterActionCount
+                    && jkGuiRend_xboxFooterActions[i + 1].button == JKGUI_XBOX_BTN_RT)
+                    advance = drawRect.width - 4;
             }
         }
 
         if (action->label && action->label[0])
             stdFont_Draw1(jkGuiRend_menuBuffer, font, x + iconW + 7, labelY, widths[i] - iconW - 7, action->label, 1);
-        x += widths[i] + gap;
+        x += advance;
     }
 
     if (jkGuiRend_xboxFooterGlyphDrawCount > 0)
@@ -804,7 +880,7 @@ static void jkGuiRend_XboxFooterDraw(jkGuiMenu *menu)
         stdDisplay_XboxSetPostMenuOverlayCallback(NULL, NULL);
 }
 
-static int32_t jkGuiRend_XboxFooterInvokeButton(jkGuiMenu *menu, int32_t button)
+int32_t jkGuiRend_XboxFooterInvokeButton(jkGuiMenu *menu, int32_t button)
 {
     int32_t i;
 
@@ -1011,6 +1087,10 @@ int32_t jkGuiRend_DisplayAndReturnClicked(jkGuiMenu *menu)
                 jk_exit(msgret);
             if ( menu->idkFunc && !menu->lastClicked )
                 menu->idkFunc(menu);
+#ifdef TARGET_XBOX
+            if (!menu->lastClicked) jkGuiXboxControls_ProbeMenu(menu);
+            if (!menu->lastClicked) jkGuiSetup_XboxProbeMenu(menu);
+#endif
         }
     }
     jkGuiRend_sub_50FDB0();
@@ -1554,10 +1634,35 @@ void jkGuiRend_UpdateAndDrawClickable(jkGuiElement *clickable, jkGuiMenu *menu, 
         if ( !drawFunc )
             drawFunc = jkGuiRend_elementHandlers[clickable->type].draw;
         jkGuiElement* lastSave = menu->lastMouseOverClickable;
+#ifdef TARGET_XBOX
+        int filledFocus = jkGuiSetup_XboxIsSubmenu(menu) && clickable == lastSave
+            && !clickable->enableHover && clickable->rect.y >= 130 && clickable->rect.y < 410;
+        if (filledFocus) {
+            /* Rebuild from the original background on every redraw, then
+               draw the widget over the fill so text/checkmarks stay clear. */
+            jkGuiRend_CopyVBuffer(menu, &clickable->rect);
+            jkGuiRend_XboxDrawFocusBackground(jkGuiRend_menuBuffer, &clickable->rect);
+        }
+#endif
         if ( clickable->enableHover )
             menu->lastMouseOverClickable = 0;
-        drawFunc(clickable, menu, jkGuiRend_menuBuffer, forceRedraw);
+        drawFunc(clickable, menu, jkGuiRend_menuBuffer,
+#ifdef TARGET_XBOX
+                 filledFocus ? 0 : forceRedraw);
+#else
+                 forceRedraw);
+#endif
         menu->lastMouseOverClickable = lastSave;
+#ifdef TARGET_XBOX
+        if (jkGuiSetup_XboxIsSubmenu(menu) && clickable == lastSave
+            && !clickable->enableHover && clickable->rect.y >= 130
+            && clickable->rect.y < 410)
+        {
+            rdColor24 amber = {255, 177, 32};
+            jkGuiRend_XboxDrawFocusBorder(jkGuiRend_menuBuffer, &clickable->rect,
+                              jkGuiRend_XboxNearestMenuColor(&amber));
+        }
+#endif
 #if !defined(SDL2_RENDER) || defined(TARGET_XBOX)
         if ( forceRedraw )
 #ifdef TARGET_XBOX
@@ -3355,6 +3460,11 @@ void jkGuiRend_FocusElementDir(jkGuiMenu *pMenu, int32_t dir)
         return;
     }
 
+#ifdef TARGET_XBOX
+    if (jkGuiXboxControls_Focus(pMenu, dir)) return;
+    if (jkGuiSetup_XboxFocus(pMenu, dir)) return;
+#endif
+
     if (jkGuiEsc_HandleControllerFocus(pMenu, dir)) {
         return;
     }
@@ -3722,6 +3832,17 @@ void jkGuiRend_UpdateController()
     lastJoyYDown = joyYDown;
     lastJoyXLeft = joyXLeft;
     lastJoyYUp = joyYUp;
+
+#ifdef TARGET_XBOX
+    {
+        static int lastTriggers;
+        int triggers = stdControl_XboxMenuTriggers();
+        int pressed = triggers & ~lastTriggers;
+        lastTriggers = triggers;
+        if (pressed == 1) jkGuiSetup_XboxChangeMenu(jkGuiRend_activeMenu, -1);
+        else if (pressed == 2) jkGuiSetup_XboxChangeMenu(jkGuiRend_activeMenu, 1);
+    }
+#endif
 
     val = 0;
     valB1 = stdControl_ReadKey(KEY_JOY1_B1, &val);

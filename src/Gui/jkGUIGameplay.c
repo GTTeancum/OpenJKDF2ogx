@@ -100,11 +100,11 @@ void jkGuiGameplay_ScaleDraw(jkGuiElement *element, jkGuiMenu *menu, stdVBuffer 
     flex_t tmp = ((flex_t)jkGuiGameplay_buttons[41].selectedTextEntry)*0.2f; // FLEXTODO
     
     jk_snwprintf(slider_val_text, 16, L"%u", (unsigned int)(tmp * 100.0f));
-    jkGuiGameplay_buttons[42].wstr = slider_val_text;
+    jkGuiGameplay_buttons[43].wstr = slider_val_text;
     
     jkGuiRend_SliderDraw(element, menu, vbuf, redraw);
     
-    jkGuiRend_UpdateAndDrawClickable(&jkGuiGameplay_buttons[42], menu, 1);
+    jkGuiRend_UpdateAndDrawClickable(&jkGuiGameplay_buttons[43], menu, 1);
 }
 #endif // QOL_IMPROVEMENTS
 

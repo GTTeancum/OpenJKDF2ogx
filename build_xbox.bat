@@ -261,6 +261,7 @@ for %%F in (
     src\Gui\jkGUIObjectives.c
     src\Gui\jkGUISaveLoad.c
     src\Gui\jkGUISetup.c
+    src\Gui\jkGUIXboxControls.c
     src\Gui\jkGUIGeneral.c
     src\Gui\jkGUIGameplay.c
     src\Gui\jkGUISound.c

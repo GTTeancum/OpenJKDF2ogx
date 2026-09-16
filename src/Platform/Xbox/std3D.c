@@ -3188,6 +3188,7 @@ void std3D_DrawMenuVBuffer8(stdVBuffer *vbuf, const rdColor24_local *pal)
     const unsigned char *src;
     unsigned int texId;
     float u2, v2;
+    float pixelOffsetX = 0.0f, pixelOffsetY = 0.0f;
     unsigned int srcSig = 0;
 
     if (!g_initialized || !vbuf || !vbuf->surface_lock_alloc)
@@ -3305,6 +3306,13 @@ void std3D_DrawMenuVBuffer8(stdVBuffer *vbuf, const rdColor24_local *pal)
     {
         int menuWidth = (int)(640.0f / xboxVideo_GetPixelAspectRatio());
         glViewport((640 - menuWidth) / 2, 0, menuWidth, 480);
+        /* D3D raster centers are integer coordinates. Keep source texel
+         * centers away from triangle-edge rounding boundaries. This is
+         * half an OUTPUT pixel, including the narrower widescreen viewport. */
+        if (!jkCutscene_isRendering) {
+            pixelOffsetX = -0.5f * 640.0f / (float)menuWidth;
+            pixelOffsetY = -0.5f;
+        }
     }
     glDisable(GL_TEXTURE_2D);
     glClear(GL_COLOR_BUFFER_BIT | GL_DEPTH_BUFFER_BIT | GL_STENCIL_BUFFER_BIT);
@@ -3340,15 +3348,15 @@ void std3D_DrawMenuVBuffer8(stdVBuffer *vbuf, const rdColor24_local *pal)
     v2 = (float)h / (float)padH;
 
     glBegin(GL_TRIANGLES);
-    glColor4f(1.0f, 1.0f, 1.0f, 1.0f); glTexCoord2f(0.0f, 0.0f); glVertex3f(0.0f,   0.0f,   0.0f);
-    glColor4f(1.0f, 1.0f, 1.0f, 1.0f); glTexCoord2f(u2,   0.0f); glVertex3f(640.0f, 0.0f,   0.0f);
-    glColor4f(1.0f, 1.0f, 1.0f, 1.0f); glTexCoord2f(u2,   v2);   glVertex3f(640.0f, 480.0f, 0.0f);
+    glColor4f(1.0f, 1.0f, 1.0f, 1.0f); glTexCoord2f(0.0f, 0.0f); glVertex3f(pixelOffsetX, pixelOffsetY, 0.0f);
+    glColor4f(1.0f, 1.0f, 1.0f, 1.0f); glTexCoord2f(u2,   0.0f); glVertex3f(640.0f + pixelOffsetX, pixelOffsetY, 0.0f);
+    glColor4f(1.0f, 1.0f, 1.0f, 1.0f); glTexCoord2f(u2,   v2);   glVertex3f(640.0f + pixelOffsetX, 480.0f + pixelOffsetY, 0.0f);
     glEnd();
 
     glBegin(GL_TRIANGLES);
-    glColor4f(1.0f, 1.0f, 1.0f, 1.0f); glTexCoord2f(0.0f, 0.0f); glVertex3f(0.0f,   0.0f,   0.0f);
-    glColor4f(1.0f, 1.0f, 1.0f, 1.0f); glTexCoord2f(u2,   v2);   glVertex3f(640.0f, 480.0f, 0.0f);
-    glColor4f(1.0f, 1.0f, 1.0f, 1.0f); glTexCoord2f(0.0f, v2);   glVertex3f(0.0f,   480.0f, 0.0f);
+    glColor4f(1.0f, 1.0f, 1.0f, 1.0f); glTexCoord2f(0.0f, 0.0f); glVertex3f(pixelOffsetX, pixelOffsetY, 0.0f);
+    glColor4f(1.0f, 1.0f, 1.0f, 1.0f); glTexCoord2f(u2,   v2);   glVertex3f(640.0f + pixelOffsetX, 480.0f + pixelOffsetY, 0.0f);
+    glColor4f(1.0f, 1.0f, 1.0f, 1.0f); glTexCoord2f(0.0f, v2);   glVertex3f(pixelOffsetX, 480.0f + pixelOffsetY, 0.0f);
     glEnd();
 
     glTexEnvf(GL_TEXTURE_ENV, GL_TEXTURE_ENV_MODE, (GLfloat)GL_MODULATE);

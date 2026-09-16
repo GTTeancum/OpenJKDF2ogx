@@ -29,6 +29,10 @@ param(
     [ValidateRange(1000, 60000)][int]$DamageProbeIntervalMs = 1000,
     [ValidateRange(5, 60)][int]$FallProbeDelaySeconds = 5,
     [switch]$SetupProbe,
+    [ValidateRange(100,104)][int]$SetupProbeTab = 100,
+    [switch]$ControlsProbe,
+    [switch]$SetupNavigationProbe,
+    [switch]$SetupPairsProbe,
     [switch]$BotSetupProbe,
     [switch]$ModelPreviewProbe,
     [switch]$TeamMatch,
@@ -262,6 +266,11 @@ function New-Stage {
     # Package the namespaced multiplayer HUD; stock resource paths stay intact.
     Copy-Item -LiteralPath (Join-Path $RepoRoot "assets/mp-hud/Resource") -Destination $StagePath -Recurse -Force
     Copy-Item -LiteralPath (Join-Path $RepoRoot "assets/mp-hud/jkhud.txt") -Destination $StagePath -Force
+    # Include current console glyphs when the installed runtime is older.
+    $glyphDestination = Join-Path $StagePath "Resource/ui/bm"
+    New-Item -ItemType Directory -Force -Path $glyphDestination | Out-Null
+    Get-ChildItem -LiteralPath (Join-Path $RepoRoot "resource/ui/bm") -Filter "xbtn_tc_*.bm" |
+        Copy-Item -Destination $glyphDestination -Force
 
     Copy-Item -LiteralPath $XbePath -Destination (Join-Path $StagePath "default.xbe") -Force
     foreach ($dashboardAsset in @("TitleImage.xbx", "SaveImage.xbx", "TitleMeta.xbx")) {
@@ -339,7 +348,16 @@ function New-Stage {
         Set-Content -LiteralPath (Join-Path $StagePath "xbox_smoke_bot_setup.txt") -Value "1" -Encoding ASCII
     }
     if ($SetupProbe) {
-        Set-Content -LiteralPath (Join-Path $StagePath "xbox_smoke_setup.txt") -Value "1" -Encoding ASCII
+        Set-Content -LiteralPath (Join-Path $StagePath "xbox_smoke_setup.txt") -Value "1 $SetupProbeTab" -Encoding ASCII
+    }
+    if ($ControlsProbe) {
+        Set-Content -LiteralPath (Join-Path $StagePath "xbox_smoke_setup.txt") -Value "2" -Encoding ASCII
+    }
+    if ($SetupNavigationProbe) {
+        Set-Content -LiteralPath (Join-Path $StagePath "xbox_smoke_setup.txt") -Value "3" -Encoding ASCII
+    }
+    if ($SetupPairsProbe) {
+        Set-Content -LiteralPath (Join-Path $StagePath "xbox_smoke_setup.txt") -Value "5" -Encoding ASCII
     }
     if ($FallProbe) {
         Set-Content -LiteralPath (Join-Path $StagePath "xbox_smoke_fall.txt") -Value "$FallProbeDelaySeconds" -Encoding ASCII
@@ -686,6 +704,8 @@ $summary = @(
     "audioProbe=$([bool]$AudioProbe)",
     "damageProbeSlot=$DamageProbeSlot",
     "setupProbe=$([bool]$SetupProbe)",
+    "controlsProbe=$([bool]$ControlsProbe)",
+    "setupNavigationProbe=$([bool]$SetupNavigationProbe)",
     "botSetupProbe=$([bool]$BotSetupProbe)",
     "teamMatch=$([bool]$TeamMatch)",
     "fallProbe=$([bool]$FallProbe)",

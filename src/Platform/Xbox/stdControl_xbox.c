@@ -23,6 +23,7 @@
 #include "../../Platform/wuRegistry.h"
 #include "xbox_wheels.h"
 #include "xbox_splitscreen.h"
+#include "xbox_control_map.h"
 #include "stdPlatform.h"
 
 #define DIK_ESCAPE      0x01
@@ -120,6 +121,33 @@ static int   g_invertLookY = 0;
 static int   g_vibrationEnabled = 1;
 static int   g_deadzonePercent = 12;
 static int   g_stickDeadzone = STICK_DEADZONE;
+static int g_buttonMap[XBOX_CONTROL_MAP_COUNT] = {0, 1, 2, 3, 4, 5, 6, 7};
+
+int stdControl_XboxMenuTriggers(void)
+{
+    XboxControllerState *pad = &g_pads[g_activeController];
+    if (!pad->connected) return 0;
+    return (pad->prevAnalog[XB_BTN_LT] > ANALOG_THRESHOLD ? 1 : 0)
+         | (pad->prevAnalog[XB_BTN_RT] > ANALOG_THRESHOLD ? 2 : 0);
+}
+
+void stdControl_XboxGetButtonMap(int *map)
+{
+    memcpy(map, g_buttonMap, sizeof(g_buttonMap));
+}
+
+int stdControl_XboxSetButtonMap(const int *map)
+{
+    int i;
+    char key[32];
+    if (!xboxControlMap_Valid(map)) return 0;
+    memcpy(g_buttonMap, map, sizeof(g_buttonMap));
+    for (i = 0; i < XBOX_CONTROL_MAP_COUNT; ++i) {
+        sprintf(key, "xboxButtonMap%d", i);
+        wuRegistry_SaveInt(key, map[i]);
+    }
+    return 1;
+}
 
 /* Key state array — indexed by DIK_ value OR engine-extended joy/mouse
  * key index.  Must be >= JK_NUM_KEYS = 0x100 + JK_NUM_EXTENDED_KEYS
@@ -330,6 +358,8 @@ extern void xbox_init_joystick_axis(int index, int stickMin, int stickMax);
 
 int stdControl_Startup(void)
 {
+    int mapIndex;
+    char mapKey[32];
     /* XInitDevices is called in main() before D3D init — not here.
      * XInputOpen is deferred to the first ReadControls call: USB device
      * enumeration is asynchronous and may not complete by the time
@@ -338,6 +368,11 @@ int stdControl_Startup(void)
     memset(g_pads, 0, sizeof(g_pads));
     g_activeController = 0;
     g_pollController = 0;
+    for (mapIndex = 0; mapIndex < XBOX_CONTROL_MAP_COUNT; ++mapIndex) {
+        sprintf(mapKey, "xboxButtonMap%d", mapIndex);
+        g_buttonMap[mapIndex] = wuRegistry_GetInt(mapKey, mapIndex);
+    }
+    if (!xboxControlMap_Valid(g_buttonMap)) xboxControlMap_Defaults(g_buttonMap);
     {
         int legacySensitivity = wuRegistry_GetInt("xboxLookSensitivity", 50);
         stdControl_XboxSetLookOptionsAxesEx(
@@ -394,6 +429,9 @@ void stdControl_Flush(void)
 static void stdControl_ReadController(int port)
 {
     XINPUT_STATE state;
+    XINPUT_GAMEPAD logicalPad;
+    unsigned char previousAnalog[XBOX_CONTROL_MAP_COUNT];
+    unsigned char physicalAnalog[XBOX_CONTROL_MAP_COUNT];
     XINPUT_GAMEPAD *pad;
     WORD buttons, changed;
     unsigned int tick;
@@ -483,6 +521,11 @@ controller_state_ready:
         g_activeController = port;
 
     pad  = &state.Gamepad;
+    logicalPad = *pad;
+    memcpy(physicalAnalog, pad->bAnalogButtons, sizeof(physicalAnalog));
+    xboxControlMap_Apply(g_buttonMap, physicalAnalog, logicalPad.bAnalogButtons, gameplay);
+    xboxControlMap_Apply(g_buttonMap, g_prevAnalog, previousAnalog, gameplay);
+    pad = &logicalPad;
     /* Digital buttons */
     buttons = pad->wButtons;
     changed = buttons ^ g_prevButtons;
@@ -549,16 +592,25 @@ controller_state_ready:
     g_prevButtons = buttons;
 
     /* Analog buttons — face */
-    cur = (pad->bAnalogButtons[XB_BTN_A] > ANALOG_THRESHOLD); prev = (g_prevAnalog[XB_BTN_A] > ANALOG_THRESHOLD);
-    if (cur != prev) {
-        if (jkSmack_GetCurrentGuiState() != JK_GAMEMODE_GAMEPLAY)
-            stdControl_SetKeydown(KEY_JOY1_B1, cur, tick); /* GUI confirm */
-        stdControl_SetKeydown(DIK_X, cur, tick);  /* A = Jump (DIK_X = 0x2D bound to INPUT_FUNC_JUMP at sithControl.c:1916) */
+    /* Do not carry a menu-confirm latch through gameplay and back to a menu. */
+    if (gameplay) {
+        stdControl_SetKeydown(KEY_JOY1_B1, 0, tick);
+        stdControl_SetKeydown(KEY_JOY1_B2, 0, tick);
+        stdControl_SetKeydown(KEY_JOY1_B3, 0, tick);
+        stdControl_SetKeydown(KEY_JOY1_B4, 0, tick);
+        stdControl_SetKeydown(KEY_JOY1_B10, 0, tick);
+        stdControl_SetKeydown(KEY_JOY1_B11, 0, tick);
     }
-    cur = (pad->bAnalogButtons[XB_BTN_X] > ANALOG_THRESHOLD); prev = (g_prevAnalog[XB_BTN_X] > ANALOG_THRESHOLD); if (cur != prev) { stdControl_SetKeydown(KEY_JOY1_B3, cur, tick); stdControl_SetKeydown(DIK_SPACE, cur, tick); }  /* X = GUI OK shortcut / Activate */
-    cur = (pad->bAnalogButtons[XB_BTN_Y] > ANALOG_THRESHOLD); prev = (g_prevAnalog[XB_BTN_Y] > ANALOG_THRESHOLD); if (cur != prev && !gameplay) stdControl_SetKeydown(KEY_JOY1_B4, cur, tick);
-    cur = (pad->bAnalogButtons[XB_BTN_WHITE] > ANALOG_THRESHOLD); prev = (g_prevAnalog[XB_BTN_WHITE] > ANALOG_THRESHOLD); if (cur != prev && !gameplay) stdControl_SetKeydown(KEY_JOY1_B10, cur, tick);
-    cur = (pad->bAnalogButtons[XB_BTN_BLACK] > ANALOG_THRESHOLD); prev = (g_prevAnalog[XB_BTN_BLACK] > ANALOG_THRESHOLD); if (cur != prev && !gameplay) stdControl_SetKeydown(KEY_JOY1_B11, cur, tick);
+    cur = (pad->bAnalogButtons[XB_BTN_A] > ANALOG_THRESHOLD); prev = (previousAnalog[XB_BTN_A] > ANALOG_THRESHOLD);
+    if (!gameplay && cur != prev)
+        stdControl_SetKeydown(KEY_JOY1_B1, cur, tick); /* Physical GUI confirm. */
+    stdControl_SetKeydown(DIK_X, gameplay && cur, tick);
+    cur = (pad->bAnalogButtons[XB_BTN_X] > ANALOG_THRESHOLD); prev = (previousAnalog[XB_BTN_X] > ANALOG_THRESHOLD);
+    if (!gameplay && cur != prev) stdControl_SetKeydown(KEY_JOY1_B3, cur, tick);
+    stdControl_SetKeydown(DIK_SPACE, gameplay && cur, tick);
+    cur = (pad->bAnalogButtons[XB_BTN_Y] > ANALOG_THRESHOLD); prev = (previousAnalog[XB_BTN_Y] > ANALOG_THRESHOLD); if (cur != prev && !gameplay) stdControl_SetKeydown(KEY_JOY1_B4, cur, tick);
+    cur = (pad->bAnalogButtons[XB_BTN_WHITE] > ANALOG_THRESHOLD); prev = (previousAnalog[XB_BTN_WHITE] > ANALOG_THRESHOLD); if (cur != prev && !gameplay) stdControl_SetKeydown(KEY_JOY1_B10, cur, tick);
+    cur = (pad->bAnalogButtons[XB_BTN_BLACK] > ANALOG_THRESHOLD); prev = (previousAnalog[XB_BTN_BLACK] > ANALOG_THRESHOLD); if (cur != prev && !gameplay) stdControl_SetKeydown(KEY_JOY1_B11, cur, tick);
     /* Black/White and Y/B are handled by xbox_wheels_UpdateInput below:
      * taps cycle, holds open the weapon/Force wheel. */
     /* Triggers → joystick fire buttons.  Engine's MapDefaultsJoystick
@@ -576,10 +628,10 @@ controller_state_ready:
     /* B stays GUI cancel outside gameplay.  In gameplay it belongs to
      * Force cycling/wheel; R3 owns crouch. */
     cur  = (pad->bAnalogButtons[XB_BTN_B] > ANALOG_THRESHOLD);
-    prev = (g_prevAnalog[XB_BTN_B]         > ANALOG_THRESHOLD);
+    prev = (previousAnalog[XB_BTN_B]         > ANALOG_THRESHOLD);
     if (!gameplay && cur != prev) stdControl_SetKeydown(KEY_JOY1_B2, cur, tick); /* GUI cancel */
 
-    for (i = 0; i < 8; i++) g_prevAnalog[i] = pad->bAnalogButtons[i];
+    for (i = 0; i < 8; i++) g_prevAnalog[i] = physicalAnalog[i];
 
     /* Sticks — match engine's AXIS_JOY1_* index layout.
      *

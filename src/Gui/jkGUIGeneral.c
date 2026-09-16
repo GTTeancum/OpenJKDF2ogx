@@ -200,8 +200,13 @@ int jkGuiGeneral_Show()
 #if defined(QOL_IMPROVEMENTS)
         if (v0 == GUI_ADVANCED)
         {
+#ifdef TARGET_XBOX
+            v0 = jkGuiGeneral_ShowAdvanced();
+            if (v0 < 100 || v0 > 104) continue;
+#else
             jkGuiGeneral_ShowAdvanced();
             continue;
+#endif
         }
 #endif
 
