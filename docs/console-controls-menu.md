@@ -1,5 +1,10 @@
 # Console controls menu
 
+Accepted by the user on 2026-09-16. Former TO_DO.MD item #2 (setup and controls
+menu revamp) is closed and removed from the unfinished-work board. Implementation
+commit: `6ea0f50c`, pushed to `codex/bots-system-widescreen`. The later consolidated
+hardware pass does not reopen this accepted item.
+
 2026-09-15. Implements the approved JK-themed scrolling list with action names
 on the left, Xbox glyphs on the right, and amber/orange selection and scrollbar
 colors. It uses the original Setup background and SFT menu fonts.
