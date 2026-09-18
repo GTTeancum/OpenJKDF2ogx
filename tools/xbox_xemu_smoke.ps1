@@ -33,6 +33,7 @@ param(
     [switch]$ControlsProbe,
     [switch]$SetupNavigationProbe,
     [switch]$SetupPairsProbe,
+    [switch]$DisplaySettingsProbe,
     [switch]$BotSetupProbe,
     [switch]$ModelPreviewProbe,
     [switch]$TeamMatch,
@@ -358,6 +359,9 @@ function New-Stage {
     }
     if ($SetupPairsProbe) {
         Set-Content -LiteralPath (Join-Path $StagePath "xbox_smoke_setup.txt") -Value "5" -Encoding ASCII
+    }
+    if ($DisplaySettingsProbe) {
+        Set-Content -LiteralPath (Join-Path $StagePath "xbox_smoke_setup.txt") -Value "6 102" -Encoding ASCII
     }
     if ($FallProbe) {
         Set-Content -LiteralPath (Join-Path $StagePath "xbox_smoke_fall.txt") -Value "$FallProbeDelaySeconds" -Encoding ASCII
@@ -706,6 +710,7 @@ $summary = @(
     "setupProbe=$([bool]$SetupProbe)",
     "controlsProbe=$([bool]$ControlsProbe)",
     "setupNavigationProbe=$([bool]$SetupNavigationProbe)",
+    "displaySettingsProbe=$([bool]$DisplaySettingsProbe)",
     "botSetupProbe=$([bool]$BotSetupProbe)",
     "teamMatch=$([bool]$TeamMatch)",
     "fallProbe=$([bool]$FallProbe)",

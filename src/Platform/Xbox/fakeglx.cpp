@@ -1,5 +1,6 @@
 #include "xbox_debug.h"
 #include "xbox_vertex_submit.h"
+#include "xbox_display_settings.h"
 #include <xmmintrin.h>
 #ifndef XBOX_BUFFERED_LIT_TRIANGLES
 /* Dedicated textured-triangle submission; 0 selects the immediate fallback. */
@@ -39,6 +40,9 @@ Foundation, Inc., 59 Temple Place - Suite 330, Boston, MA  02111-1307, USA.
 extern "C" void Con_Printf (char *fmt, ...);
 
 static float g_xboxVideoPixelAspect = 1.0f;
+static int g_displayGamma = 100, g_displayContrast = 100, g_displaySafeX = 100, g_displaySafeY = 100;
+static bool g_displaySafeMarkers = false;
+static bool g_displayRampDirty = true;
 extern "C" float xboxVideo_GetPixelAspectRatio(void)
 {
     return g_xboxVideoPixelAspect;
@@ -2043,6 +2047,13 @@ public:
 		};
 
 		m_pD3DDev->Clear(0, NULL, D3DCLEAR_TARGET | D3DCLEAR_ZBUFFER | D3DCLEAR_STENCIL, 0x00000000, 1.0f, 0);
+		/* Movie vertices are pretransformed and bypass the viewport transform. */
+		for (int vi = 0; vi < 4; ++vi) {
+			stream[vi].Vert.x = xboxDisplay_SafeEdge(0, 640, g_displaySafeX) +
+				(stream[vi].Vert.x + 0.5f) * g_displaySafeX / 100.0f - 0.5f;
+			stream[vi].Vert.y = xboxDisplay_SafeEdge(0, 480, g_displaySafeY) +
+				(stream[vi].Vert.y + 0.5f) * g_displaySafeY / 100.0f - 0.5f;
+		}
 		m_pD3DDev->SetTexture(0, g_xboxMovieLinearTex);
 		m_pD3DDev->SetPixelShader(NULL);
 		m_pD3DDev->SetTextureStageState(0, D3DTSS_COLOROP, D3DTOP_SELECTARG1);
@@ -3028,9 +3039,59 @@ public:
 		}
 	}
 
+	void DisplaySettingsChanged() {
+		SetRenderStateDirty();
+		m_bViewPortDirty = true;
+	}
+
 	void SwapBuffers(){
 		HRESULT hr = S_OK;
 		internalEnd();
+		if (g_displayRampDirty) {
+			unsigned char ramp[256];
+			for (int i = 0; i < 256; ++i)
+				ramp[i] = xboxDisplay_RampValue(i, g_displayGamma, g_displayContrast);
+			SetGammaRamp(ramp);
+			g_displayRampDirty = false;
+		}
+		if (g_displaySafeX < 100 || g_displaySafeY < 100) {
+			/* Clear only the overscan margins; preserve every player view. */
+			int left = xboxDisplay_SafeEdge(0, gWidth, g_displaySafeX);
+			int right = xboxDisplay_SafeEdge(gWidth, gWidth, g_displaySafeX);
+			int top = xboxDisplay_SafeEdge(0, gHeight, g_displaySafeY);
+			int bottom = xboxDisplay_SafeEdge(gHeight, gHeight, g_displaySafeY);
+			D3DVIEWPORT8 full = {0, 0, gWidth, gHeight, 0.0f, 1.0f};
+			D3DRECT edges[4] = {{0,0,gWidth,top}, {0,bottom,gWidth,gHeight},
+				{0,top,left,bottom}, {right,top,gWidth,bottom}};
+			D3DRECT visibleEdges[4];
+			DWORD edgeCount = 0;
+			for (int e = 0; e < 4; ++e)
+				if (edges[e].x1 < edges[e].x2 && edges[e].y1 < edges[e].y2)
+					visibleEdges[edgeCount++] = edges[e];
+			m_pD3DDev->SetViewport(&full);
+			m_pD3DDev->Clear(edgeCount, visibleEdges, D3DCLEAR_TARGET, 0, 1.0f, 0);
+			m_bViewPortDirty = true;
+			m_glRenderStateDirty = true;
+		}
+		if (g_displaySafeMarkers) {
+			/* Output-space calibration marks: outside the menu's 4:3 pillarbox,
+			 * and inside the actual safe bounds even at 100 percent. */
+			int left = xboxDisplay_SafeEdge(0, gWidth, g_displaySafeX);
+			int right = xboxDisplay_SafeEdge(gWidth, gWidth, g_displaySafeX);
+			int top = xboxDisplay_SafeEdge(0, gHeight, g_displaySafeY);
+			int bottom = xboxDisplay_SafeEdge(gHeight, gHeight, g_displaySafeY);
+			D3DVIEWPORT8 full = {0, 0, gWidth, gHeight, 0.0f, 1.0f};
+			D3DRECT corners[8] = {
+				{left,top,left+18,top+3}, {left,top,left+3,top+18},
+				{right-18,top,right,top+3}, {right-3,top,right,top+18},
+				{left,bottom-3,left+18,bottom}, {left,bottom-18,left+3,bottom},
+				{right-18,bottom-3,right,bottom}, {right-3,bottom-18,right,bottom}
+			};
+			m_pD3DDev->SetViewport(&full);
+			m_pD3DDev->Clear(8, corners, D3DCLEAR_TARGET, 0xFFFFA030, 1.0f, 0);
+			m_bViewPortDirty = true;
+			m_glRenderStateDirty = true;
+		}
 		hr = m_pD3DDev->EndScene();
 		if (FAILED(hr)) {
 			InterpretErrorAt("EndScene", hr);
@@ -3167,10 +3228,11 @@ private:
 		if ( m_bViewPortDirty ) {
 			m_bViewPortDirty = false;
 			D3DVIEWPORT8 viewData;
-			viewData.X = m_glViewPortX;
-			viewData.Y = gHeight - (m_glViewPortY + m_glViewPortHeight);
-			viewData.Width  = m_glViewPortWidth;
-			viewData.Height = m_glViewPortHeight;
+			int top = gHeight - (m_glViewPortY + m_glViewPortHeight);
+			viewData.X = xboxDisplay_SafeEdge(m_glViewPortX, gWidth, g_displaySafeX);
+			viewData.Y = xboxDisplay_SafeEdge(top, gHeight, g_displaySafeY);
+			viewData.Width = xboxDisplay_SafeEdge(m_glViewPortX + m_glViewPortWidth, gWidth, g_displaySafeX) - viewData.X;
+			viewData.Height = xboxDisplay_SafeEdge(top + m_glViewPortHeight, gHeight, g_displaySafeY) - viewData.Y;
 			viewData.MinZ = m_glDepthRangeNear;
 			viewData.MaxZ = m_glDepthRangeFar;
 			m_pD3DDev->SetViewport(&viewData);
@@ -3968,6 +4030,25 @@ void FakeSwapBuffers(){
 	gFakeGL->SwapBuffers();
 }
 
+extern "C" void xboxVideo_ShowSafeZoneMarkers(int visible)
+{
+	g_displaySafeMarkers = visible != 0;
+}
+
+extern "C" void xboxVideo_SetDisplaySettings(int gamma, int contrast, int safeX, int safeY)
+{
+	gamma = xboxDisplay_Clamp(gamma, 50, 150);
+	contrast = xboxDisplay_Clamp(contrast, 50, 150);
+	safeX = xboxDisplay_Clamp(safeX, 80, 100);
+	safeY = xboxDisplay_Clamp(safeY, 80, 100);
+	if (gFakeGL) gFakeGL->DisplaySettingsChanged();
+	if (gamma != g_displayGamma || contrast != g_displayContrast) g_displayRampDirty = true;
+	g_displayGamma = gamma;
+	g_displayContrast = contrast;
+	g_displaySafeX = safeX;
+	g_displaySafeY = safeY;
+}
+
 void FakeGL_DrawLinearRGBAFullscreen(const unsigned char *rgba, unsigned int width,
 	unsigned int height, unsigned int pitch)
 {
@@ -4075,6 +4156,7 @@ extern "C" void FGL_SetAAType(int mstype)
 
 
             HRESULT hr = D3DDevice_Reset(&params);
+            g_displayRampDirty = true;
 
         	if(FAILED(hr))
         	{
