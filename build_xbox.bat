@@ -358,6 +358,8 @@ if errorlevel 1 (
 )
 
 REM Package multiplayer-only HUD resources in their own namespace.
+python "%~dp0scripts\assets\build_xbox_patch.py" --output "%OUTDIR%\mods\xbox_patch.gob"
+if errorlevel 1 exit /b 1
 xcopy /E /I /Y "%~dp0assets\mp-hud\Resource" "%OUTDIR%\Resource\" >nul
 copy /Y "%~dp0assets\mp-hud\jkhud.txt" "%OUTDIR%\jkhud.txt" >nul
 

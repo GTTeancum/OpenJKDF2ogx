@@ -1,2 +1,4 @@
 # cmd.exe requires consistent Windows line endings in build scripts.
 *.bat text eol=crlf
+# Preserve the user-supplied gameplay script byte for byte when packaging.
+assets/xbox-patch/cog/*.cog -text -whitespace

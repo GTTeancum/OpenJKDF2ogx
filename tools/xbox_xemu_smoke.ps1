@@ -265,6 +265,17 @@ function New-Stage {
     }
 
     # Package the namespaced multiplayer HUD; stock resource paths stay intact.
+    python (Join-Path $RepoRoot "scripts/assets/build_xbox_patch.py") --output (Join-Path $StagePath "mods/xbox_patch.gob")
+    if ($LASTEXITCODE -ne 0) { throw "Xbox patch packaging failed" }
+    # An identical legacy loose copy would mask validation of the packaged COG.
+    $legacyJump = Join-Path $StagePath "Resource/cog/force_jump.cog"
+    if (Test-Path -LiteralPath $legacyJump) {
+        $trackedJump = Join-Path $RepoRoot "assets/xbox-patch/cog/force_jump.cog"
+        if ((Get-FileHash -LiteralPath $legacyJump).Hash -ne (Get-FileHash -LiteralPath $trackedJump).Hash) {
+            throw "Staged loose force_jump.cog differs from the tracked Xbox patch; resolve the override before testing."
+        }
+        Remove-Item -LiteralPath $legacyJump
+    }
     Copy-Item -LiteralPath (Join-Path $RepoRoot "assets/mp-hud/Resource") -Destination $StagePath -Recurse -Force
     Copy-Item -LiteralPath (Join-Path $RepoRoot "assets/mp-hud/jkhud.txt") -Destination $StagePath -Force
     # Include current console glyphs when the installed runtime is older.

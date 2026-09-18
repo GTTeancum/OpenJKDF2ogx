@@ -1,0 +1,183 @@
+# Jedi Knight Cog Script
+#
+# FORCE_JUMP.COG
+#
+# FORCEPOWER Script - Force Jump
+#  Basic Power
+#  Bin 21
+#
+#  This ability is controlled by the length of the key press.
+#
+# [YB]
+#
+# (C) 1997 LucasArts Entertainment Co. All Rights Reserved
+
+# 2/12/2024 changed to combine standard jump with force jump (a la Jedi Outcast)
+# TO DO:
+# Only play charging sound when actually building up
+# Only show jkUniString when actually using the force
+
+
+symbols
+
+thing       player                           local
+vector      upVel                            local
+vector      playerVel                        local
+vector      newVel                           local
+
+flex        cost=20.0                        local
+flex        mana                             local
+flex        jump                             local
+flex        duration                         local
+flex        maxDuration                      local
+int         rank                             local
+
+int         attachFlags                      local
+
+sound       jumpSound=ForceJump01.wav        local
+sound       jumpSound2=ForceJump02.wav       local
+int         channel=-1                       local
+flex        soundduration                    local
+
+message     startup
+message     activated
+message     deactivated
+message     pulse
+message     newplayer
+message     timer
+message     killed
+message     selected
+
+end
+
+# ========================================================================================
+
+code
+
+startup:
+   player = GetLocalPlayerThing();
+   SetPulse(0);
+   SetInvActivated(player, 21, 0);
+   soundduration = GetSoundLen(jumpSound);
+
+   Return;
+
+# ........................................................................................
+
+activated:
+   if(IsInvActivated(player, 21)) Return;
+
+   SetInvActivated(player, 21, 1);
+   mana = GetInv(player, 14);
+   if(mana >= cost)
+   {
+      // Must be attached to a world surface or thing face or on the surface of water.
+      attachFlags = GetAttachFlags(player);
+      if((attachFlags & 1) || (attachFlags & 2) || (GetPhysicsFlags(player) & 0x100000))
+      {
+         //channel = PlaySoundThing(jumpSound, player, 1.0, -1, -1, 0x80);
+      }
+      ActivateBin(player, 0, 21);
+      SetPulse(0.5);
+   }
+
+   Return;
+
+# ........................................................................................
+
+deactivated:
+   duration = DeactivateBin(player, 21);
+   if(duration < soundduration) //Make this so that it won't play on just a tap of the button
+   {
+      StopSound(channel, 0.1);
+      channel = -1;
+   }
+
+   rank = GetInv(player, 21);
+   maxDuration = rank * 0.35;
+
+   // Must be attached to a world surface or thing face or on the surface of water.
+   attachFlags = GetAttachFlags(player);
+   if((attachFlags & 1) || (attachFlags & 2) || (GetPhysicsFlags(player) & 0x100000))
+   {
+	   
+	 // If we tap, then do normal jump.
+	 if(duration < 0.15)
+		duration = -1;
+	  
+	  
+	  //Force Jump-specific
+      mana = GetInv(player, 14);
+      if(mana >= cost && (duration > 0.15)) //Holding for longer than just a tap
+      {
+         PlaySoundThing(jumpSound2, player, 1.0, -1, -1, 0x80);
+         if((GetInv(player, 64) != 1) && (GetInv(player, 65) != 1)) ChangeInv(player, 14, -cost);
+         // If we hold to max, then do max jump.
+         if(duration > maxDuration)
+            duration = maxDuration;
+         // Flash the twinkling stars effect
+         if(!(jkGetFlags(player) & 0x20))
+         {
+            jkSetPersuasionInfo(player, 14, 22);
+            jkSetFlags(player, 0x20);
+            SetTimerEx(0.33, player, 0, 0);
+         }
+
+      }
+	  
+	  
+	 jump = duration + 2.5;
+	 upVel = VectorSet(0.0, 0.0, jump);
+
+	 playerVel = GetThingVel(player);
+	 newVel = VectorAdd(upVel, playerVel);
+	 DetachThing(player);
+	 SetThingVel(player, newVel);
+
+	 ClearPhysicsFlags(player, 0x100000);
+	 SetBinWait(player, 21, 1.0);
+   }
+   SetPulse(0);
+
+   SetInvActivated(player, 21, 0);
+
+   Return;
+
+# ........................................................................................
+
+pulse:
+   if(GetThingHealth(player) < 1)
+   {
+      if(channel != -1) StopSound(channel, 0.1);
+      SetPulse(0);
+   }
+
+   Return;
+
+# ........................................................................................
+
+selected:
+   //jkPrintUNIString(player, 21);
+   Return;
+
+# ........................................................................................
+
+killed:
+   if(GetSenderRef() != player) Return;
+
+newplayer:
+   SetPulse(0);
+   SetInvActivated(player, 21, 0);
+
+   Return;
+
+# ........................................................................................
+
+timer:
+   jkClearFlags(GetSenderId(), 0x20);
+
+   Return;
+
+end
+
+

@@ -388,6 +388,15 @@ int jkRes_LoadNew(jkResGobDirectory *resGob, char *name, int a3)
     {
 #ifdef TARGET_XBOX
         XDBG("jkRes_LoadNew: about to NewFind mods\n");
+        /* Load the curated JK Xbox overrides ahead of compatibility packs.
+         * Do not depend on directory enumeration order or apply these to MotS. */
+        if (!_strcmp(JKRES_GOB_EXT, "gob") && util_FileExistsLowLevel("mods\\xbox_patch.gob")) {
+            stdGob *patch = stdGob_Load("mods\\xbox_patch.gob", 16, 0);
+            if (patch) {
+                resGob->gobs[resGob->numGobs++] = patch;
+                XDBG("XboxPatch: loaded mods\\xbox_patch.gob before compatibility archives\n");
+            }
+        }
 #endif
         v15 = stdFileUtil_NewFind("mods", 3, JKRES_GOB_EXT);
 #ifdef TARGET_XBOX
@@ -395,6 +404,9 @@ int jkRes_LoadNew(jkResGobDirectory *resGob, char *name, int a3)
 #endif
         while (stdFileUtil_FindNext(v15, &v18))
         {
+#ifdef TARGET_XBOX
+            if (!__strcmpi(v18.fpath, "xbox_patch.gob")) continue;
+#endif
             if ( resGob->numGobs >= STDGOB_MAX_GOBS )
                 break;
             if ( v18.fpath[0] != '.' )
@@ -678,6 +690,10 @@ stdFile_t jkRes_FileOpen(const char *fpath, const char *mode)
                     v14 = stdGob_FileOpen(*v17, fpath);
                     if ( v14 )
                     {
+#ifdef TARGET_XBOX
+                        if (!__strcmpi(fpath, "cog\\force_jump.cog"))
+                            xbox_debug_Printf("XboxPatch: force_jump resolved from %s\n", (*v17)->fpath);
+#endif
                         v15 = resIdx;
                         jkRes_aFiles[v15].useLowLevel = 0;
                         jkRes_aFiles[v15].gobHandle = v14;
