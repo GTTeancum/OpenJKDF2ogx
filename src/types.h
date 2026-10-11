@@ -687,6 +687,9 @@ typedef struct rdProcEntry
     int32_t y_min_related;
     int32_t y_max_related;
     uint32_t vertexColorMode;
+    /* Explicit RGBA for clipped, untextured effect triangles (up to a quad). */
+    int hasEffectColors;
+    uint32_t effectColors[4];
 } rdProcEntry;
 
 typedef struct v11_struct

@@ -18,6 +18,15 @@
 #include "General/stdString.h"
 
 #include "jk.h"
+#include "Engine/rdCamera.h"
+#include "Raster/rdCache.h"
+#include <math.h>
+#ifdef TARGET_XBOX
+#include "Platform/Xbox/xbox_debug.h"
+#include <stdio.h>
+#endif
+
+#include "jkSaberModern.inc"
 
 #define JKSABER_EXTENDTIME (0.3000000)
 #define JKSABER_LIGHT_MAX (0.42)
@@ -124,11 +133,11 @@ void jkSaber_Draw(rdMatrix34 *posRotMat)
         }
 
         jkSaber_PolylineRand(&playerThings[playerThingIdx].polylineThing);
-        rdThing_Draw(&playerThings[playerThingIdx].polylineThing, &playerThings[playerThingIdx].povModel.hierarchyNodeMatrices[5]); // aaaaa hardcoded K_Rhand
+        jkSaber_DrawBlade(playerThings[playerThingIdx].actorThing, &playerThings[playerThingIdx].polylineThing, &playerThings[playerThingIdx].povModel.hierarchyNodeMatrices[5], 0, 1);
         
         // Added: Dual sabers
         if (playerThings[playerThingIdx].actorThing->jkFlags & JKFLAG_DUALSABERS)
-            rdThing_Draw(&playerThings[playerThingIdx].polylineThing, &playerThings[playerThingIdx].povModel.hierarchyNodeMatrices[2]); // K_Lhand
+            jkSaber_DrawBlade(playerThings[playerThingIdx].actorThing, &playerThings[playerThingIdx].polylineThing, &playerThings[playerThingIdx].povModel.hierarchyNodeMatrices[2], 1, 1);
     }
 }
 

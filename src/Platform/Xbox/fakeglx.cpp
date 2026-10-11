@@ -646,9 +646,12 @@ public:
 			}
 			else {
 				pD3DDev->SetTexture( i, NULL);
-				pD3DDev->SetTextureStageState( i, D3DTSS_COLORARG1, D3DTA_TEXTURE);
-				pD3DDev->SetTextureStageState( i, D3DTSS_COLORARG2, i == 0 ? D3DTA_DIFFUSE :  D3DTA_CURRENT);
-				pD3DDev->SetTextureStageState( i, D3DTSS_COLOROP, D3DTOP_DISABLE);
+				/* Untextured geometry consumes vertex RGBA. Leaving ALPHAOP
+				 * on the preceding texture discards procedural effect opacity. */
+				pD3DDev->SetTextureStageState( i, D3DTSS_COLORARG1, D3DTA_DIFFUSE);
+				pD3DDev->SetTextureStageState( i, D3DTSS_ALPHAARG1, D3DTA_DIFFUSE);
+				pD3DDev->SetTextureStageState( i, D3DTSS_COLOROP, i == 0 ? D3DTOP_SELECTARG1 : D3DTOP_DISABLE);
+				pD3DDev->SetTextureStageState( i, D3DTSS_ALPHAOP, i == 0 ? D3DTOP_SELECTARG1 : D3DTOP_DISABLE);
 			}
 		}
 	}
@@ -1551,13 +1554,17 @@ public:
             for (int i = 0; i < 3; ++i) {
                 const XboxEngineVertex *input = &vertices[indices[i]];
                 unsigned int alphaByte = input->color >> 24;
-                float alpha = (float)(alphaByte ? alphaByte : 255) / 255.0f;
+                bool effect = input->lightLevel == XBOX_VERTEX_RGBA_EFFECT;
+                float alpha = (float)((effect || alphaByte) ? alphaByte : 255) / 255.0f;
                 if (m_buffered) {
                     float light = input->lightLevel;
                     /* This path is monochrome: convert luminance once, then
                      * replicate its bits exactly as D3DRGBFAST would. Keep
                      * the ordinary float-color state valid for mixed calls. */
-                    if (!m_floatColorValid || m_floatColor[0] != light ||
+                    if (light == XBOX_VERTEX_RGB_LIGHT || effect) {
+                        m_batchColor = effect ? input->color : (input->color & 0x00ffffffu) | ((alphaByte ? alphaByte : 255) << 24);
+                        m_floatColorValid = false;
+                    } else if (!m_floatColorValid || m_floatColor[0] != light ||
                         m_floatColor[1] != light || m_floatColor[2] != light ||
                         m_floatColor[3] != alpha) {
                         DWORD gray = (DWORD)Truncate(Clamp(light) * 255.0f);
@@ -1577,7 +1584,11 @@ public:
                     vertex->u1 = m_extraU; vertex->v1 = m_extraV;
                     if (m_batchCount == 768) FlushLitBatch();
                 } else {
-                    SetColor(input->lightLevel, input->lightLevel, input->lightLevel, alpha);
+                    if (input->lightLevel == XBOX_VERTEX_RGB_LIGHT || effect)
+                        SetColor((float)((input->color >> 16) & 255) / 255.0f,
+                                 (float)((input->color >> 8) & 255) / 255.0f,
+                                 (float)(input->color & 255) / 255.0f, alpha);
+                    else SetColor(input->lightLevel, input->lightLevel, input->lightLevel, alpha);
                     SetTextureCoord0(input->tu, input->tv);
                     SetVertex(input->x, screenSpace ? input->y : input->z,
                               screenSpace ? -input->z : -input->y);
@@ -2271,8 +2282,13 @@ public:
             for (int i = 0; i < 3; ++i) {
                 const XboxEngineVertex *v = &vertices[indices[i]];
                 unsigned int a = v->color >> 24;
-                glColor4f(v->lightLevel, v->lightLevel, v->lightLevel,
-                          (float)(a ? a : 255) / 255.0f);
+                if (v->lightLevel == XBOX_VERTEX_RGB_LIGHT || v->lightLevel == XBOX_VERTEX_RGBA_EFFECT)
+                    glColor4f((float)((v->color >> 16) & 255) / 255.0f,
+                              (float)((v->color >> 8) & 255) / 255.0f,
+                              (float)(v->color & 255) / 255.0f,
+                              xboxVertex_EffectAlpha(v->color, v->lightLevel == XBOX_VERTEX_RGBA_EFFECT));
+                else glColor4f(v->lightLevel, v->lightLevel, v->lightLevel,
+                              (float)(a ? a : 255) / 255.0f);
                 glTexCoord2f(v->tu, v->tv);
                 glVertex3f(v->x, screenSpace ? v->y : v->z, screenSpace ? -v->z : -v->y);
             }

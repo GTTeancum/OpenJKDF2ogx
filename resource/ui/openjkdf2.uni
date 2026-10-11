@@ -1,4 +1,4 @@
-MSGS 100          # <--- DON'T FORGET TO UPDATE THIS COUNT
+MSGS 104          # <--- DON'T FORGET TO UPDATE THIS COUNT
 
 #  "<key>"     <unused number>   "<string>"
 
@@ -11,6 +11,8 @@ MSGS 100          # <--- DON'T FORGET TO UPDATE THIS COUNT
 #  Gameplay
 #******************************
    "GUIEXT_SHOW_SABER_CROSSHAIR"          0 "Show Crosshair with lightsaber"
+   "GUI_MODERN_SABER"                   0 "Modern saber"
+   "GUI_MODERN_SABER_HINT"              0 "White blade, colored glow and swing trail"
    "GUIEXT_SHOW_SABER_CROSSHAIR_HINT"     0 "Display the crosshair when the lightsaber is equipped?"
    "GUIEXT_SHOW_FIST_CROSSHAIR"           0 "Show Crosshair with fist"
    "GUIEXT_SHOW_FIST_CROSSHAIR_HINT"      0 "Display the crosshair when the fists are equipped?"
@@ -37,6 +39,8 @@ MSGS 100          # <--- DON'T FORGET TO UPDATE THIS COUNT
    "GUIEXT_SSAA_MULT"                     0 "SSAA Multiplier:"
    "GUIEXT_GAMMA_VAL"                     0 "Gamma Value:"
    "GUIEXT_HUD_SCALE"                     0 "HUD Scale:"
+   "GUI_MODERN_SABER_RENDERING"           0 "Modern saber rendering"
+   "GUI_MODERN_SABER_RENDERING_HINT"      0 "Use depth-tested modern saber blade, glow, trail and nearby lighting."
 
    "GUIEXT_EN_JKGFXMOD"                   0 "Enable jkgfxmod"
    "GUIEXT_EN_JKGFXMOD_HINT"              0 "Override in-game textures with textures from jkgm folder?"

@@ -45,6 +45,10 @@ static wchar_t* jkStrings_GetXboxSetupString(const char *key)
     JK_XBOX_SETUP_STRING("GUI_CROSSHAIR", L"Crosshair");
     JK_XBOX_SETUP_STRING("GUI_CROSSHAIR_HINT", L"Show the aiming crosshair");
     JK_XBOX_SETUP_STRING("GUI_SABERCAM", L"Saber camera");
+    JK_XBOX_SETUP_STRING("GUI_MODERN_SABER", L"Modern saber");
+    JK_XBOX_SETUP_STRING("GUI_MODERN_SABER_HINT", L"White blade, colored glow and swing trail");
+    JK_XBOX_SETUP_STRING("GUI_MODERN_SABER_RENDERING", L"Modern saber rendering");
+    JK_XBOX_SETUP_STRING("GUI_MODERN_SABER_RENDERING_HINT", L"Depth-tested modern blade, glow, trail and nearby lighting");
     JK_XBOX_SETUP_STRING("GUI_SABERCAM_HINT", L"Use lightsaber camera");
     JK_XBOX_SETUP_STRING("GUI_SINGLE", L"Solo");
     JK_XBOX_SETUP_STRING("GUI_MP", L"MP");

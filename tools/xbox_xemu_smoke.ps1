@@ -15,6 +15,8 @@ param(
     [ValidateRange(1, 10)][int]$MenuCycles = 1,
     [int]$ReloadAfterSeconds = 0,
     [int]$ScreenshotEverySeconds = 0,
+    [int]$NativeSequenceAfterSeconds = 0,
+    [ValidateRange(1,120)][int]$NativeSequenceFrames = 36,
     [switch]$InputProbe,
     [switch]$Traverse,
     [switch]$FireProbe,
@@ -34,6 +36,15 @@ param(
     [switch]$SetupNavigationProbe,
     [switch]$SetupPairsProbe,
     [switch]$DisplaySettingsProbe,
+    [ValidateRange(-1,1)][int]$ModernSaberProbe = -1,
+    [switch]$ModernSaberProof,
+    [switch]$ModernSaberPovProof,
+    [switch]$ModernSaberMenuProbe,
+    [switch]$BossSaberProbe,
+    [switch]$BossSaberCamera,
+    [int]$BossSaberWarpThing = -1,
+    [int]$BossSaberBossWarpThing = -1,
+    [switch]$StockSaberAssets,
     [switch]$BotSetupProbe,
     [switch]$ModelPreviewProbe,
     [switch]$TeamMatch,
@@ -263,8 +274,34 @@ function New-Stage {
     if ($LASTEXITCODE -gt 7) {
         throw "robocopy runtime staging failed with exit code $LASTEXITCODE"
     }
+    if ($StockSaberAssets) {
+        # Remove only generated staging copies, including the loose mod tree.
+        foreach ($relative in @('mods/GLOW3.GOB', 'mods/GLOW3.~GO', 'mods/GLOW3')) {
+            $stagedMod = Join-Path $StagePath $relative
+            Assert-UnderPath $StagePath $stagedMod
+            Remove-SafeGeneratedPath $stagedMod
+        }
+        if ($AutoStartArgs -notmatch '(?i)-motsCompat') {
+            # The compatibility archive also carries replacement JK-named
+            # keys/materials; a stock JK comparison must not load those.
+            Remove-SafeGeneratedPath (Join-Path $StagePath 'mods/mots_xbox_patch.gob')
+        }
+    }
 
     # Package the namespaced multiplayer HUD; stock resource paths stay intact.
+    if ($ModernSaberPovProof) {
+        Set-Content -LiteralPath (Join-Path $StagePath "xbox_smoke_modern_saber.txt") -Value "1 2" -Encoding ASCII
+    }
+    elseif ($ModernSaberProof) {
+        Set-Content -LiteralPath (Join-Path $StagePath "xbox_smoke_modern_saber.txt") -Value "1 1" -Encoding ASCII
+    }
+    elseif ($ModernSaberProbe -ge 0) {
+        Set-Content -LiteralPath (Join-Path $StagePath "xbox_smoke_modern_saber.txt") -Value ([string]$ModernSaberProbe) -Encoding ASCII
+    }
+    if ($BossSaberProbe -or $BossSaberCamera) {
+        $bossProbeMode = if ($BossSaberCamera) { "2" } else { "1" }
+        Set-Content -LiteralPath (Join-Path $StagePath "xbox_smoke_boss_saber.txt") -Value "$bossProbeMode $BossSaberWarpThing $BossSaberBossWarpThing" -Encoding ASCII
+    }
     python (Join-Path $RepoRoot "scripts/assets/build_xbox_patch.py") --output (Join-Path $StagePath "mods/xbox_patch.gob")
     if ($LASTEXITCODE -ne 0) { throw "Xbox patch packaging failed" }
     # An identical legacy loose copy would mask validation of the packaged COG.
@@ -361,6 +398,9 @@ function New-Stage {
     }
     if ($SetupProbe) {
         Set-Content -LiteralPath (Join-Path $StagePath "xbox_smoke_setup.txt") -Value "1 $SetupProbeTab" -Encoding ASCII
+    }
+    if ($ModernSaberMenuProbe) {
+        Set-Content -LiteralPath (Join-Path $StagePath "xbox_smoke_setup.txt") -Value "7 102" -Encoding ASCII
     }
     if ($ControlsProbe) {
         Set-Content -LiteralPath (Join-Path $StagePath "xbox_smoke_setup.txt") -Value "2" -Encoding ASCII
@@ -546,6 +586,15 @@ $aliveAtEnd = $false
 
 try {
     New-Stage
+    @(
+        "stockSaberAssets=$([bool]$StockSaberAssets)"
+        "xbeSha256=$((Get-FileHash -LiteralPath (Join-Path $StagePath 'default.xbe')).Hash)"
+        "glowArchivePresent=$(Test-Path -LiteralPath (Join-Path $StagePath 'mods/GLOW3.GOB'))"
+        "glowLooseTreePresent=$(Test-Path -LiteralPath (Join-Path $StagePath 'mods/GLOW3'))"
+        Get-ChildItem -LiteralPath (Join-Path $StagePath 'mods') -File | ForEach-Object {
+            "mod=$($_.Name) sha256=$((Get-FileHash -LiteralPath $_.FullName).Hash)"
+        }
+    ) | Set-Content -LiteralPath (Join-Path $RunDir 'content_manifest.txt') -Encoding ASCII
     New-Xiso
     Remove-SafeGeneratedPath $StagePath
     Initialize-XemuInstance
@@ -577,6 +626,7 @@ try {
 
     $deadline = $start.AddSeconds($DurationSeconds)
     $nextScreenshot = if ($ScreenshotEverySeconds -gt 0) { $start.AddSeconds($ScreenshotEverySeconds) } else { [DateTime]::MaxValue }
+    $nativeSequenceDone = $false
 
     while ((Get-Date) -lt $deadline) {
         Start-Sleep -Seconds $PollIntervalSeconds
@@ -612,7 +662,12 @@ try {
             Set-Content -LiteralPath $pollErr -Value $lastPollError -Encoding UTF8
         }
 
-        if ((Get-Date) -ge $nextScreenshot) {
+        if (!$nativeSequenceDone -and $NativeSequenceAfterSeconds -gt 0 -and $elapsed -ge $NativeSequenceAfterSeconds) {
+            $nativeSequenceDone = $true
+            & python (Join-Path $RepoRoot 'scripts/xbox/xemu_native_sequence.py') --pid $proc.Id --xemu-exe $XemuExe --screenshot-dir $ScreenshotDir --count $NativeSequenceFrames --interval 0.05 *> (Join-Path $RunDir 'native_sequence.log')
+            if ($LASTEXITCODE -ne 0) { throw 'Native XEMU sequence capture failed' }
+        }
+        elseif ((Get-Date) -ge $nextScreenshot) {
             $shot = Join-Path $ScreenshotDir ("shot_{0:D4}s.png" -f $elapsed)
             try {
                 if ($MonitorScreenshots) {
@@ -707,6 +762,14 @@ $summary = @(
     "reloadResumed=$reloadResumed",
     "snapshotDisk=$([bool]$SnapshotDisk)",
     "noHostInput=$([bool]$NoHostInput)",
+    "stockSaberAssets=$([bool]$StockSaberAssets)",
+    "modernSaberProbe=$ModernSaberProbe",
+    "modernSaberPovProof=$([bool]$ModernSaberPovProof)",
+    "bossSaberCamera=$([bool]$BossSaberCamera)",
+    "bossSaberWarpThing=$BossSaberWarpThing",
+    "bossSaberBossWarpThing=$BossSaberBossWarpThing",
+    "nativeSequenceAfterSeconds=$NativeSequenceAfterSeconds",
+    "nativeSequenceFrames=$NativeSequenceFrames",
     "inputProbe=$([bool]$InputProbe)",
     "traverse=$([bool]$Traverse)",
     "fireProbe=$([bool]$FireProbe)",

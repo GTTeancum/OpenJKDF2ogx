@@ -21,6 +21,7 @@
 #include "Gui/jkGUIControlOptions.h"
 #include "Platform/stdControl.h"
 #include "Platform/wuRegistry.h"
+#include "World/jkPlayer.h"
 #include "Win95/stdDisplay.h"
 #ifdef TARGET_XBOX
 #include "Platform/Xbox/xbox_display_settings.h"
@@ -177,14 +178,15 @@ static jkGuiElement jkGuiSetupXboxDisplay_buttons[] = {
     {ELEMENT_TEXTBUTTON, 102, 2, "GUI_DISPLAY", 3, {260, 80, 120, 40},  1, 0, "GUI_DISPLAY_HINT", 0, 0, 0, {0}, 0},
     {ELEMENT_TEXTBUTTON, 103, 2, "GUI_SOUND", 3, {380, 80, 120, 40}, 1, 0, "GUI_SOUND_HINT", 0, 0, 0, {0}, 0},
     {ELEMENT_TEXTBUTTON, 104, 2, "GUI_CONTROLS", 3, {500, 80, 120, 40}, 1, 0, "GUI_CONTROLS_HINT", 0, 0, 0, {0}, 0},
-    {ELEMENT_TEXT, 0, 0, jkGuiSetupXbox_displayLabels[0], 0, {65, 135, 510, 24}, 1},
-    {ELEMENT_SLIDER, 0, 0, (const char*)100, 0, {150, 160, 340, 30}, 1, 0, 0, 0, 0, jkGuiSetupXbox_sliderImages},
-    {ELEMENT_TEXT, 0, 0, jkGuiSetupXbox_displayLabels[1], 0, {65, 205, 510, 24}, 1},
-    {ELEMENT_SLIDER, 0, 0, (const char*)100, 0, {150, 230, 340, 30}, 1, 0, 0, 0, 0, jkGuiSetupXbox_sliderImages},
-    {ELEMENT_TEXT, 0, 0, jkGuiSetupXbox_displayLabels[2], 0, {65, 275, 510, 24}, 1},
-    {ELEMENT_SLIDER, 0, 0, (const char*)20, 0, {150, 300, 340, 30}, 1, 0, 0, 0, 0, jkGuiSetupXbox_sliderImages},
-    {ELEMENT_TEXT, 0, 0, jkGuiSetupXbox_displayLabels[3], 0, {65, 345, 510, 24}, 1},
-    {ELEMENT_SLIDER, 0, 0, (const char*)20, 0, {150, 370, 340, 30}, 1, 0, 0, 0, 0, jkGuiSetupXbox_sliderImages},
+    {ELEMENT_TEXT, 0, 0, jkGuiSetupXbox_displayLabels[0], 0, {65, 128, 510, 22}, 1},
+    {ELEMENT_SLIDER, 0, 0, (const char*)100, 0, {150, 150, 340, 30}, 1, 0, 0, 0, 0, jkGuiSetupXbox_sliderImages},
+    {ELEMENT_TEXT, 0, 0, jkGuiSetupXbox_displayLabels[1], 0, {65, 192, 510, 22}, 1},
+    {ELEMENT_SLIDER, 0, 0, (const char*)100, 0, {150, 214, 340, 30}, 1, 0, 0, 0, 0, jkGuiSetupXbox_sliderImages},
+    {ELEMENT_TEXT, 0, 0, jkGuiSetupXbox_displayLabels[2], 0, {65, 256, 510, 22}, 1},
+    {ELEMENT_SLIDER, 0, 0, (const char*)20, 0, {150, 278, 340, 30}, 1, 0, 0, 0, 0, jkGuiSetupXbox_sliderImages},
+    {ELEMENT_TEXT, 0, 0, jkGuiSetupXbox_displayLabels[3], 0, {65, 320, 510, 22}, 1},
+    {ELEMENT_SLIDER, 0, 0, (const char*)20, 0, {150, 342, 340, 30}, 1, 0, 0, 0, 0, jkGuiSetupXbox_sliderImages},
+    {ELEMENT_CHECKBOX, 0, 0, "GUI_MODERN_SABER_RENDERING", 0, {65, 390, 510, 20}, 1, 0, "GUI_MODERN_SABER_RENDERING_HINT", 0, 0, 0, {0}, 0},
     {ELEMENT_TEXTBUTTON, 1, 2, "GUI_OK", 3, {440, 430, 200, 40}, 1, 0, 0, 0, 0, 0, {0}, 0},
     {ELEMENT_TEXTBUTTON, -1, 2, "GUI_CANCEL", 3, {0, 430, 200, 40}, 1, 0, 0, 0, 0, 0, {0}, 0},
     {ELEMENT_TEXTBUTTON, 0, 2, L"Defaults", 3, {220, 430, 200, 40}, 1, 0, 0, 0, jkGuiSetupXbox_DisplayDefaults},
@@ -223,6 +225,7 @@ static int jkGuiSetupXbox_DisplayDefaults(jkGuiElement *element, jkGuiMenu *menu
     jkGuiSetupXboxDisplay_buttons[10].selectedTextEntry = 50;
     jkGuiSetupXboxDisplay_buttons[12].selectedTextEntry = 20;
     jkGuiSetupXboxDisplay_buttons[14].selectedTextEntry = 20;
+    jkGuiSetupXboxDisplay_buttons[15].selectedTextEntry = 0;
     jkGuiSetupXbox_DisplayTick(menu);
     return 0;
 }
@@ -262,16 +265,17 @@ static int jkGuiSetupXbox_ShowDisplay(void)
     int result;
     for (i = 0; i < 4; ++i)
         jkGuiSetupXboxDisplay_buttons[8+i*2].selectedTextEntry = jkGuiSetupXbox_displayValues[i] - (i >= 2 ? 80 : 50);
+    jkGuiSetupXboxDisplay_buttons[15].selectedTextEntry = jkPlayer_bModernSaber != 0;
     jkGuiSetupXbox_DisplayLabels();
     jkGui_sub_412E20(&jkGuiSetupXboxDisplay_menu, 100, 104, 102);
     jkGuiSetup_sub_412EF0(&jkGuiSetupXboxDisplay_menu, 0);
     jkGuiRend_MenuSetReturnKeyShortcutElement(&jkGuiSetupXboxDisplay_menu, NULL);
-    jkGuiRend_MenuSetEscapeKeyShortcutElement(&jkGuiSetupXboxDisplay_menu, &jkGuiSetupXboxDisplay_buttons[16]);
+    jkGuiRend_MenuSetEscapeKeyShortcutElement(&jkGuiSetupXboxDisplay_menu, &jkGuiSetupXboxDisplay_buttons[17]);
     jkGuiSetupXbox_DebugMenu("display-before", &jkGuiSetupXboxDisplay_menu);
     jkGuiRend_XboxFooterBegin(&jkGuiSetupXboxDisplay_menu);
-    jkGuiRend_XboxFooterAddElementAction(&jkGuiSetupXboxDisplay_menu, JKGUI_XBOX_BTN_B, &jkGuiSetupXboxDisplay_buttons[16], L"Back");
-    jkGuiRend_XboxFooterAddElementAction(&jkGuiSetupXboxDisplay_menu, JKGUI_XBOX_BTN_X, &jkGuiSetupXboxDisplay_buttons[17], L"Defaults");
-    jkGuiRend_XboxFooterAddElementAction(&jkGuiSetupXboxDisplay_menu, JKGUI_XBOX_BTN_START, &jkGuiSetupXboxDisplay_buttons[15], L"Done");
+    jkGuiRend_XboxFooterAddElementAction(&jkGuiSetupXboxDisplay_menu, JKGUI_XBOX_BTN_B, &jkGuiSetupXboxDisplay_buttons[17], L"Back");
+    jkGuiRend_XboxFooterAddElementAction(&jkGuiSetupXboxDisplay_menu, JKGUI_XBOX_BTN_X, &jkGuiSetupXboxDisplay_buttons[18], L"Defaults");
+    jkGuiRend_XboxFooterAddElementAction(&jkGuiSetupXboxDisplay_menu, JKGUI_XBOX_BTN_START, &jkGuiSetupXboxDisplay_buttons[16], L"Done");
     xboxVideo_ShowSafeZoneMarkers(1);
     result = jkGuiRend_DisplayAndReturnClicked(&jkGuiSetupXboxDisplay_menu);
     xboxVideo_ShowSafeZoneMarkers(0);
@@ -280,6 +284,8 @@ static int jkGuiSetupXbox_ShowDisplay(void)
     wuRegistry_SaveInt("xboxDisplayContrast", jkGuiSetupXbox_displayValues[1]);
     wuRegistry_SaveInt("xboxDisplaySafeZoneX", jkGuiSetupXbox_displayValues[2]);
     wuRegistry_SaveInt("xboxDisplaySafeZoneY", jkGuiSetupXbox_displayValues[3]);
+    jkPlayer_bModernSaber = jkGuiSetupXboxDisplay_buttons[15].selectedTextEntry != 0;
+    wuRegistry_SaveInt("modernSaber", jkPlayer_bModernSaber != 0);
     stdPlatform_Printf("DisplaySettings: saved gamma=%d contrast=%d safeX=%d safeY=%d\n",
         jkGuiSetupXbox_displayValues[0], jkGuiSetupXbox_displayValues[1], jkGuiSetupXbox_displayValues[2], jkGuiSetupXbox_displayValues[3]);
     return result >= 100 ? result : -1;
@@ -363,12 +369,32 @@ void jkGuiSetup_XboxProbeMenu(jkGuiMenu *menu)
     if (menu != &jkGuiSetup_menu && !jkGuiSetup_XboxIsSubmenu(menu)) return;
     now = stdPlatform_GetTimeMsec();
     if (!jkGuiSetupXbox_probeTime) jkGuiSetupXbox_probeTime = now;
-    if (now - jkGuiSetupXbox_probeTime < (jkGuiSetupXbox_probe == 6 ? 15000U : 10000U)) return;
+    if (now - jkGuiSetupXbox_probeTime < (jkGuiSetupXbox_probe == 7 ? 6000U : jkGuiSetupXbox_probe == 6 ? 15000U : 10000U)) return;
     jkGuiSetupXbox_probeTime = now;
     step = jkGuiSetupXbox_probeStep++;
     stdPlatform_Printf("SetupNavProbe: step=%d root=%d tab=%d focus=%d\n", step,
         menu == &jkGuiSetup_menu, jkGuiSetupXbox_tab,
         menu->lastMouseOverClickable ? (int)(menu->lastMouseOverClickable - menu->paElements) : -1);
+    if (jkGuiSetupXbox_probe == 7) {
+        int n;
+        if (step == 0 || step == 4) {
+            for (n = 0; n < 4; n++) jkGuiRend_FocusElementDir(menu, FOCUS_DOWN);
+        } else if (step == 1 || step == 5) {
+            target = menu->lastMouseOverClickable;
+            if (target && target->type == ELEMENT_CHECKBOX && target->origStr
+                && !strcmp(target->origStr, "GUI_MODERN_SABER_RENDERING"))
+                jkGuiRend_InvokeClicked(target, menu, target->rect.x+1, target->rect.y+1, 1);
+        } else if (step == 2 || step == 6) {
+            jkGuiSetup_XboxChangeMenu(menu, 1);
+        } else if (step == 3 || step == 7) {
+            int expected = step == 3;
+            jkPlayer_bModernSaber = !expected;
+            jkPlayer_ReadConf(jkPlayer_playerShortName);
+            stdPlatform_Printf("ModernSaberMenuProbe: profile reload expected=%d actual=%d\n", expected, jkPlayer_bModernSaber);
+            jkGuiSetup_XboxChangeMenu(menu, -1);
+        } else jkGuiSetupXbox_probe = 0;
+        return;
+    }
     if (jkGuiSetupXbox_probe == 6) {
         int n, row;
         /* Each proof changes only one setting from a common baseline. */
@@ -427,7 +453,7 @@ void jkGuiSetup_Show()
     int result, mode = 0, n;
     FILE *probe = fopen("D:\\xbox_smoke_setup.txt", "rb");
     if (probe) { fscanf(probe, "%d", &mode); fclose(probe); }
-    jkGuiSetupXbox_probe = mode == 3 || mode == 5 || mode == 6 ? mode : 0;
+    jkGuiSetupXbox_probe = mode == 3 || mode == 5 || mode == 6 || mode == 7 ? mode : 0;
     jkGuiSetupXbox_probeTime = 0;
     jkGuiSetupXbox_probeStep = 0;
     jkGuiSetupXbox_tab = 100;
@@ -436,7 +462,7 @@ void jkGuiSetup_Show()
         jkGuiSetup_buttons[n].type = ELEMENT_TEXTBUTTON;
         jkGuiSetup_buttons[n].drawFuncOverride = jkGuiSetupXbox_DrawTab;
     }
-    jkGuiSetup_menu.idkFunc = mode == 1 || mode == 2 || mode == 5 || mode == 6 ? jkGuiSetupXbox_SmokeTick : NULL;
+    jkGuiSetup_menu.idkFunc = mode == 1 || mode == 2 || mode == 5 || mode == 6 || mode == 7 ? jkGuiSetupXbox_SmokeTick : NULL;
     for (;;) {
         jkGuiRend_MenuSetReturnKeyShortcutElement(&jkGuiSetup_menu, NULL);
         jkGuiRend_MenuSetEscapeKeyShortcutElement(&jkGuiSetup_menu, &jkGuiSetup_buttons[7]);

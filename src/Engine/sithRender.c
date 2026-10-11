@@ -68,6 +68,10 @@ int sithRender_adjoinSafeguard = 0;
 #define SITHRENDER_LIGHT_MIN_VISIBLE 0.08
 #define SITHRENDER_MAX_PROJECTILE_LIGHTS 4
 #define SITHRENDER_MAX_SABER_LIGHTS 2
+#if defined(TARGET_XBOX) && defined(QOL_IMPROVEMENTS)
+#define SITHRENDER_MODERN_SABER_LIGHT_INTENSITY 0.68
+#define SITHRENDER_MODERN_SABER_LIGHT_REACH 0.95
+#endif
 
 static int sithRender_projectileLightsThisFrame = 0;
 static int sithRender_saberLightsThisFrame = 0;
@@ -165,15 +169,29 @@ static int sithRender_AddThingLight(sithThing *thing, rdLight *light, rdVector3 
 static int sithRender_AddSaberLight(sithThing *thing, rdLight *light, rdVector3 *pos)
 {
 #ifdef JKM_LIGHTING
+    int maxLights = SITHRENDER_MAX_SABER_LIGHTS;
     if (light->intensity > SITHRENDER_SABER_LIGHT_MAX)
         light->intensity = SITHRENDER_SABER_LIGHT_MAX;
+#if defined(TARGET_XBOX) && defined(QOL_IMPROVEMENTS)
+    if (jkPlayer_bModernSaber) {
+        light->intensity = (light->intensity / SITHRENDER_SABER_LIGHT_MAX) *
+            SITHRENDER_MODERN_SABER_LIGHT_INTENSITY;
+        maxLights = 4;
+    }
+#endif
     if (light->intensity < SITHRENDER_LIGHT_MIN_VISIBLE)
         return 0;
-    if (sithRender_saberLightsThisFrame >= SITHRENDER_MAX_SABER_LIGHTS)
+    if (sithRender_saberLightsThisFrame >= maxLights)
         return 0;
     sithRender_SetDynamicLightColor(light, thing ? thing->actorParams.field_1A8 : 0x40FF40);
     if (rdCamera_AddLight(rdCamera_pCurCamera, light, pos))
     {
+#if defined(TARGET_XBOX) && defined(QOL_IMPROVEMENTS)
+        if (jkPlayer_bModernSaber) {
+            light->falloffMin = SITHRENDER_MODERN_SABER_LIGHT_REACH;
+            light->falloffMax = SITHRENDER_MODERN_SABER_LIGHT_REACH;
+        }
+#endif
         sithRender_saberLightsThisFrame++;
         return 1;
     }
@@ -181,6 +199,40 @@ static int sithRender_AddSaberLight(sithThing *thing, rdLight *light, rdVector3 
 #else
     return rdCamera_AddLight(rdCamera_pCurCamera, light, pos);
 #endif
+}
+
+static int sithRender_AddSaberLights(sithThing *thing, rdLight *lights, int lightIdx, int lightLimit)
+{
+    if (!thing || lightIdx >= lightLimit)
+        return lightIdx;
+
+#if defined(TARGET_XBOX) && defined(QOL_IMPROVEMENTS) && defined(JKM_LIGHTING)
+    if (jkPlayer_bModernSaber
+        && thing
+        && thing->playerInfo
+        && thing->playerInfo->bHasLastJointMat
+        && thing->playerInfo->polyline.length > 0.0)
+    {
+        static const flex_t samples[] = { 0.18f, 0.50f, 0.82f };
+        int sampleIdx;
+        for (sampleIdx = 0; sampleIdx < (int)(sizeof(samples) / sizeof(samples[0])) && lightIdx < lightLimit; ++sampleIdx)
+        {
+            rdVector3 lightPos;
+            rdVector_Copy3(&lightPos, &thing->playerInfo->lastSaberJointMat.scale);
+            rdVector_MultAcc3(&lightPos, &thing->playerInfo->lastSaberJointMat.lvec,
+                thing->playerInfo->polyline.length * samples[sampleIdx]);
+            lights[lightIdx].intensity = thing->actorParams.timeLeftLengthChange;
+            if (sithRender_AddSaberLight(thing, &lights[lightIdx], &lightPos))
+                ++lightIdx;
+        }
+        return lightIdx;
+    }
+#endif
+
+    lights[lightIdx].intensity = thing->actorParams.timeLeftLengthChange;
+    if (sithRender_AddSaberLight(thing, &lights[lightIdx], &thing->actorParams.saberBladePos))
+        ++lightIdx;
+    return lightIdx;
 }
 
 void sithRender_RenderDebugLight(flex_t intensity, rdVector3* pos)
@@ -1070,9 +1122,8 @@ void sithRender_Clip(sithSector *sector, rdClipFrustum *frustumArg, flex_t prevA
                     }
                     if ( thing->actorParams.timeLeftLengthChange > 0.0 )
                     {
-                        sithRender_aLights[lightIdx].intensity = thing->actorParams.timeLeftLengthChange;
-                        if (sithRender_AddSaberLight(thing, &sithRender_aLights[lightIdx], &thing->actorParams.saberBladePos))
-                            lightIdx = ++sithRender_numLights;
+                        lightIdx = sithRender_AddSaberLights(thing, sithRender_aLights, lightIdx, 0x20);
+                        sithRender_numLights = lightIdx;
                     }
                 }
             }
@@ -1446,9 +1497,8 @@ void sithRender_NoClip(sithSector *sector, rdClipFrustum *frustumArg, flex_t pre
                     }
                     if ( thing->actorParams.timeLeftLengthChange > 0.0 )
                     {
-                        sithRender_aLights[lightIdx].intensity = thing->actorParams.timeLeftLengthChange;
-                        if (sithRender_AddSaberLight(thing, &sithRender_aLights[lightIdx], &thing->actorParams.saberBladePos))
-                            lightIdx = ++sithRender_numLights;
+                        lightIdx = sithRender_AddSaberLights(thing, sithRender_aLights, lightIdx, 0x20);
+                        sithRender_numLights = lightIdx;
                     }
                 }
             }
@@ -1673,9 +1723,8 @@ void sithRender_KindaClipAssignFrustum(sithSector *sector, rdClipFrustum *frustu
                 }
                 if ( thing->actorParams.timeLeftLengthChange > 0.0 )
                 {
-                    sithRender_aLights[lightIdx].intensity = thing->actorParams.timeLeftLengthChange;
-                    if (sithRender_AddSaberLight(thing, &sithRender_aLights[lightIdx], &thing->actorParams.saberBladePos))
-                        lightIdx = ++sithRender_numLights;
+                    lightIdx = sithRender_AddSaberLights(thing, sithRender_aLights, lightIdx, 0x20);
+                    sithRender_numLights = lightIdx;
                 }
             }
         }
@@ -2031,6 +2080,23 @@ rdClipFrustum sithRender_absoluteMaxFrustum = {
 };
 #endif
 
+#ifdef TARGET_XBOX
+/* Flush before changing the cache's interpretation of its intensity arrays.
+ * Uncolored levels retain the scalar path unless modern saber lighting is on. */
+static void sithRender_XboxSurfaceColorMode(const sithSurface *surface)
+{
+    int mode = (surface->surfaceFlags & SITH_SURFACE_1000000) ? 1 : 0;
+#ifdef QOL_IMPROVEMENTS
+    if (jkPlayer_bModernSaber) mode = 1;
+#endif
+    if (rdGetVertexColorMode() != mode) {
+        rdCache_Flush();
+        rdSetVertexColorMode(mode);
+    }
+}
+
+#endif
+
 // MOTS altered
 void sithRender_RenderLevelGeometry()
 {
@@ -2183,6 +2249,7 @@ void sithRender_RenderLevelGeometry()
         {
             rdClipFrustum* pSurfaceFrustum = pSectorFrustum;
 #ifdef TARGET_XBOX
+            sithRender_XboxSurfaceColorMode(v65);
             xb_walked++;
 #endif
             if (UNLIKELY(!v65->surfaceInfo.face.geometryMode)) {
@@ -2866,6 +2933,13 @@ LABEL_150:
             ;    
         }
 
+#ifdef TARGET_XBOX
+        /* Surface mode must not leak into level models in this sector. */
+        if (rdGetVertexColorMode() != 0) {
+            rdCache_Flush();
+            rdSetVertexColorMode(0);
+        }
+#endif
         // Surprisingly, this is a fairly minimal cost to the entire render, 3ms on landing terminal spawn
         { static int _sl=0; if(_sl<1){ XDBGF("Surface loop done, entering things loop\n"); _sl++; } }
         rdSetProcFaceUserData(level_idk->id | 0x10000);
@@ -3110,9 +3184,7 @@ void sithRender_UpdateLights(sithSector *sector, flex_t prev, flex_t dist, int d
                     // Saber light
                     if ( i->actorParams.timeLeftLengthChange > 0.0 )
                     {
-                        sithRender_aLights[sithRender_numLights].intensity = i->actorParams.timeLeftLengthChange;
-                        if (sithRender_AddSaberLight(i, &sithRender_aLights[sithRender_numLights], &i->actorParams.saberBladePos))
-                            ++sithRender_numLights;
+                        sithRender_numLights = sithRender_AddSaberLights(i, sithRender_aLights, sithRender_numLights, 0x20);
                     }
                 }
             }
@@ -3757,6 +3829,15 @@ int sithRender_RenderThing(sithThing *pThing)
 #ifdef TARGET_XBOX
     if (xboxSavedCullFlags >= 0)
         rdSetCullFlags(xboxSavedCullFlags);
+#if defined(QOL_IMPROVEMENTS)
+    if (jkPlayer_bModernSaber
+        && sithRender_weaponRenderHandle
+        && (pThing->thingflags & SITH_TF_RENDERWEAPON)
+        && (pThing->jkFlags & JKFLAG_SABERON))
+    {
+        rdCache_Flush();
+    }
+#endif
 #endif
     rdVector_Zero3(&pThing->lookOrientation.scale);
     if (sithRender_weaponRenderHandle && (pThing->thingflags & SITH_TF_RENDERWEAPON)) {
@@ -3826,6 +3907,9 @@ void sithRender_RenderAlphaSurfaces()
     for (int i = 0; i < sithRender_numSurfaces; i++)
     {
         v0 = sithRender_aSurfaces[i];
+#ifdef TARGET_XBOX
+        sithRender_XboxSurfaceColorMode(v0);
+#endif
         v1 = v0->parent_sector;
         surfaceSector = v1;
         rdClipFrustum* pSurfaceFrustum = v1->clipFrustum;
@@ -3930,6 +4014,22 @@ void sithRender_RenderAlphaSurfaces()
             v9->geometryMode = RD_GEOMODE_SOLIDCOLOR;
         }
 
+#if defined(TARGET_XBOX) && defined(JKM_LIGHTING)
+        if (rdGetVertexColorMode() == 1) {
+            int count = sithRender_idxInfo.numVertices;
+            int rgbAuthored = (v0->surfaceFlags & SITH_SURFACE_1000000) != 0;
+            sithRender_idxInfo.paRedIntensities = v0->surfaceInfo.intensities + (rgbAuthored ? count : 0);
+            sithRender_idxInfo.paGreenIntensities = v0->surfaceInfo.intensities + (rgbAuthored ? count * 2 : 0);
+            sithRender_idxInfo.paBlueIntensities = v0->surfaceInfo.intensities + (rgbAuthored ? count * 3 : 0);
+            meshinfo_out.paRedIntensities = v9->paRedIntensities;
+            meshinfo_out.paGreenIntensities = v9->paGreenIntensities;
+            meshinfo_out.paBlueIntensities = v9->paBlueIntensities;
+            rdPrimit3_ClipFaceRGBLevel(pSurfaceFrustum, v9->geometryMode,
+                v9->lightingMode, v9->textureMode, &sithRender_idxInfo,
+                &meshinfo_out, &v0->surfaceInfo.face.clipIdk);
+        } else
+#endif
+        {
 #ifdef SITHRENDER_SPHERE_TEST_SURFACES
         if (clipResult != SPHERE_FULLY_INSIDE) {
 #endif
@@ -3952,6 +4052,8 @@ void sithRender_RenderAlphaSurfaces()
         }
 #endif
         
+        }
+
         if ( meshinfo_out.numVertices < 3u )
         {
             continue;
@@ -3975,7 +4077,7 @@ void sithRender_RenderAlphaSurfaces()
                     v9->lightingMode = RD_LIGHTMODE_NOTLIT;
                 }
             }
-            else if ( v9->lightingMode == RD_LIGHTMODE_GOURAUD)
+            else if ( rdGetVertexColorMode() == 0 && v9->lightingMode == RD_LIGHTMODE_GOURAUD)
             {
                 v20 = v9->vertexIntensities;
                 v21 = 1;

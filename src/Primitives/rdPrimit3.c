@@ -1063,7 +1063,7 @@ void rdPrimit3_NoClipFaceRGB
                     prVar18->x = prVar1->x;
                     prVar18->y = prVar1->y;
                     prVar18->z = prVar1->z;
-                    fVar12 = pfVar4[*piVar14] + pfVar8[*piVar14];
+                    fVar12 = pfVar4[*piVar14] + RDPRIMIT3_DYNAMIC_R(_vertexSrc, *piVar14);
                     if (fVar12 < 0.0) {
                         fVar12 = 0.0;
                     }
@@ -1071,7 +1071,7 @@ void rdPrimit3_NoClipFaceRGB
                         fVar12 = 1.0;
                     }
                     *pfVar6 = fVar12;
-                    fVar12 = pfVar7[*piVar14] + pfVar8[*piVar14];
+                    fVar12 = pfVar7[*piVar14] + RDPRIMIT3_DYNAMIC_G(_vertexSrc, *piVar14);
                     if (fVar12 < 0.0) {
                         fVar12 = 0.0;
                     }
@@ -1079,7 +1079,7 @@ void rdPrimit3_NoClipFaceRGB
                         fVar12 = 1.0;
                     }
                     *pfVar5 = fVar12;
-                    fVar12 = pfVar10[*piVar14] + pfVar8[*piVar14];
+                    fVar12 = pfVar10[*piVar14] + RDPRIMIT3_DYNAMIC_B(_vertexSrc, *piVar14);
                     if (fVar12 < 0.0) {
                         fVar12 = 0.0;
                     }
@@ -1289,7 +1289,7 @@ rdPrimit3_ClipFaceRGB
                     prVar19->x = prVar1->x;
                     prVar19->y = prVar1->y;
                     prVar19->z = prVar1->z;
-                    fVar14 = pfVar5[iVar12] + pfVar6[iVar12];
+                    fVar14 = pfVar5[iVar12] + RDPRIMIT3_DYNAMIC_R(idxInfo, iVar12);
                     if (fVar14 < 0.0) {
                         fVar14 = 0.0;
                     }
@@ -1298,7 +1298,7 @@ rdPrimit3_ClipFaceRGB
                     }
                     pfVar2 = (flex_t *)(iVar20 + (intptr_t)piVar17);
                     *(flex_t *)((intptr_t)pfVar2 + ((intptr_t)pfVar11 - (intptr_t)pfVar10)) = fVar14;
-                    fVar14 = pfVar7[iVar12] + pfVar6[iVar12];
+                    fVar14 = pfVar7[iVar12] + RDPRIMIT3_DYNAMIC_G(idxInfo, iVar12);
                     if (fVar14 < 0.0) {
                         fVar14 = 0.0;
                     }
@@ -1306,7 +1306,7 @@ rdPrimit3_ClipFaceRGB
                         fVar14 = 1.0;
                     }
                     *pfVar2 = fVar14;
-                    fVar14 = pfVar8[iVar12] + pfVar6[iVar12];
+                    fVar14 = pfVar8[iVar12] + RDPRIMIT3_DYNAMIC_B(idxInfo, iVar12);
                     if (fVar14 < 0.0) {
                         fVar14 = 0.0;
                     }
@@ -1412,7 +1412,7 @@ rdPrimit3_ClipFaceRGB
                         iVar13 = *piVar9;
                         prVar16->x = prVar4[iVar13].x + idkIn->x;
                         prVar16->y = prVar4[iVar13].y + idkIn->y;;
-                        fVar14 = pfVar6[iVar12] + pfVar5[iVar12];
+                        fVar14 = pfVar6[iVar12] + RDPRIMIT3_DYNAMIC_R(idxInfo, iVar12);
                         if (fVar14 < 0.0) {
                             fVar14 = 0.0;
                         }
@@ -1421,7 +1421,7 @@ rdPrimit3_ClipFaceRGB
                         }
                         *redIter = fVar14;
 
-                        fVar14 = pfVar7[iVar12] + pfVar5[iVar12];
+                        fVar14 = pfVar7[iVar12] + RDPRIMIT3_DYNAMIC_G(idxInfo, iVar12);
                         if (fVar14 < 0.0) {
                             fVar14 = 0.0;
                         }
@@ -1429,7 +1429,7 @@ rdPrimit3_ClipFaceRGB
                             fVar14 = 1.0;
                         }
                         *greenIter = fVar14;
-                        fVar14 = pfVar8[iVar12] + pfVar5[iVar12];
+                        fVar14 = pfVar8[iVar12] + RDPRIMIT3_DYNAMIC_B(idxInfo, iVar12);
                         if (fVar14 < 0.0) {
                             fVar14 = 0.0;
                         }

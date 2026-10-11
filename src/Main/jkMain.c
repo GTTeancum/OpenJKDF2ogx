@@ -2,6 +2,10 @@
 
 #ifdef TARGET_XBOX
 #include "xbox_debug.h"
+static int jkMain_modernSaberProbe = -1;
+static int jkMain_bossSaberProbe = 0;
+static int jkMain_bossSaberWarpThing = -1;
+static int jkMain_bossSaberBossWarpThing = -1;
 #include "Platform/Xbox/xbox_splitscreen.h"
 #include "Platform/Xbox/xbox_systemlink_probe.h"
 #ifdef XBOX_VERBOSE_FORMAT_LOGS
@@ -57,6 +61,7 @@
 #include "Gui/jkGUIDisplay.h"
 #include "World/jkPlayer.h"
 #include "Gameplay/jkSaber.h"
+#include "World/sithWeapon.h"
 #include "World/sithWorld.h"
 #include "World/sithActor.h"
 #include "World/sithThing.h"
@@ -2119,6 +2124,53 @@ LABEL_28:
         jkMain_XboxLogTransitionResources("gameplay-show-ready");
         jkMain_XboxSmokeEscapeOnGameplayReady();
         jkMain_XboxAlwaysSoakOnGameplayReady();
+        {
+            FILE *probe = fopen("D:\\xbox_smoke_boss_saber.txt", "rb");
+            jkMain_bossSaberProbe = probe != NULL;
+            jkMain_bossSaberWarpThing = -1;
+            jkMain_bossSaberBossWarpThing = -1;
+            if (probe) { fscanf(probe, "%d %d %d", &jkMain_bossSaberProbe, &jkMain_bossSaberWarpThing, &jkMain_bossSaberBossWarpThing); fclose(probe); }
+        }
+        {
+            FILE *probe = fopen("D:\\xbox_smoke_modern_saber.txt", "rb");
+            if (probe) {
+                int enabled = 0;
+                int proofMode = 0;
+                fscanf(probe, "%d %d", &enabled, &proofMode);
+                fclose(probe);
+                jkPlayer_bModernSaber = enabled != 0;
+                jkMain_modernSaberProbe = enabled != 0;
+                jkPlayer_setSaberCam = proofMode == 2 ? 0 : 1;
+                /* Inspection camera only; keep the complete live blade in view.
+                 * Normal launches never enter this explicit fixture branch. */
+                if (proofMode == 1) {
+                    int sectorIdx;
+                    sithCamera_cameras[1].collisionOffset.x = -.08f;
+                    sithCamera_cameras[1].collisionOffset.y = .42f;
+                    sithCamera_cameras[1].collisionOffset.z = .09f;
+                    if (sithWorld_pCurrentWorld && sithWorld_pCurrentWorld->sectors) {
+                        for (sectorIdx = 0; sectorIdx < sithWorld_pCurrentWorld->numSectors; ++sectorIdx) {
+                            sithWorld_pCurrentWorld->sectors[sectorIdx].ambientLight = 0.015f;
+                            sithWorld_pCurrentWorld->sectors[sectorIdx].extraLight = 0.0f;
+                        }
+                    }
+                }
+                else if (proofMode != 2) {
+                    sithCamera_cameras[1].collisionOffset.x = .12f;
+                    sithCamera_cameras[1].collisionOffset.y = -.35f;
+                    sithCamera_cameras[1].collisionOffset.z = .12f;
+                }
+                if (sithPlayer_pLocalPlayerThing) {
+                    int saberBin=Main_bMotsCompat?SITHBIN_MOTS_LIGHTSABER:SITHBIN_LIGHTSABER;
+                    sithInventory_SetAvailable(sithPlayer_pLocalPlayerThing, saberBin, 1);
+                    sithWeapon_SelectWeapon(sithPlayer_pLocalPlayerThing, saberBin, 0);
+                }
+                XPERF("ModernSaberProbe: enabled=%d proof=%d requested saber camera=%s\n",
+                      jkPlayer_bModernSaber,
+                      proofMode,
+                      jkPlayer_setSaberCam ? "third-person" : "first-person");
+            }
+        }
 #endif
     }
     else
@@ -2203,7 +2255,81 @@ void jkMain_GameplayTick(int a2)
         }
 #endif
         { static int ga=0; if(ga<3){JKTRACE("GameplayTick: after sithMain_Tick\n");ga++;} }
+#ifdef TARGET_XBOX
+        if (jkMain_modernSaberProbe >= 0 && sithTime_curMs > 1500 && sithTime_curMs < 6000) {
+            int saberBin=Main_bMotsCompat?SITHBIN_MOTS_LIGHTSABER:SITHBIN_LIGHTSABER;
+            int split = xboxSplitScreen_IsEnabled();
+            int count = split ? xboxSplitScreen_GetLocalPlayerCount() : 1;
+            for (int slot = 0; slot < count; ++slot) {
+                int previous = split ? xboxSplitScreen_BeginLocalOperation(slot) : 0;
+                if (sithPlayer_pLocalPlayerThing && sithPlayer_pLocalPlayerThing->actorParams.playerinfo
+                    && sithPlayer_pLocalPlayerThing->actorParams.playerinfo->curWeapon != saberBin) {
+                    sithInventory_SetBinAmount(sithPlayer_pLocalPlayerThing, saberBin, 1.0);
+                    sithInventory_SetAvailable(sithPlayer_pLocalPlayerThing, saberBin, 1);
+                    sithWeapon_SelectWeapon(sithPlayer_pLocalPlayerThing, saberBin, 0);
+                }
+                if (split) xboxSplitScreen_EndLocalOperation(previous);
+            }
+        }
+#endif
         XSL_GAMEPLAY_TRACE("after sithMain_Tick");
+        /* Explicit guest-only encounter fixture: survive repeated real AI
+         * attacks without synthesizing input or changing the boss animation. */
+#ifdef TARGET_XBOX
+        if (jkMain_bossSaberProbe && sithPlayer_pLocalPlayerThing) {
+            sithPlayer_pLocalPlayerThing->actorParams.health = 1000.0f;
+            sithPlayer_pLocalPlayerThing->actorParams.typeflags |= SITH_AF_INVULNERABLE;
+            /* Optional inspection camera follows the boss, including when an
+             * authored encounter switches back to first person. */
+            if (jkMain_bossSaberProbe>=2 && sithTime_curMs>20000
+                && sithCamera_currentCamera && !sithCamera_currentCamera->dword4
+                && sithWorld_pCurrentWorld) {
+                if(jkMain_bossSaberWarpThing>=0 && jkMain_bossSaberWarpThing<sithWorld_pCurrentWorld->numThingsLoaded) {
+                    sithThing *anchor=&sithWorld_pCurrentWorld->things[jkMain_bossSaberWarpThing];
+                    sithThing *player=sithPlayer_pLocalPlayerThing;
+                    if(anchor->sector && anchor!=player) {
+                        sithThing_DetachThing(player);
+                        sithThing_LeaveSector(player);
+                        sithThing_SetPosAndRot(player,&anchor->position,&anchor->lookOrientation);
+                        sithThing_EnterSector(player,anchor->sector,1,0);
+                        sithPhysics_ThingStop(player);
+                        XPERF("BossSaberProbe: moved player to authored spawn thing=%d sector=%d\n",jkMain_bossSaberWarpThing,anchor->sector->id);
+                    }
+                    jkMain_bossSaberWarpThing=-1;
+                }
+                for(int i=0;i<sithWorld_pCurrentWorld->numThingsLoaded;i++) {
+                    sithThing *boss=&sithWorld_pCurrentWorld->things[i];
+                    if(boss->type!=SITH_THING_ACTOR || !(boss->actorParams.typeflags&SITH_AF_BOSS)
+                       || !(boss->jkFlags&JKFLAG_SABERON)) continue;
+                    /* Optional authored encounter checkpoint for bosses kept
+                     * in an off-map holding room until campaign progression. */
+                    if(jkMain_bossSaberBossWarpThing>=0 && jkMain_bossSaberBossWarpThing<sithWorld_pCurrentWorld->numThingsLoaded) {
+                        sithThing *anchor=&sithWorld_pCurrentWorld->things[jkMain_bossSaberBossWarpThing];
+                        if(anchor->sector && anchor!=boss) {
+                            sithThing_DetachThing(boss);
+                            sithThing_LeaveSector(boss);
+                            sithThing_SetPosAndRot(boss,&anchor->position,&anchor->lookOrientation);
+                            sithThing_EnterSector(boss,anchor->sector,1,0);
+                            sithPhysics_ThingStop(boss);
+                            XPERF("BossSaberProbe: moved boss=%d to authored spawn thing=%d sector=%d\n",boss->thingIdx,jkMain_bossSaberBossWarpThing,anchor->sector->id);
+                        }
+                        jkMain_bossSaberBossWarpThing=-1;
+                    }
+                    sithCamera *camera=&sithCamera_cameras[1];
+                    rdVector3 target=boss->position,eye=boss->position;
+                    target.z+=.025f;
+                    eye.x+=.10f; eye.y-=.36f; eye.z+=.10f;
+                    /* Manual world view: keep the focus actor visible. */
+                    camera->cameraPerspective=16;
+                    camera->sector=sithCamera_create_unk_struct(boss,boss->sector,&target,&eye,.02f,RAYCAST_2000|RAYCAST_200);
+                    rdMatrix_LookAt(&camera->viewMat,&eye,&target,0);
+                    sithCamera_SetCameraFocus(camera,boss,NULL);
+                    sithCamera_SetCurrentCamera(camera);
+                    break;
+                }
+            }
+        }
+#endif
     }
     
     if ( g_sithMode == 5 )

@@ -14,11 +14,79 @@
 #include "Engine/rdColormap.h"
 #include "Primitives/rdPrimit3.h"
 #include "Primitives/rdDebug.h"
+#if defined(TARGET_XBOX) && defined(QOL_IMPROVEMENTS)
+#include "World/jkPlayer.h"
+#include "Gameplay/jkSaberLegacy.h"
+#endif
 
 #ifdef TARGET_XBOX
 #include "Main/Main.h"
 #include "Platform/Xbox/xbox_debug.h"
 extern "C" void xbox_debug_Printf(const char* fmt, ...);
+#endif
+
+#if defined(TARGET_XBOX) && defined(QOL_IMPROVEMENTS) && defined(JKM_LIGHTING)
+#define RDMODEL3_MODERN_LIGHT_VERTS 512
+static flex_t rdModel3_modernDynamicR[RDMODEL3_MODERN_LIGHT_VERTS];
+static flex_t rdModel3_modernDynamicG[RDMODEL3_MODERN_LIGHT_VERTS];
+static flex_t rdModel3_modernDynamicB[RDMODEL3_MODERN_LIGHT_VERTS];
+
+static int rdModel3_CalcModernDynamicRGB(rdLight **meshLights, rdVector3 *localLightPoses,
+    int numLights, rdVector3 *vertexNormals, rdVector3 *vertices, int numVertices)
+{
+    int any = 0;
+    int vertexIdx;
+    int lightIdx;
+
+    if (!jkPlayer_bModernSaber || !rdGetVertexColorMode() || numLights <= 0 ||
+        numVertices <= 0 || numVertices > RDMODEL3_MODERN_LIGHT_VERTS)
+        return 0;
+
+    for (vertexIdx = 0; vertexIdx < numVertices; vertexIdx++) {
+        rdModel3_modernDynamicR[vertexIdx] = 0.0;
+        rdModel3_modernDynamicG[vertexIdx] = 0.0;
+        rdModel3_modernDynamicB[vertexIdx] = 0.0;
+    }
+
+    for (vertexIdx = 0; vertexIdx < numVertices; vertexIdx++) {
+        for (lightIdx = 0; lightIdx < numLights; lightIdx++) {
+            rdLight *light = meshLights[lightIdx];
+            flex_t reach = light->falloffMax > 0.0 ? light->falloffMax : light->falloffMin;
+            rdVector3 diff;
+            flex_t dist;
+            flex_t lambert;
+            flex_t falloff;
+            flex_t contribution;
+
+            if (reach <= 0.0)
+                continue;
+
+            rdVector_Sub3(&diff, &localLightPoses[lightIdx], &vertices[vertexIdx]);
+            dist = rdVector_Len3(&diff);
+            if (dist >= reach)
+                continue;
+
+            if (dist != 0.0) {
+                diff.x /= dist;
+                diff.y /= dist;
+                diff.z /= dist;
+            }
+            lambert = rdVector_Dot3(&vertexNormals[vertexIdx], &diff);
+            if (lambert < 0.0)
+                lambert = 0.0;
+            lambert = lambert * 0.60 + 0.40;
+
+            falloff = 1.0 - dist / reach;
+            contribution = light->intensity * 3.40 * falloff * lambert;
+            rdModel3_modernDynamicR[vertexIdx] += contribution * (flex_t)((light->color >> 16) & 0xFF) / 255.0;
+            rdModel3_modernDynamicG[vertexIdx] += contribution * (flex_t)((light->color >> 8) & 0xFF) / 255.0;
+            rdModel3_modernDynamicB[vertexIdx] += contribution * (flex_t)(light->color & 0xFF) / 255.0;
+            any = 1;
+        }
+    }
+
+    return any;
+}
 #endif
 
 model3Loader_t rdModel3_RegisterLoader(model3Loader_t loader)
@@ -1380,6 +1448,11 @@ void rdModel3_DrawMesh(rdMesh *meshIn, rdMatrix34 *mat)
         rdModel3_textureMode = curTextureMode;
 
     vertexSrc.paDynamicLight = pCurMesh->vertices_unk;
+#ifdef JKM_LIGHTING
+    vertexSrc.paDynamicLightR = 0;
+    vertexSrc.paDynamicLightG = 0;
+    vertexSrc.paDynamicLightB = 0;
+#endif
     vertexSrc.vertices = aView;
     vertexSrc.vertexUVs = pCurMesh->vertexUVs;
     vertexSrc.intensities = 0;
@@ -1421,6 +1494,15 @@ void rdModel3_DrawMesh(rdMesh *meshIn, rdMatrix34 *mat)
             }
             ++pGeoLight;
         }
+#if defined(TARGET_XBOX) && defined(QOL_IMPROVEMENTS) && defined(JKM_LIGHTING)
+        if (rdModel3_CalcModernDynamicRGB(apMeshLights, rdModel3_aLocalLightPos,
+            rdModel3_numMeshLights, pCurMesh->vertexNormals, pCurMesh->vertices,
+            pCurMesh->numVertices)) {
+            vertexSrc.paDynamicLightR = rdModel3_modernDynamicR;
+            vertexSrc.paDynamicLightG = rdModel3_modernDynamicG;
+            vertexSrc.paDynamicLightB = rdModel3_modernDynamicB;
+        }
+#endif
     }
     else if (rdModel3_lightingMode == RD_LIGHTMODE_GOURAUD)
     {
@@ -1467,6 +1549,15 @@ void rdModel3_DrawMesh(rdMesh *meshIn, rdMatrix34 *mat)
             pCurMesh->vertices_unk,
             pCurMesh->numVertices,
             rdCamera_pCurCamera->attenuationMin);
+#if defined(TARGET_XBOX) && defined(QOL_IMPROVEMENTS) && defined(JKM_LIGHTING)
+        if (rdModel3_CalcModernDynamicRGB(apMeshLights, rdModel3_aLocalLightPos,
+            rdModel3_numMeshLights, pCurMesh->vertexNormals, pCurMesh->vertices,
+            pCurMesh->numVertices)) {
+            vertexSrc.paDynamicLightR = rdModel3_modernDynamicR;
+            vertexSrc.paDynamicLightG = rdModel3_modernDynamicG;
+            vertexSrc.paDynamicLightB = rdModel3_modernDynamicB;
+        }
+#endif
     }
     else if (rdModel3_lightingMode == RD_LIGHTMODE_6_UNK) // MOTS added
     {
@@ -1524,6 +1615,10 @@ void rdModel3_DrawMesh(rdMesh *meshIn, rdMatrix34 *mat)
 // MOTS altered (RGB lights)
 int rdModel3_DrawFace(rdFace *face, int lightFlags)
 {
+#if defined(TARGET_XBOX) && defined(QOL_IMPROVEMENTS)
+    if (jkPlayer_bModernSaber && face->material &&
+        jkSaber_IsLegacyGlowFace(pCurModel3->filename, face->material->mat_fpath)) return 0;
+#endif
     rdProcEntry *procEntry;
     rdGeoMode_t geometryMode;
     rdLightMode_t lightingMode;
@@ -1551,6 +1646,16 @@ int rdModel3_DrawFace(rdFace *face, int lightFlags)
     textureMode = rdModel3_textureMode;
     if ( rdModel3_textureMode >= face->textureMode )
         textureMode = face->textureMode;
+
+#if defined(TARGET_XBOX) && defined(QOL_IMPROVEMENTS) && defined(JKM_LIGHTING)
+    if (rdGetVertexColorMode() != 0 && lightingMode == RD_LIGHTMODE_DIFFUSE &&
+        pCurMesh->paRedIntensities && pCurMesh->paGreenIntensities && pCurMesh->paBlueIntensities &&
+        (pCurMesh->paRedIntensities != pCurMesh->vertices_i ||
+         (jkPlayer_bModernSaber && vertexSrc.paDynamicLightR &&
+          vertexSrc.paDynamicLightG && vertexSrc.paDynamicLightB))) {
+        lightingMode = RD_LIGHTMODE_GOURAUD;
+    }
+#endif
 
     // MOTS added
     if ((face->type & 0x10) != 0) {

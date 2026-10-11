@@ -1256,6 +1256,14 @@ static float std3D_XboxHalfFovTangent(float fov)
 
 static void std3D_XboxApplyFaceBlend(int flags, int textured)
 {
+    if (flags & 0x200000) {
+        /* Procedural effects carry ordinary opacity, unlike JK material
+         * translucency which uses the inverse-alpha convention below. */
+        glDisable(GL_ALPHA_TEST);
+        glEnable(GL_BLEND);
+        glBlendFunc(GL_SRC_ALPHA, GL_ONE_MINUS_SRC_ALPHA);
+        return;
+    }
     /* The PC shader discards transparent texels before inverse-alpha
      * blending; otherwise a zero-alpha cutout would become an opaque pixel. */
     glEnable(GL_ALPHA_TEST);
@@ -1481,7 +1489,9 @@ void std3D_DrawRenderList(void)
                             && g_pfnBindTexture);
             unsigned int id = textured ? (unsigned int)t->texture->texture_id : 0u;
             int sampler_flags = textured ? (t->flags & (STD3D_TRI_FLAG_CLAMP_X | STD3D_TRI_FLAG_CLAMP_Y | STD3D_TRI_FLAG_NEAREST)) : 0;
-            if (textured) {
+            /* Procedural RGBA effects need the same blend/depth state as
+             * translucent textures; ordinary solid-color faces stay opaque. */
+            if (textured || (t->flags & 0x200000)) {
                 if (t->flags != last_flags) {
 #if defined(TARGET_XBOX) && defined(XBOX_PERF_SMOKE)
                     perfFlagChanges++;
@@ -1606,51 +1616,15 @@ void std3D_DrawRenderList(void)
 #if defined(TARGET_XBOX) && defined(XBOX_PERF_SMOKE)
             perfTriBegins++;
 #endif
-            if (textured) glXboxBeginLitTriangles();
+            if (textured || (t->flags & 0x200000)) glXboxBeginLitTriangles();
             else glBegin(GL_TRIANGLES);
-            /* Per-vertex lighting modulation.
-             *
-             * The engine writes a [0..1] monochrome light value into
-             * D3DVERTEX.lightLevel for each vertex (rdCache.c:823 on
-             * SDL2_RENDER, mixing sector ambient / surface
-             * light_level_static / per-vertex vertexIntensities[]).
-             * The .color field on the same vertex SHOULD contain a
-             * full RGB lit color (rdCache.c:935) but in practice it's
-             * very often 0xFF000000 on JK1 surfaces — palette colormap
-             * tint is identity on the basic NarShaddaa walls so the
-             * R/G/B channels never get bumped above 0.  Using .color
-             * directly therefore zeroes the texture out.
-             *
-             * Switch to multiplying TEXTURE * lightLevel (monochrome).
-             * For untextured polys (no material at all) emit pure
-             * lightLevel so they show up as gray-scale.  D3DTOP_MODULATE
-             * is the default texture-stage op so the GPU does the
-             * COLOR * TEXTURE blend per pixel for free.
-             *
-             * TODO when JKM_LIGHTING is on we'll want to use .color so
-             * coloured lights work; for now JK1 is monochrome and the
-             * .color field can't be trusted. */
-            /* DIFFUSE source for the vertex.
-             *
-             * Untextured ("solid color") faces: rdCache writes the palette-
-             * resolved ARGB into vertex.color (rdCache.c:1346 mirrors
-             * upstream rdCache.c:1346).  That's how bryar bolts get their
-             * red, sky polys get their colour, and any color-only .mat
-             * surface gets its tint.  USE .color in this case.
-             *
-             * Textured faces: the texture is already palette-expanded to
-             * RGB at upload.  Applying vertex.color here multiplies the
-             * palette-lit colour over the texture a second time, which
-             * crushes JK1 split-screen scenes into brown/black.  Use the
-             * scalar lightLevel for textured geometry and reserve .color for
-             * untextured polys that need an actual resolved palette colour.
-             *
-             * Decode: vertex.color is ARGB8888 — see rdCache.c:1345 packing.
-             */
+            /* Textures use scalar lighting normally. Authored RGB surface
+             * lighting is tagged by rdCache and decoded by glXboxLitTriangles.
+             * Packed palette colors remain reserved for untextured geometry. */
 #define V_COLOR_R(v) (float)(((v)->color >> 16) & 0xFF) / 255.0f
 #define V_COLOR_G(v) (float)(((v)->color >>  8) & 0xFF) / 255.0f
 #define V_COLOR_B(v) (float)( (v)->color        & 0xFF) / 255.0f
-#define V_COLOR_A(v) (float)((((v)->color >> 24) & 0xFF) ? (((v)->color >> 24) & 0xFF) : 0xFF) / 255.0f
+#define V_COLOR_A(v) xboxVertex_EffectAlpha((v)->color, (t->flags & 0x200000) != 0)
 #define V_COLOR_RGB_NONZERO(v) (((v)->color & 0x00FFFFFFu) != 0u)
 #define V_LIT_TEXTURED(v) glXboxLitVertex((v)->x, \
     g_xboxScreenSpaceRenderList ? (v)->y : (v)->z, \
@@ -1658,7 +1632,7 @@ void std3D_DrawRenderList(void)
     (v)->tu, (v)->tv, (v)->lightLevel, V_COLOR_A(v))
             {
                 int bi;
-                if (textured)
+                if (textured || (t->flags & 0x200000))
                     glXboxLitTriangles(GL_tmpVertices, &GL_tmpTris[i],
                         sizeof(rdTri), batch_end - i, g_xboxScreenSpaceRenderList);
                 else for (bi = i; bi < batch_end; ++bi)

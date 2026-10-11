@@ -3,6 +3,7 @@
 #include "Engine/rdroid.h"
 #ifdef TARGET_XBOX
 #include "Platform/Xbox/xbox_debug.h"
+#include "Platform/Xbox/xbox_vertex_submit.h"
 #endif
 #include "Engine/rdActive.h"
 #include "Platform/std3D.h"
@@ -36,8 +37,16 @@ static int rdCache_totalSolidNGons = 0;
 static void rdCache_XboxBuildScalarVertex(D3DVERTEX *vertex, const rdProcEntry *face,
                                           int index, int lightingMode, uint32_t alphaBits)
 {
-    /* Textured Xbox draws consume scalar light and alpha, never packed RGB.
-       Keep the same conversion, including valid zero-intensity vertices. */
+    /* RGB values have already received ambient/extra-light clamping above.
+       Use raw light modulation, not palette colors already in the texture. */
+#ifdef JKM_LIGHTING
+    if (rdGetVertexColorMode() == 1 && lightingMode == 3) {
+        vertex->lightLevel = XBOX_VERTEX_RGB_LIGHT;
+        vertex->color = xboxVertex_PackLightRGB(face->paRedIntensities[index],
+            face->paGreenIntensities[index], face->paBlueIntensities[index], alphaBits);
+        return;
+    }
+#endif
     vertex->lightLevel = lightingMode == 0 ? 1.0 :
         (lightingMode == 3 ? face->vertexIntensities[index] : face->light_level_static) / 255.0;
     vertex->color = alphaBits;
@@ -114,6 +123,7 @@ rdProcEntry *rdCache_GetProcEntry()
     }
 
     out_procEntry = &rdCache_aProcFaces[idx];
+    out_procEntry->hasEffectColors = 0;
     out_procEntry->vertices = &rdCache_aVertices[rdCache_numUsedVertices];
     out_procEntry->vertexUVs = &rdCache_aTexVertices[rdCache_numUsedTexVertices];
     out_procEntry->vertexIntensities = &rdCache_aIntensities[rdCache_numUsedIntensities];
@@ -424,6 +434,7 @@ int rdCache_SendFaceListToHardware()
             flags_idk_ |= 0x10000;
         }
 #ifdef TARGET_XBOX
+        if (active_6c->hasEffectColors) flags_idk_ |= 0x200000;
         if (active_6c->type & RD_FF_ZWRITE_DISABLED)
         {
             flags_idk_ &= ~0x1000;
@@ -822,7 +833,7 @@ int rdCache_SendFaceListToHardware()
 
 #ifdef TARGET_XBOX
             int xboxScalarTexture = active_6c->numVertices >= 3 &&
-                rdGetVertexColorMode() != 1 && std3D_XboxUsesScalarTextureLighting(tex2_arr_sel);
+                std3D_XboxUsesScalarTextureLighting(tex2_arr_sel);
 #endif
 
             for (vtx_idx = 0; vtx_idx < active_6c->numVertices; vtx_idx++)
@@ -1417,6 +1428,12 @@ skip_colormap_deref:
             v103 = stdMath_ClampInt(v103, 0, 0xFF);
             v104 = v103 | (((uint8_t)v94 | ((alpha_upshifta | (uint8_t)v96) << 8)) << 8);
             rdCache_aHWVertices[rdCache_totalVerts].color = v104;
+            if (active_6c->hasEffectColors && tmpiter < 4) {
+                rdCache_aHWVertices[rdCache_totalVerts].color = active_6c->effectColors[tmpiter];
+#ifdef TARGET_XBOX
+                rdCache_aHWVertices[rdCache_totalVerts].lightLevel = XBOX_VERTEX_RGBA_EFFECT;
+#endif
+            }
             rdCache_aHWVertices[rdCache_totalVerts].tu = 0.0;
             rdCache_aHWVertices[rdCache_totalVerts].tv = 0.0;
             rdCache_totalVerts++;

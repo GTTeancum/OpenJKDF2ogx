@@ -112,6 +112,31 @@ int main(){
   if(reference.immediateVertices.size())assert(!memcmp(reference.immediateVertices.data(),bulk.immediateVertices.data(),reference.immediateVertices.size()*sizeof(Vertex)));
   assert(reference.colors==bulk.colors);
  }
+ for(int buffered=0;buffered<2;buffered++) {
+  Device rgbDevice; OGLPrimitiveVertexBuffer rgbBuffer;
+  rgbBuffer.Initialize(&rgbDevice,0,false,D3DFVF_XYZ|(buffered?(D3DFVF_DIFFUSE|D3DFVF_TEX1):0));
+  rgbBuffer.Begin(GL_TRIANGLES);rgbBuffer.BeginLitBatch();
+  XboxEngineVertex rgb[3]={}; Triangle tri={{0,1,2},0,0};
+  rgb[0].lightLevel=rgb[1].lightLevel=XBOX_VERTEX_RGB_LIGHT;
+  rgb[0].color=0x80ff0000;rgb[1].color=0xff000000;
+  rgb[2].lightLevel=1;rgb[2].color=0xff000000;
+  rgbBuffer.SetLitTriangles(rgb,&tri,sizeof(tri),1,false);rgbBuffer.End();
+  const std::vector<Vertex>& output=buffered?rgbDevice.vertices:rgbDevice.immediateVertices;
+  assert(output.size()==3);
+  assert(output[0].color==0x80ff0000);
+  assert(output[1].color==0xff000000);
+  assert(output[2].color==0xffffffff);
+ }
+ for(int opacity=0;opacity<256;opacity++) {
+  Device device; OGLPrimitiveVertexBuffer buffer;
+  buffer.Initialize(&device,0,false,D3DFVF_XYZ|D3DFVF_DIFFUSE|D3DFVF_TEX1);
+  buffer.Begin(GL_TRIANGLES);buffer.BeginLitBatch();
+  XboxEngineVertex rgba[3]={};Triangle tri={{0,1,2},0,0};
+  for(int i=0;i<3;i++){rgba[i].lightLevel=XBOX_VERTEX_RGBA_EFFECT;rgba[i].color=((unsigned)opacity<<24)|0x8cff8c;}
+  buffer.SetLitTriangles(rgba,&tri,sizeof(tri),1,false);buffer.End();
+  assert(device.vertices.size()==3);
+  for(int i=0;i<3;i++)assert(device.vertices[i].color==rgba[i].color);
+ }
 }
 """.replace('CONVERSION',s[h:j]).replace('MACRO',s[m:n]).replace('CLASS',header+'\n'+s[a:b]).replace('CLAMP',s[s.index('#if 1\n#define Clamp(x)'):s.index('// Converts a floating point',s.index('#if 1\n#define Clamp(x)'))])
 with tempfile.TemporaryDirectory() as td:

@@ -1,4 +1,5 @@
 #include "jkPlayer.h"
+#include "Platform/wuRegistry.h"
 
 #include <math.h>
 #include "General/stdString.h"
@@ -70,6 +71,7 @@ flex_t jkPlayer_canonicalCogTickrate = CANONICAL_COG_TICKRATE;
 flex_t jkPlayer_canonicalPhysTickrate = CANONICAL_PHYS_TICKRATE;
 
 int jkPlayer_setCrosshairOnLightsaber = 1;
+int jkPlayer_bModernSaber = 0;
 int jkPlayer_setCrosshairOnFist = 1;
 int jkPlayer_bDisableWeaponWaggle = 0;
 int jkPlayer_bHasLoadedSettingsOnce = 0;
@@ -191,6 +193,7 @@ void jkPlayer_StartupVars()
     sithCvar_RegisterFlex("hud_crosshairLineWidth",     1.0,                        &jkPlayer_crosshairLineWidth,       CVARFLAG_LOCAL|CVARFLAG_RESETHUD);
     sithCvar_RegisterFlex("hud_crosshairScale",         1.0,                        &jkPlayer_crosshairScale,           CVARFLAG_LOCAL|CVARFLAG_RESETHUD);
     sithCvar_RegisterBool("hud_setCrosshairOnLightsaber", 1,                        &jkPlayer_setCrosshairOnLightsaber, CVARFLAG_LOCAL);
+    sithCvar_RegisterBool("r_modernSaber", 0, &jkPlayer_bModernSaber, CVARFLAG_LOCAL);
     sithCvar_RegisterBool("hud_setCrosshairOnFist",     1,                          &jkPlayer_setCrosshairOnFist,       CVARFLAG_LOCAL);
     sithCvar_RegisterBool("hud_disableWeaponWaggle",    0,                          &jkPlayer_bDisableWeaponWaggle,     CVARFLAG_LOCAL);
     sithCvar_RegisterFlex("g_canonicalCogTickrate",     CANONICAL_COG_TICKRATE,     &jkPlayer_canonicalCogTickrate,     CVARFLAG_LOCAL);
@@ -238,6 +241,11 @@ void jkPlayer_ResetVars()
     jkPlayer_canonicalPhysTickrate = CANONICAL_PHYS_TICKRATE;
 
     jkPlayer_setCrosshairOnLightsaber = 1;
+#ifdef TARGET_XBOX
+    jkPlayer_bModernSaber = wuRegistry_GetInt("modernSaber", 0) != 0;
+#else
+    jkPlayer_bModernSaber = 0;
+#endif
     jkPlayer_setCrosshairOnFist = 1;
     jkPlayer_bDisableWeaponWaggle = 0;
 
@@ -536,6 +544,12 @@ void jkPlayer_WriteConf(wchar_t *name)
     char ext_fpath[256];
     char ext_fpath_cvars[256];
 
+#ifdef TARGET_XBOX
+    /* Xbox JSON is stubbed and an optical launch cannot write D:\\player.
+     * Persist this console preference in the title's writable U: settings. */
+    wuRegistry_SaveInt("modernSaber", jkPlayer_bModernSaber != 0);
+#endif
+
 #ifdef QOL_IMPROVEMENTS
     sithCvar_SaveGlobals();
 #endif
@@ -593,6 +607,7 @@ void jkPlayer_WriteConf(wchar_t *name)
         stdJSON_SaveBool(ext_fpath, "bUseOldPlayerPhysics", jkPlayer_bUseOldPlayerPhysics);
 
         stdJSON_SaveBool(ext_fpath, "setCrosshairOnLightsaber", jkPlayer_setCrosshairOnLightsaber);
+        stdJSON_SaveBool(ext_fpath, "modernSaber", jkPlayer_bModernSaber);
         stdJSON_SaveBool(ext_fpath, "setCrosshairOnFist", jkPlayer_setCrosshairOnFist);
         stdJSON_SaveBool(ext_fpath, "bDisableWeaponWaggle", jkPlayer_bDisableWeaponWaggle);
 #endif
@@ -703,6 +718,9 @@ int jkPlayer_ReadConf(wchar_t *name)
     char ext_fpath_cvars[256];
 
     int version = 0;
+#ifdef TARGET_XBOX
+    jkPlayer_bModernSaber = wuRegistry_GetInt("modernSaber", 0) != 0;
+#endif
     if (!jkPlayer_VerifyWcharName(name))
         return 0;
 
@@ -795,6 +813,9 @@ int jkPlayer_ReadConf(wchar_t *name)
         jkPlayer_bUseOldPlayerPhysics = stdJSON_GetBool(ext_fpath, "bUseOldPlayerPhysics", jkPlayer_bUseOldPlayerPhysics);
 
         jkPlayer_setCrosshairOnLightsaber = stdJSON_GetBool(ext_fpath, "setCrosshairOnLightsaber", jkPlayer_setCrosshairOnLightsaber);
+#ifndef TARGET_XBOX
+        jkPlayer_bModernSaber = stdJSON_GetBool(ext_fpath, "modernSaber", 0);
+#endif
         jkPlayer_setCrosshairOnFist = stdJSON_GetBool(ext_fpath, "setCrosshairOnFist", jkPlayer_setCrosshairOnFist);
         jkPlayer_bDisableWeaponWaggle = stdJSON_GetBool(ext_fpath, "bDisableWeaponWaggle", jkPlayer_bDisableWeaponWaggle);
 #endif
@@ -985,11 +1006,22 @@ void jkPlayer_DrawPov()
         rdMatrix_PreTranslate34(&viewMat, &trans);
         rdMatrix_PreMultiply34(&viewMat, &jkSaber_rotateMat);
 
+#if defined(TARGET_XBOX) && defined(QOL_IMPROVEMENTS)
+        int xboxModernPovSaber = 0;
+#endif
+
         // Moved: see below.
 #if !(defined(SDL2_RENDER) || defined(TARGET_TWL))
         // Render saber if applicable
         if (playerThings[playerThingIdx].actorThing->jkFlags & JKFLAG_SABERON)
         {
+#if defined(TARGET_XBOX) && defined(QOL_IMPROVEMENTS)
+            if (jkPlayer_bModernSaber)
+            {
+                xboxModernPovSaber = 1;
+            }
+            else
+#endif
             jkSaber_Draw(&viewMat);
         }
 #endif
@@ -1025,6 +1057,19 @@ void jkPlayer_DrawPov()
             s_xboxPovDbgCount++;
         }
 #endif
+#if defined(TARGET_XBOX) && defined(QOL_IMPROVEMENTS)
+        if (xboxModernPovSaber)
+            rdSetZBufferMethod(RD_ZBUFFER_NOREAD_WRITE);
+#endif
+#ifdef TARGET_XBOX
+        /* Translucent world surfaces render last and may leave RGB enabled.
+         * POV meshes have scalar lighting; they do not receive the world
+         * architecture pass's RGB arrays. Finish that batch before switching. */
+        if (rdGetVertexColorMode() != 0) {
+            rdCache_Flush();
+            rdSetVertexColorMode(0);
+        }
+#endif
         rdThing_Draw(&playerThings[playerThingIdx].povModel, &viewMat);
         //jkPlayer_checkPov = 0;
         //printf("pov done\n");
@@ -1032,6 +1077,15 @@ void jkPlayer_DrawPov()
         // DSi doesn't really have Z buffer stuff so just batch everything
 #ifndef TARGET_TWL
         rdCache_Flush();
+#endif
+#if defined(TARGET_XBOX) && defined(QOL_IMPROVEMENTS)
+        if (xboxModernPovSaber)
+        {
+            rdSetZBufferMethod(RD_ZBUFFER_READ_NOWRITE);
+            jkSaber_Draw(&viewMat);
+            rdCache_Flush();
+            rdSetZBufferMethod(RD_ZBUFFER_NOREAD_NOWRITE);
+        }
 #endif
 
         // Added: we want the polyline to render in draw order so the spheres don't clip, 
@@ -1140,9 +1194,23 @@ void jkPlayer_renderSaberWeaponMesh(sithThing *thing)
             if (thing->jkFlags & JKFLAG_SABERON)
             {
                 jkSaber_PolylineRand(&playerInfo->polylineThing);
-                rdThing_Draw(&playerInfo->polylineThing, primaryMat);
+#if defined(TARGET_XBOX) && defined(QOL_IMPROVEMENTS)
+                if (jkPlayer_bModernSaber)
+                {
+                    rdCache_Flush();
+                    rdSetZBufferMethod(RD_ZBUFFER_READ_NOWRITE);
+                }
+#endif
+                jkSaber_DrawBlade(thing, &playerInfo->polylineThing, primaryMat, 0, 0);
                 if ( thing->jkFlags & JKFLAG_DUALSABERS)
-                    rdThing_Draw(&playerInfo->polylineThing, secondaryMat);
+                    jkSaber_DrawBlade(thing, &playerInfo->polylineThing, secondaryMat, 1, 0);
+#if defined(TARGET_XBOX) && defined(QOL_IMPROVEMENTS)
+                if (jkPlayer_bModernSaber)
+                {
+                    rdCache_Flush();
+                    rdSetZBufferMethod(RD_ZBUFFER_READ_WRITE);
+                }
+#endif
             }
         }
         else
@@ -1158,9 +1226,23 @@ void jkPlayer_renderSaberWeaponMesh(sithThing *thing)
         if (thing->jkFlags & JKFLAG_SABERON)
         {
             jkSaber_PolylineRand(&playerInfo->polylineThing);
-            rdThing_Draw(&playerInfo->polylineThing, primaryMat);
+#if defined(TARGET_XBOX) && defined(QOL_IMPROVEMENTS)
+            if (jkPlayer_bModernSaber)
+            {
+                rdCache_Flush();
+                rdSetZBufferMethod(RD_ZBUFFER_READ_NOWRITE);
+            }
+#endif
+            jkSaber_DrawBlade(thing, &playerInfo->polylineThing, primaryMat, 0, 0);
             if (thing->jkFlags & JKFLAG_DUALSABERS)
-                rdThing_Draw(&playerInfo->polylineThing, secondaryMat);
+                jkSaber_DrawBlade(thing, &playerInfo->polylineThing, secondaryMat, 1, 0);
+#if defined(TARGET_XBOX) && defined(QOL_IMPROVEMENTS)
+            if (jkPlayer_bModernSaber)
+            {
+                rdCache_Flush();
+                rdSetZBufferMethod(RD_ZBUFFER_READ_WRITE);
+            }
+#endif
         }
     }
 }

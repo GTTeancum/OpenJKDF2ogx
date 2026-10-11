@@ -160,6 +160,7 @@ extern int jkPlayer_bFastMissionText;
 extern int jkPlayer_bUseOldPlayerPhysics;
 
 extern int jkPlayer_setCrosshairOnLightsaber;
+extern int jkPlayer_bModernSaber;
 extern int jkPlayer_setCrosshairOnFist;
 extern int jkPlayer_bDisableWeaponWaggle;
 
