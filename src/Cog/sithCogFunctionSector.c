@@ -381,7 +381,7 @@ void sithCogFunctionSector_GetSectorAmbientLight(sithCog *ctx)
     sithSector *pSector;
     
     pSector = sithCogExec_PopSector(ctx);
-    if (pSector) {
+    if (!pSector) {
         sithCogExec_PushFlex(ctx,0.0);
         return;
     }

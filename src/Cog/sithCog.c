@@ -181,6 +181,33 @@ int32_t sithCog_Startup()
     return 1;
 }
 
+#ifdef TARGET_XBOX
+/* Additive content APIs only; this does not select MotS gameplay or assets. */
+static void sithCog_RegisterXboxContentVerbs(sithCogSymboltable* ctx)
+{
+    if (Main_bMotsCompat) return; /* Already registered by the normal MotS startup. */
+    sithCogScript_RegisterVerb(ctx, sithCogFunction_VectorEqual, "vectorequal");
+    sithCogScript_RegisterVerb(ctx, sithCogFunction_Sin, "sin");
+    sithCogScript_RegisterVerb(ctx, sithCogFunction_Cos, "cos");
+    sithCogScript_RegisterVerb(ctx, sithCogFunction_Tan, "tan");
+    sithCogScript_RegisterVerb(ctx, sithCogFunction_GetSysDate, "getsysdate");
+    sithCogScript_RegisterVerb(ctx, sithCogFunction_GetSysTime, "getsystime");
+    sithCogScript_RegisterVerb(ctx, sithCogFunctionSector_ChangeAllSectorsLight, "changeallsectorslight");
+    sithCogScript_RegisterVerb(ctx, sithCogFunctionSector_FindSectorAtPos, "findsectoratpos");
+    sithCogScript_RegisterVerb(ctx, sithCogFunctionSector_IsSphereInSector, "issphereinsector");
+    sithCogScript_RegisterVerb(ctx, sithCogFunctionSector_GetSectorAmbientLight, "getsectorambientlight");
+    sithCogScript_RegisterVerb(ctx, sithCogFunctionSector_SetSectorAmbientLight, "setsectorambientlight");
+    sithCogScript_RegisterVerb(ctx, sithCogFunctionSurface_GetSurfaceVertexLight, "getsurfacevertexlight");
+    sithCogScript_RegisterVerb(ctx, sithCogFunctionSurface_SetSurfaceVertexLight, "setsurfacevertexlight");
+    sithCogScript_RegisterVerb(ctx, sithCogFunctionSurface_GetSurfaceVertexLightRGB, "getsurfacevertexlightrgb");
+    sithCogScript_RegisterVerb(ctx, sithCogFunctionSurface_SetSurfaceVertexLightRGB, "setsurfacevertexlightrgb");
+    sithCogScript_RegisterVerb(ctx, sithCogFunctionSound_PlaySoundThing, "playvoicething");
+    sithCogScript_RegisterVerb(ctx, sithCogFunctionSound_PlaySoundPos, "playvoicepos");
+    sithCogScript_RegisterVerb(ctx, sithCogFunctionSound_PlaySoundLocal, "playvoicelocal");
+    sithCogScript_RegisterVerb(ctx, sithCogFunctionSound_PlaySoundGlobal, "playvoiceglobal");
+}
+#endif
+
 // Added: Register all new COG verbs last
 int32_t sithCog_StartupEnhanced()
 {
@@ -192,7 +219,12 @@ int32_t sithCog_StartupEnhanced()
     if (!Main_bMotsCompat)
         sithCogScript_RegisterVerb(ctx, sithCogFunction_GetWeaponBin, "getweaponbin");
 
-    if (!Main_bEnhancedCogVerbs) return 1;
+    if (!Main_bEnhancedCogVerbs) {
+#ifdef TARGET_XBOX
+        sithCog_RegisterXboxContentVerbs(ctx);
+#endif
+        return 1;
+    }
 
     // Generic
     if (!Main_bMotsCompat) {

@@ -47,6 +47,67 @@ extern "C" float xboxVideo_GetPixelAspectRatio(void)
 {
     return g_xboxVideoPixelAspect;
 }
+extern "C" int xboxVideo_Is720pPrototype(void);
+
+#ifdef _XBOX
+static DWORD g_xboxVideoScanFlag = D3DPRESENTFLAG_INTERLACED;
+/* The dashboard's HD flag alone does not prove that the connected AV pack
+ * exposes a 480p scanout mode. Match the actual 640x480/60 Hz mode list. */
+static DWORD xboxVideo_Select480PresentFlags(IDirect3D8 *d3d, DWORD videoFlags)
+{
+    DWORD flags = (videoFlags & XC_VIDEO_FLAGS_WIDESCREEN) ? D3DPRESENTFLAG_WIDESCREEN : 0;
+    bool can480p = false;
+    if (d3d && (videoFlags & XC_VIDEO_FLAGS_HDTV_480p)) {
+        const UINT count = d3d->GetAdapterModeCount(D3DADAPTER_DEFAULT);
+        for (UINT i = 0; i < count; ++i) {
+            D3DDISPLAYMODE mode;
+            if (SUCCEEDED(d3d->EnumAdapterModes(D3DADAPTER_DEFAULT, i, &mode)) &&
+                mode.Width == 640 && mode.Height == 480 && mode.RefreshRate == 60 &&
+                (mode.Flags & D3DPRESENTFLAG_PROGRESSIVE)) {
+                can480p = true;
+                break;
+            }
+        }
+    }
+    return flags | (can480p ? D3DPRESENTFLAG_PROGRESSIVE : D3DPRESENTFLAG_INTERLACED);
+}
+
+/* Prefer dashboard-enabled 720p for every startup path, provided the
+ * connected AV pack exposes the matching progressive mode. */
+static bool xboxVideo_CanUse720p(IDirect3D8 *d3d, DWORD videoFlags)
+{
+    if (!d3d || !(videoFlags & XC_VIDEO_FLAGS_HDTV_720p))
+        return false;
+    const UINT count = d3d->GetAdapterModeCount(D3DADAPTER_DEFAULT);
+    for (UINT i = 0; i < count; ++i) {
+        D3DDISPLAYMODE mode;
+        if (SUCCEEDED(d3d->EnumAdapterModes(D3DADAPTER_DEFAULT, i, &mode)) &&
+            mode.Width == 1280 && mode.Height == 720 && mode.RefreshRate == 60 &&
+            (mode.Flags & D3DPRESENTFLAG_PROGRESSIVE))
+            return true;
+    }
+    return false;
+}
+
+/* Keep scanout in the same 32-bit color format as the established 480-line
+ * path. RGB565 can read back correctly while the external 720p image is
+ * corrupt. D16 still saves depth-buffer memory at the higher resolution. */
+static void xboxVideo_ConfigureBuffers(D3DPRESENT_PARAMETERS *params, DWORD height)
+{
+    params->BackBufferFormat = D3DFMT_X8R8G8B8;
+    params->AutoDepthStencilFormat = height == 720 ? D3DFMT_D16 : D3DFMT_D24S8;
+}
+
+static void xboxVideo_Log480Mode(const char *stage, DWORD videoFlags, DWORD presentFlags,
+                                  DWORD width, DWORD height)
+{
+    Con_Printf("XboxVideo: %s avpack=%lu videoFlags=0x%08lx scan=%s aspect=%s backbuffer=%lux%lu\n",
+               stage, (unsigned long)XGetAVPack(), (unsigned long)videoFlags,
+               height == 720 ? "720p" : ((presentFlags & D3DPRESENTFLAG_PROGRESSIVE) ? "480p" : "480i"),
+               (presentFlags & D3DPRESENTFLAG_WIDESCREEN) ? "16:9" : "4:3",
+               (unsigned long)width, (unsigned long)height);
+}
+#endif
 
 
 #pragma warning( disable : 4244 )
@@ -120,6 +181,24 @@ DWORD gWidth = 640;
 DWORD gHeight = 480;
 DWORD gBpp = 16;
 DWORD gZbpp = 16;
+/* Engine and software UI retain their 640x480 logical canvas. 3D geometry
+ * reaches the native backbuffer through the D3D viewport, not a scaled
+ * intermediate image. */
+static int xboxVideo_PhysicalX(int logicalX) {
+#ifdef _XBOX
+    return logicalX * (int)gWidth / 640;
+#else
+    return logicalX;
+#endif
+}
+static int xboxVideo_PhysicalY(int logicalY) {
+#ifdef _XBOX
+    return logicalY * (int)gHeight / 480;
+#else
+    return logicalY;
+#endif
+}
+extern "C" int xboxVideo_Is720pPrototype(void) { return gWidth == 1280 && gHeight == 720; }
 class FakeGL;
 static FakeGL* gFakeGL;
 
@@ -1800,14 +1879,16 @@ private:
 		params.FullScreen_RefreshRateInHz= 60;
 		params.hDeviceWindow             = m_hwndMain;
         params.FullScreen_PresentationInterval = D3DPRESENT_INTERVAL_IMMEDIATE;
-        if (XGetVideoFlags() & XC_VIDEO_FLAGS_WIDESCREEN) {
-            params.Flags |= D3DPRESENTFLAG_WIDESCREEN;
-            g_xboxVideoPixelAspect = 4.0f / 3.0f;
-        } else {
-            g_xboxVideoPixelAspect = 1.0f;
+        const DWORD videoFlags = XGetVideoFlags();
+        params.Flags = xboxVideo_Select480PresentFlags(m_pD3D, videoFlags);
+        if (xboxVideo_CanUse720p(m_pD3D, videoFlags)) {
+            gWidth = params.BackBufferWidth = 1280;
+            gHeight = params.BackBufferHeight = 720;
+            params.Flags = D3DPRESENTFLAG_PROGRESSIVE | D3DPRESENTFLAG_WIDESCREEN;
         }
-        Con_Printf("XboxVideo: system aspect=%s pixelAspect=%.6f\n",
-                   g_xboxVideoPixelAspect > 1.0f ? "16:9" : "4:3", g_xboxVideoPixelAspect);
+        xboxVideo_ConfigureBuffers(&params, gHeight);
+        g_xboxVideoPixelAspect = (params.Flags & D3DPRESENTFLAG_WIDESCREEN) ? 4.0f / 3.0f : 1.0f;
+        xboxVideo_Log480Mode("requested", videoFlags, params.Flags, gWidth, gHeight);
 
 
 #endif
@@ -1820,8 +1901,36 @@ private:
 			  & m_pD3DDev
 			);
 
-		if( FAILED(hr) )
-			return hr;
+#ifdef _XBOX
+		if (FAILED(hr) && gHeight == 720) {
+            Con_Printf("XboxVideo: 720p device creation failed (0x%08lx); retrying 480-line output\n", (unsigned long)hr);
+            gWidth = params.BackBufferWidth = 640;
+            gHeight = params.BackBufferHeight = 480;
+            params.BackBufferFormat = D3DFMT_X8R8G8B8;
+            params.AutoDepthStencilFormat = D3DFMT_D24S8;
+            params.Flags = xboxVideo_Select480PresentFlags(m_pD3D, videoFlags);
+            hr = m_pD3D->CreateDevice(D3DADAPTER_DEFAULT, D3DDEVTYPE_HAL, 0,
+                                      D3DCREATE_HARDWARE_VERTEXPROCESSING | D3DCREATE_PUREDEVICE,
+                                      &params, &m_pD3DDev);
+        }
+		if (FAILED(hr) && (params.Flags & D3DPRESENTFLAG_PROGRESSIVE)) {
+            params.Flags = (params.Flags & ~D3DPRESENTFLAG_PROGRESSIVE) | D3DPRESENTFLAG_INTERLACED;
+            Con_Printf("XboxVideo: 480p device creation failed (0x%08lx); retrying 480i\n", (unsigned long)hr);
+            hr = m_pD3D->CreateDevice(D3DADAPTER_DEFAULT, D3DDEVTYPE_HAL, 0,
+                                      D3DCREATE_HARDWARE_VERTEXPROCESSING | D3DCREATE_PUREDEVICE,
+                                      &params, &m_pD3DDev);
+        }
+#endif
+        if (FAILED(hr))
+            return hr;
+#ifdef _XBOX
+        g_xboxVideoPixelAspect = (params.Flags & D3DPRESENTFLAG_WIDESCREEN) ? 4.0f / 3.0f : 1.0f;
+        g_xboxVideoScanFlag = params.Flags & (D3DPRESENTFLAG_INTERLACED | D3DPRESENTFLAG_PROGRESSIVE);
+        D3DDevice_SetFlickerFilter((params.Flags & D3DPRESENTFLAG_INTERLACED) ? 5 : 0);
+        xboxVideo_Log480Mode("created", videoFlags, params.Flags, gWidth, gHeight);
+        Con_Printf("XboxVideo: buffers color=0x%lx depth=0x%lx\n",
+                   (unsigned long)params.BackBufferFormat, (unsigned long)params.AutoDepthStencilFormat);
+#endif
 
 		// Store render target surface desc
 		{
@@ -2057,13 +2166,14 @@ public:
 			{{639.5f, -0.5f, 0.0f, 1.0f}, (FLOAT)width, 0.0f}
 		};
 
-		m_pD3DDev->Clear(0, NULL, D3DCLEAR_TARGET | D3DCLEAR_ZBUFFER | D3DCLEAR_STENCIL, 0x00000000, 1.0f, 0);
+		m_pD3DDev->Clear(0, NULL, D3DCLEAR_TARGET | D3DCLEAR_ZBUFFER |
+            (gHeight == 720 ? 0 : D3DCLEAR_STENCIL), 0x00000000, 1.0f, 0);
 		/* Movie vertices are pretransformed and bypass the viewport transform. */
 		for (int vi = 0; vi < 4; ++vi) {
-			stream[vi].Vert.x = xboxDisplay_SafeEdge(0, 640, g_displaySafeX) +
-				(stream[vi].Vert.x + 0.5f) * g_displaySafeX / 100.0f - 0.5f;
-			stream[vi].Vert.y = xboxDisplay_SafeEdge(0, 480, g_displaySafeY) +
-				(stream[vi].Vert.y + 0.5f) * g_displaySafeY / 100.0f - 0.5f;
+			stream[vi].Vert.x = xboxDisplay_SafeEdge(0, gWidth, g_displaySafeX) +
+				(stream[vi].Vert.x + 0.5f) * (float)gWidth / 640.0f * g_displaySafeX / 100.0f - 0.5f;
+			stream[vi].Vert.y = xboxDisplay_SafeEdge(0, gHeight, g_displaySafeY) +
+				(stream[vi].Vert.y + 0.5f) * (float)gHeight / 480.0f * g_displaySafeY / 100.0f - 0.5f;
 		}
 		m_pD3DDev->SetTexture(0, g_xboxMovieLinearTex);
 		m_pD3DDev->SetPixelShader(NULL);
@@ -2232,9 +2342,9 @@ public:
 		DWORD clearMask = 0;
 
         // for NV20 it's better to always clear everything
-        mask |= GL_STENCIL_BUFFER_BIT;
+        if (gHeight != 720) mask |= GL_STENCIL_BUFFER_BIT;
 
-		if ( mask & GL_STENCIL_BUFFER_BIT ) {
+		if ((mask & GL_STENCIL_BUFFER_BIT) && gHeight != 720) {
 			clearMask |= D3DCLEAR_STENCIL;
 		}
 
@@ -3244,11 +3354,15 @@ private:
 		if ( m_bViewPortDirty ) {
 			m_bViewPortDirty = false;
 			D3DVIEWPORT8 viewData;
-			int top = gHeight - (m_glViewPortY + m_glViewPortHeight);
-			viewData.X = xboxDisplay_SafeEdge(m_glViewPortX, gWidth, g_displaySafeX);
-			viewData.Y = xboxDisplay_SafeEdge(top, gHeight, g_displaySafeY);
-			viewData.Width = xboxDisplay_SafeEdge(m_glViewPortX + m_glViewPortWidth, gWidth, g_displaySafeX) - viewData.X;
-			viewData.Height = xboxDisplay_SafeEdge(top + m_glViewPortHeight, gHeight, g_displaySafeY) - viewData.Y;
+#ifdef _XBOX
+			int top = 480 - (m_glViewPortY + m_glViewPortHeight);
+#else
+			int top = (int)gHeight - (m_glViewPortY + m_glViewPortHeight);
+#endif
+			viewData.X = xboxDisplay_SafeEdge(xboxVideo_PhysicalX(m_glViewPortX), gWidth, g_displaySafeX);
+			viewData.Y = xboxDisplay_SafeEdge(xboxVideo_PhysicalY(top), gHeight, g_displaySafeY);
+			viewData.Width = xboxDisplay_SafeEdge(xboxVideo_PhysicalX(m_glViewPortX + m_glViewPortWidth), gWidth, g_displaySafeX) - viewData.X;
+			viewData.Height = xboxDisplay_SafeEdge(xboxVideo_PhysicalY(top + m_glViewPortHeight), gHeight, g_displaySafeY) - viewData.Y;
 			viewData.MinZ = m_glDepthRangeNear;
 			viewData.MaxZ = m_glDepthRangeFar;
 			m_pD3DDev->SetViewport(&viewData);
@@ -4161,17 +4275,36 @@ extern "C" void FGL_SetAAType(int mstype)
         	params.FullScreen_RefreshRateInHz= 60;
         	params.hDeviceWindow             = NULL;
             params.FullScreen_PresentationInterval = D3DPRESENT_INTERVAL_IMMEDIATE;
-        if (XGetVideoFlags() & XC_VIDEO_FLAGS_WIDESCREEN) {
-            params.Flags |= D3DPRESENTFLAG_WIDESCREEN;
-            g_xboxVideoPixelAspect = 4.0f / 3.0f;
-        } else {
-            g_xboxVideoPixelAspect = 1.0f;
-        }
-        Con_Printf("XboxVideo: system aspect=%s pixelAspect=%.6f\n",
-                   g_xboxVideoPixelAspect > 1.0f ? "16:9" : "4:3", g_xboxVideoPixelAspect);
+        const DWORD videoFlags = XGetVideoFlags();
+        params.Flags = g_xboxVideoScanFlag |
+                       ((gHeight == 720 || (videoFlags & XC_VIDEO_FLAGS_WIDESCREEN)) ? D3DPRESENTFLAG_WIDESCREEN : 0);
+        xboxVideo_ConfigureBuffers(&params, gHeight);
+        g_xboxVideoPixelAspect = (params.Flags & D3DPRESENTFLAG_WIDESCREEN) ? 4.0f / 3.0f : 1.0f;
+        xboxVideo_Log480Mode("reset requested", videoFlags, params.Flags, gWidth, gHeight);
 
 
             HRESULT hr = D3DDevice_Reset(&params);
+            if (FAILED(hr) && gHeight == 720) {
+                Con_Printf("XboxVideo: 720p reset failed (0x%08lx); retrying 480-line output\n", (unsigned long)hr);
+                gWidth = params.BackBufferWidth = 640;
+                gHeight = params.BackBufferHeight = 480;
+                params.BackBufferFormat = D3DFMT_X8R8G8B8;
+                params.AutoDepthStencilFormat = D3DFMT_D24S8;
+                params.Flags = ((videoFlags & XC_VIDEO_FLAGS_WIDESCREEN) ? D3DPRESENTFLAG_WIDESCREEN : 0) |
+                               ((videoFlags & XC_VIDEO_FLAGS_HDTV_480p) ? D3DPRESENTFLAG_PROGRESSIVE : D3DPRESENTFLAG_INTERLACED);
+                hr = D3DDevice_Reset(&params);
+            }
+            if (FAILED(hr) && (params.Flags & D3DPRESENTFLAG_PROGRESSIVE)) {
+                params.Flags = (params.Flags & ~D3DPRESENTFLAG_PROGRESSIVE) | D3DPRESENTFLAG_INTERLACED;
+                Con_Printf("XboxVideo: 480p reset failed (0x%08lx); retrying 480i\n", (unsigned long)hr);
+                hr = D3DDevice_Reset(&params);
+            }
+            if (SUCCEEDED(hr)) {
+                g_xboxVideoPixelAspect = (params.Flags & D3DPRESENTFLAG_WIDESCREEN) ? 4.0f / 3.0f : 1.0f;
+                g_xboxVideoScanFlag = params.Flags & (D3DPRESENTFLAG_INTERLACED | D3DPRESENTFLAG_PROGRESSIVE);
+                D3DDevice_SetFlickerFilter((params.Flags & D3DPRESENTFLAG_INTERLACED) ? 5 : 0);
+                xboxVideo_Log480Mode("reset", videoFlags, params.Flags, gWidth, gHeight);
+            }
             g_displayRampDirty = true;
 
         	if(FAILED(hr))

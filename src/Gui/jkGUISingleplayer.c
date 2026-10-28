@@ -2,6 +2,7 @@
 
 #ifdef TARGET_XBOX
 #include "Platform/Xbox/xbox_splitscreen.h"
+#include "Platform/Xbox/xbox_debug.h"
 #endif
 
 #include "General/Darray.h"
@@ -70,6 +71,67 @@ static jkGuiElement jkGuiSingleplayer_buttons3[10] = {
 
 static jkGuiMenu jkGuiSingleplayer_menu3 = {jkGuiSingleplayer_buttons3, 0, 0xFFFF, 0xFFFF, 0xF, 0, 0, jkGui_stdBitmaps, jkGui_stdFonts, 0, 0, "thermloop01.wav", "thrmlpu2.wav", 0, 0, 0, 0, 0, 0};
 
+#ifdef TARGET_XBOX
+static int jkGuiSingleplayer_motsNavPhase = -2;
+static jkGuiMenu *jkGuiSingleplayer_motsNavMenu;
+static unsigned int jkGuiSingleplayer_motsNavEntered;
+
+int jkGuiSingleplayer_XboxMotsNavPhase(void)
+{
+    if (jkGuiSingleplayer_motsNavPhase == -2)
+    {
+        FILE *probe = fopen("D:\\xbox_smoke_mots_menu.txt", "rb");
+        jkGuiSingleplayer_motsNavPhase = probe ? 0 : -1;
+        if (probe) fclose(probe);
+    }
+    return jkGuiSingleplayer_motsNavPhase;
+}
+
+static void jkGuiSingleplayer_XboxMotsNavTick(jkGuiMenu *menu)
+{
+    unsigned int now = stdPlatform_GetTimeMsec();
+    if (menu != jkGuiSingleplayer_motsNavMenu)
+    {
+        jkGuiSingleplayer_motsNavMenu = menu;
+        jkGuiSingleplayer_motsNavEntered = now;
+    }
+    if (now - jkGuiSingleplayer_motsNavEntered < 3000U)
+        return;
+    if (menu == &jkGuiSingleplayer_menu1)
+    {
+        XPERF("Smoke: MotS menu Single Player -> New Game phase=%d\n", jkGuiSingleplayer_motsNavPhase);
+        menu->lastClicked = JKGUI_NEWGAME;
+    }
+    else if (menu == &jkGuiSingleplayer_menu2)
+    {
+        XPERF("Smoke: MotS menu episode selected=%s phase=%d\n",
+              jkGuiSingleplayer_motsNavPhase == 1 ? "JK1" : "JKM",
+              jkGuiSingleplayer_motsNavPhase);
+        menu->lastClicked = 1;
+        jkGuiSingleplayer_motsNavPhase++;
+    }
+}
+
+static int jkGuiSingleplayer_XboxMotsNavSelectEpisode(Darray *array)
+{
+    const char *wanted = jkGuiSingleplayer_motsNavPhase == 1 ? "JK1" : "JKM";
+    int i;
+    for (i = 0; i < (int)array->total; i++)
+    {
+        jkEpisode *episode = (jkEpisode *)jkGuiRend_GetId(array, i);
+        if (episode && !__strcmpi(episode->name, wanted))
+        {
+            jkGuiSingleplayer_buttons2[6].selectedTextEntry = i;
+            XPERF("Smoke: MotS menu highlighted episode=%s index=%d\n", wanted, i);
+            return 1;
+        }
+    }
+    XPERF("Smoke: MotS menu missing episode=%s\n", wanted);
+    jkGuiSingleplayer_motsNavPhase = 3;
+    return 0;
+}
+#endif
+
 void jkGuiSingleplayer_Startup()
 {
     jkGui_InitMenu(&jkGuiSingleplayer_menu1, jkGui_stdBitmaps[JKGUI_BM_BK_SINGLE]);
@@ -126,6 +188,8 @@ int jkGuiSingleplayer_Show()
     jkGuiRend_XboxFooterAddAction(&jkGuiSingleplayer_menu1, JKGUI_XBOX_BTN_A, 0, L"Select");
     jkGuiRend_XboxFooterAddAction(&jkGuiSingleplayer_menu1, JKGUI_XBOX_BTN_B, -1, L"Back");
     jkGuiRend_XboxSetInitialFocus(&jkGuiSingleplayer_menu1, &jkGuiSingleplayer_buttons1[2]);
+    if (jkGuiSingleplayer_XboxMotsNavPhase() >= 0 && jkGuiSingleplayer_XboxMotsNavPhase() < 3)
+        jkGuiSingleplayer_menu1.idkFunc = jkGuiSingleplayer_XboxMotsNavTick;
 #endif
     int clicked = jkGuiRend_DisplayAndReturnClicked(&jkGuiSingleplayer_menu1);
     if ( clicked == -1 )
@@ -180,8 +244,16 @@ int jkGuiSingleplayer_Show()
                         jkGuiRend_XboxFooterAddAction(&jkGuiSingleplayer_menu2, JKGUI_XBOX_BTN_A, 1, L"Play");
                         jkGuiRend_XboxFooterAddAction(&jkGuiSingleplayer_menu2, JKGUI_XBOX_BTN_B, -1, L"Back");
                         jkGuiRend_XboxSetInitialFocus(&jkGuiSingleplayer_menu2, &jkGuiSingleplayer_buttons2[6]);
+                        if (jkGuiSingleplayer_XboxMotsNavPhase() >= 0 && jkGuiSingleplayer_XboxMotsNavPhase() < 3)
+                        {
+                            if (!jkGuiSingleplayer_XboxMotsNavSelectEpisode(&darray))
+                                clicked = -1;
+                            else
+                                jkGuiSingleplayer_menu2.idkFunc = jkGuiSingleplayer_XboxMotsNavTick;
+                        }
 #endif
-                        clicked = jkGuiRend_DisplayAndReturnClicked(&jkGuiSingleplayer_menu2);
+                        if (clicked != -1)
+                            clicked = jkGuiRend_DisplayAndReturnClicked(&jkGuiSingleplayer_menu2);
                     }
                     if ( clicked == 1 )
                     {

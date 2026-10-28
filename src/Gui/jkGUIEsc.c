@@ -20,6 +20,7 @@
 #include "Gui/jkGUISaveLoad.h"
 #include "Gui/jkGUISetup.h"
 #include "Gui/jkGUIForce.h"
+#include "Gui/jkGUISingleplayer.h"
 #include "World/jkPlayer.h"
 #include "Main/jk.h"
 #include "Main/jkDev.h"
@@ -154,6 +155,8 @@ static void jkGuiEsc_XboxTick(jkGuiMenu *menu)
         if (f) { probe = 2; fclose(f); }
         f = fopen("D:\\xbox_smoke_bot_setup.txt", "rb");
         if (f) { probe = 3; fclose(f); }
+        f = fopen("D:\\xbox_smoke_mots_menu.txt", "rb");
+        if (f) { probe = 4; fclose(f); }
     }
     if (probe) {
         if (!entered) {
@@ -174,6 +177,14 @@ static void jkGuiEsc_XboxTick(jkGuiMenu *menu)
             if (ammo > slotMax[slot]) slotMax[slot] = ammo;
         }
         if ((unsigned int)(stdPlatform_GetTimeMsec() - entered) >= 3000U) {
+            if (probe == 4) {
+                XPERF("Smoke: MotS menu Abort selected phase=%d mode=%s\n",
+                      jkGuiSingleplayer_XboxMotsNavPhase(), Main_bMotsCompat ? "MotS" : "JK");
+                menu->lastClicked = JKGUIESC_ABORT;
+                entered = 0;
+                probe = -1;
+                return;
+            }
             if (probe == 3) {
                 jkMultiEntry3 setupEntry;
                 memset(&setupEntry, 0, sizeof(setupEntry));

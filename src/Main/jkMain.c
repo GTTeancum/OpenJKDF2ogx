@@ -36,6 +36,7 @@ static int jkMain_bossSaberBossWarpThing = -1;
 #include "Gameplay/sithTime.h"
 #include "Gameplay/sithPlayer.h"
 #include "Gameplay/sithInventory.h"
+#include "Cog/sithCog.h"
 #include "Main/jkSmack.h"
 #include "Main/jkGame.h"
 #include "Main/jkCredits.h"
@@ -56,6 +57,7 @@ static int jkMain_bossSaberBossWarpThing = -1;
 #include "Gui/jkGUITitle.h"
 #include "Gui/jkGUIDialog.h"
 #include "Gui/jkGUIEsc.h"
+#include "Gui/jkGUISingleplayer.h"
 #include "Gui/jkGUISingleTally.h"
 #include "Gui/jkGUIMultiplayer.h"
 #include "Gui/jkGUIDisplay.h"
@@ -458,6 +460,8 @@ static void jkMain_XboxSmokeWaterTick(void)
             if (probeSurface) probeSurface->surfaceInfo.face.type = originalFaceType;
             probeSurface = NULL;
             opaquePhase = inWater = 0;
+            player->actorParams.eyePYR.x = 0.0;
+            sithCamera_FollowFocus(sithCamera_currentCamera);
             XPERF("Smoke: water probe returned to spawn\n");
         }
         return;
@@ -503,6 +507,13 @@ static void jkMain_XboxSmokeWaterTick(void)
         probeSurface = surface;
         originalFaceType = surface->surfaceInfo.face.type;
         opaquePhase = 0;
+        player->actorParams.eyePYR.x = 45.0;
+        sithCamera_FollowFocus(sithCamera_currentCamera);
+        XPERF("Smoke: water focus local=%d perspective=%d playerSector=%d cameraSector=%d\n",
+            sithCamera_currentCamera && sithCamera_currentCamera->primaryFocus == player,
+            sithCamera_currentCamera ? sithCamera_currentCamera->cameraPerspective : -1,
+            player->sector ? player->sector->id : -1,
+            sithCamera_currentCamera && sithCamera_currentCamera->sector ? sithCamera_currentCamera->sector->id : -1);
         XPERF("Smoke: water boundary surface=%u drySector=%d type=0x%x material=%p center=(%.3f,%.3f,%.3f)\n",
             surface->index, surface->adjoin->sector->id, surface->surfaceInfo.face.type,
             surface->surfaceInfo.face.material, (double)center.x, (double)center.y, (double)center.z);
@@ -510,6 +521,198 @@ static void jkMain_XboxSmokeWaterTick(void)
         return;
     }
     XPERF("Smoke: water probe found no reachable horizontal wet/dry boundary\n");
+}
+
+/* Compare an authored translucent world face with the same face temporarily
+ * opaque, using only guest-local state and a disposable smoke marker. */
+static void jkMain_XboxSmokeMaterialTick(void)
+{
+    static int enabled = -1, materialIndex = -1, phase = -1, finished;
+    static char materialName[32];
+    static unsigned int start, phaseStart, originalType;
+    static char map[128];
+    static sithSurface *chosen;
+    static sithWorld *seenWorld;
+    unsigned int now = stdPlatform_GetTimeMsec();
+    sithWorld *world = sithWorld_pCurrentWorld;
+    sithThing *player = sithPlayer_pLocalPlayerThing;
+    FILE *f;
+    int i, offset, candidates = 0;
+    if (enabled < 0) {
+        f = fopen("D:\\xbox_smoke_material.txt", "rb");
+        enabled = f != NULL;
+        if (f) {
+            if (fscanf(f, "%d %31s", &materialIndex, materialName) != 2) materialIndex = -1;
+            fclose(f);
+        }
+    }
+    if (!enabled || !world || !player || sithNet_isMulti ||
+        sithGamesave_currentState != SITH_GS_NONE) return;
+    if (seenWorld != world || strcmp(map, world->map_jkl_fname)) {
+        seenWorld = world;
+        stdString_SafeStrCopy(map, world->map_jkl_fname, sizeof(map));
+        chosen = NULL;
+        phase = -1;
+        finished = 0;
+        start = now;
+    }
+    if (finished) return;
+    if (chosen) {
+        unsigned int elapsed = now - phaseStart;
+        player->actorParams.typeflags |= SITH_AF_INVULNERABLE;
+        player->physicsParams.physflags &= ~SITH_PF_USEGRAVITY;
+        sithPhysics_ThingStop(player);
+        if (phase == 0 && elapsed >= 10000U) {
+            chosen->surfaceInfo.face.type = originalType & ~RD_FF_TEX_TRANSLUCENT;
+            phase = 1;
+            XPERF("Smoke: material opaque index=%d surface=%u\n", materialIndex, chosen->index);
+        }
+        if (phase == 1 && elapsed >= 20000U) {
+            chosen->surfaceInfo.face.type = originalType;
+            phase = 2;
+            XPERF("Smoke: material restored index=%d surface=%u\n", materialIndex, chosen->index);
+        }
+        if (elapsed >= 30000U) finished = 1;
+        return;
+    }
+    if (now - start < 8000U) return;
+    if (materialIndex < 0 || !materialName[0]) {
+        XPERF("Smoke: material invalid index=%d name=%s\n", materialIndex, materialName);
+        finished = 1;
+        return;
+    }
+    for (i = 0; i < world->numSurfaces; i++) {
+        sithSurface *surface = &world->surfaces[i];
+        rdFace *face = &surface->surfaceInfo.face;
+        const char *base;
+        rdVector3 center = {0}, destination, eye, look;
+        rdMatrix34 orientation;
+        int vertex;
+        if (!surface->parent_sector || !face->material ||
+            !(face->type & RD_FF_TEX_TRANSLUCENT) || face->numVertices < 3) continue;
+        base = strrchr(face->material->mat_fpath, '\\');
+        base = base ? base + 1 : face->material->mat_fpath;
+        if (_stricmp(base, materialName)) continue;
+        candidates++;
+        for (vertex = 0; vertex < face->numVertices; vertex++) {
+            const rdVector3 *point = &world->vertices[face->vertexPosIdx[vertex]];
+            center.x += point->x; center.y += point->y; center.z += point->z;
+        }
+        center.x /= face->numVertices;
+        center.y /= face->numVertices;
+        center.z /= face->numVertices;
+        for (offset = 0; offset < 7; offset++) {
+            if (offset < 3) {
+                float distance = 0.4f + (float)offset * 0.3f;
+                destination.x = center.x + face->normal.x * distance;
+                destination.y = center.y + face->normal.y * distance;
+                destination.z = center.z + face->normal.z * distance;
+            } else {
+                float towardSector = (float)(offset - 2) * 0.25f;
+                destination.x = center.x + (surface->parent_sector->center.x - center.x) * towardSector;
+                destination.y = center.y + (surface->parent_sector->center.y - center.y) * towardSector;
+                destination.z = center.z + (surface->parent_sector->center.z - center.z) * towardSector;
+            }
+            look.x = center.x - destination.x;
+            look.y = center.y - destination.y;
+            look.z = center.z - destination.z;
+            if (rdVector_Normalize3Acc(&look) == 0.0f) continue;
+            memset(&orientation, 0, sizeof(orientation));
+            rdMatrix_BuildFromLook34(&orientation, &look);
+            rdMatrix_TransformVector34(&eye, &player->actorParams.eyeOffset, &orientation);
+            eye.x += destination.x; eye.y += destination.y; eye.z += destination.z;
+            if (!jkMain_XboxSmokeClearance(world, surface->parent_sector, &destination, player->moveSize) ||
+                !jkMain_XboxSmokeClearance(world, surface->parent_sector, &eye, 0.04f)) continue;
+            sithThing_DetachThing(player);
+            sithThing_LeaveSector(player);
+            sithThing_SetPosAndRot(player, &destination, &orientation);
+            sithThing_EnterSector(player, surface->parent_sector, 1, 0);
+            sithPhysics_ThingStop(player);
+            player->actorParams.eyePYR.x = 0.0f;
+            player->physicsParams.physflags &= ~SITH_PF_USEGRAVITY;
+            sithCamera_FollowFocus(sithCamera_currentCamera);
+            chosen = surface;
+            originalType = face->type;
+            phase = 0;
+            phaseStart = now;
+            XPERF("Smoke: material authored index=%d surface=%u sector=%d type=0x%x\n",
+                materialIndex, surface->index, surface->parent_sector->id, originalType);
+            return;
+        }
+    }
+    XPERF("Smoke: material no clear view index=%d map=%s candidates=%d\n",
+        materialIndex, map, candidates);
+    finished = 1;
+}
+
+/* Exercise the authored multiplayer pickup COG, then inspect the actual
+ * inventory bins awarded to the neutral player. */
+static void jkMain_XboxSmokeMotsPickupsTick(void)
+{
+    static int enabled = -1, count, next, failures, finished;
+    static struct { int thing, weapon, variant; } cases[8];
+    static unsigned int start, lastPickup;
+    static sithWorld *seenWorld;
+    sithWorld *world = sithWorld_pCurrentWorld;
+    sithThing *player = sithPlayer_pLocalPlayerThing;
+    unsigned int now = stdPlatform_GetTimeMsec();
+    FILE *f;
+    if (enabled < 0) {
+        f = fopen("D:\\xbox_smoke_mots_pickups.txt", "rb");
+        enabled = f != NULL;
+        if (f) {
+            while (count < 8 && fscanf(f, "%d %d %d", &cases[count].thing,
+                   &cases[count].weapon, &cases[count].variant) == 3) count++;
+            fclose(f);
+        }
+    }
+    if (!enabled || !world || !player || !sithNet_isMulti || !Main_bMotsCompat ||
+        sithGamesave_currentState != SITH_GS_NONE) return;
+    if (seenWorld != world) {
+        seenWorld = world;
+        next = failures = finished = 0;
+        start = lastPickup = now;
+    }
+    if (finished || now - start < 8000U || now - lastPickup < 3000U) return;
+    if (next >= count) {
+        XPERF("Smoke: MotS pickup %s count=%d failures=%d\n",
+            failures ? "FAIL" : "PASS", count, failures);
+        finished = 1;
+        return;
+    }
+    {
+        int thingIdx = cases[next].thing;
+        int weapon = cases[next].weapon;
+        int variant = cases[next].variant;
+        sithThing *item;
+        int before, after, itemType, variantBefore = 0, variantAfter = 0;
+        lastPickup = now;
+        if (thingIdx < 0 || thingIdx >= world->numThings ||
+            weapon < 0 || weapon >= SITHBIN_NUMBINS ||
+            (variant >= SITHBIN_NUMBINS)) {
+            XPERF("Smoke: MotS pickup invalid entry=%d thing=%d weapon=%d variant=%d\n",
+                next, thingIdx, weapon, variant);
+            failures++;
+            next++;
+            return;
+        }
+        item = &world->things[thingIdx];
+        itemType = item->type;
+        before = (int)sithInventory_GetBinAmount(player, weapon);
+        if (variant >= 0) variantBefore = (int)sithInventory_GetBinAmount(player, variant);
+        if (itemType == SITH_THING_ITEM)
+            sithCog_SendMessageFromThing(item, player, SITH_MESSAGE_TOUCHED);
+        after = (int)sithInventory_GetBinAmount(player, weapon);
+        if (variant >= 0) variantAfter = (int)sithInventory_GetBinAmount(player, variant);
+        if (itemType != SITH_THING_ITEM || after <= 0 ||
+            (before == 0 && after <= before) ||
+            (variant >= 0 && (variantAfter <= 0 ||
+                (variantBefore == 0 && variantAfter <= variantBefore)))) failures++;
+        XPERF("Smoke: MotS pickup entry=%d thing=%d type=%d weapon=%d %d->%d variant=%d %d->%d failures=%d\n",
+            next, thingIdx, itemType, weapon, before, after,
+            variant, variantBefore, variantAfter, failures);
+        next++;
+    }
 }
 
 static void jkMain_XboxSmokeStressTick(void)
@@ -1862,6 +2065,14 @@ void jkMain_GameplayShow(int a1, int a2)
         }
         else if ( jkSmack_gameMode == 2 )
         {
+#if defined(TARGET_XBOX) && defined(JKM_DSS)
+            if (Main_bMotsCompat) {
+                // MotS Xbox multiplayer uses the neutral loadout for every
+                // player; map pickups determine the available weapons.
+                jkPlayer_personality = 0;
+                jkGuiMultiplayer_mpcInfo.personality = 0;
+            }
+#endif
 #ifdef JKM_DSS
             jkPlayer_SetAmmoMaximums(jkPlayer_personality);
 #endif
@@ -2115,6 +2326,13 @@ LABEL_28:
         JKTRACE("GameplayShow: done\n");
 #ifdef TARGET_XBOX
         XDBG("MPLoadTrace: GameplayShow done\n");
+        {
+            int motsNavPhase = jkGuiSingleplayer_XboxMotsNavPhase();
+            if (motsNavPhase >= 1 && motsNavPhase <= 3)
+                XPERF("Smoke: MotS menu gameplay phase=%d episode=%s mode=%s level=%s\n",
+                      motsNavPhase, jkRes_episodeGobName,
+                      Main_bMotsCompat ? "MotS" : "JK", jkMain_aLevelJklFname);
+        }
         XDBGF("BotMatch: gameplay-state ready suspended=%d state=%d stopTick=%d thingEight=%d thingSix=%d\n",
               g_app_suspended,
               jkSmack_currentGuiState,
@@ -2398,6 +2616,8 @@ void jkMain_GameplayTick(int a2)
     jkMain_XboxSmokeTraverseTick();
     jkMain_XboxSmokeFallTick();
     jkMain_XboxSmokeWaterTick();
+    jkMain_XboxSmokeMaterialTick();
+    jkMain_XboxSmokeMotsPickupsTick();
     jkMain_XboxSmokeStressTick();
     jkMain_XboxSmokeDamageTick();
     jkMain_XboxSmokeColorTick();
@@ -2647,7 +2867,11 @@ int jkMain_sub_403470(char *a1)
 
 int jkMain_LoadFile(char *a1)
 {
-    jkEpisode_SetMotsCompatForEpisodeName(a1);
+    if (!jkEpisode_SetMotsCompatForEpisodeName(a1))
+    {
+        Windows_ErrorMsgboxWide("ERR_CANNOT_LOAD_FILE %s", a1);
+        return 0;
+    }
     if (jkRes_LoadCD(1))
     {
         sithInventory_549FA0 = 1;
@@ -2690,7 +2914,11 @@ int jkMain_loadFile2(char *pGobPath, char *pEpisodeName)
 #ifdef TARGET_XBOX
     XDBG("MPLoadTrace: jkMain_loadFile2 before jkRes_LoadGob\n");
 #endif
-    jkEpisode_SetMotsCompatForEpisodeName(pGobPath);
+    if (!jkEpisode_SetMotsCompatForEpisodeName(pGobPath))
+    {
+        Windows_ErrorMsgboxWide("ERR_CANNOT_LOAD_FILE %s", pGobPath);
+        return 0;
+    }
     jkRes_LoadGob(pGobPath);
 #ifdef TARGET_XBOX
     XDBG("MPLoadTrace: jkMain_loadFile2 after jkRes_LoadGob\n");
@@ -2770,7 +2998,11 @@ int jkMain_LoadLevelSingleplayer(char *pGobPath, char *pEpisodeName)
     jkMain_aLevelJklFname[127] = 0;
     sithInventory_549FA0 = 1;
     jkSmack_gameMode = 0;
-    jkEpisode_SetMotsCompatForEpisodeName(pGobPath);
+    if (!jkEpisode_SetMotsCompatForEpisodeName(pGobPath))
+    {
+        Windows_ErrorMsgboxWide("ERR_CANNOT_LOAD_FILE %s", pGobPath);
+        return 0;
+    }
     jkRes_LoadGob(pGobPath);
     if ( jkEpisode_mLoad.paEntries )
     {

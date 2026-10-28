@@ -471,8 +471,9 @@ int std3D_Startup(void)
     /* Stability loop — confirms FakeGL's frame loop is alive. */
     {
         int frame;
-        XDBG("std3D_Startup: STABILITY loop start (60 frames)\n");
-        for (frame = 0; frame < 60; ++frame)
+        int stabilityFrames = xboxVideo_Is720pPrototype() ? 3 : 60;
+        XDBGF("std3D_Startup: STABILITY loop start (%d frames)\n", stabilityFrames);
+        for (frame = 0; frame < stabilityFrames; ++frame)
         {
             glClear(GL_COLOR_BUFFER_BIT | GL_DEPTH_BUFFER_BIT | GL_STENCIL_BUFFER_BIT);
             FakeSwapBuffers();
@@ -1506,7 +1507,8 @@ void std3D_DrawRenderList(void)
                         glDepthFunc(GL_LEQUAL);
                         glDepthMask(GL_TRUE);
                     } else {
-                        if (t->flags & 0x800) glDepthFunc(GL_LESS);
+                        if ((t->flags & 0x400000) && xboxVideo_Is720pPrototype()) glDepthFunc(GL_LEQUAL);
+                        else if (t->flags & 0x800) glDepthFunc(GL_LESS);
                         else                  glDepthFunc(GL_ALWAYS);
 
                         if (t->flags & 0x1000) glDepthMask(GL_TRUE);
@@ -1539,7 +1541,8 @@ void std3D_DrawRenderList(void)
                     glDepthFunc(GL_LEQUAL);
                     glDepthMask(GL_TRUE);
                 } else {
-                    if (t->flags & 0x800) glDepthFunc(GL_LESS);
+                    if ((t->flags & 0x400000) && xboxVideo_Is720pPrototype()) glDepthFunc(GL_LEQUAL);
+                    else if (t->flags & 0x800) glDepthFunc(GL_LESS);
                     else                  glDepthFunc(GL_ALWAYS);
 
                     if (t->flags & 0x1000) glDepthMask(GL_TRUE);
@@ -2298,7 +2301,7 @@ static unsigned int std3D_XboxReleaseLargeUIBitmapTextures(const char *reason)
     if (released) {
         MEMORYSTATUS mem;
         GlobalMemoryStatus(&mem);
-        XDBGF("CutsceneTrace: released large UI bitmap textures count=%u scanned=%u minPixels=%u reason=%s phys=%lu page=%lu\n",
+        XPERF("MenuMemory: released large UI bitmap textures count=%u scanned=%u minPixels=%u reason=%s phys=%lu page=%lu\n",
               released, scanned, XBOX_LARGE_UI_MIN_PIXELS,
               reason ? reason : "(null)",
               (unsigned long)mem.dwAvailPhys, (unsigned long)mem.dwAvailPageFile);

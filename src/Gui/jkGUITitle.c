@@ -21,6 +21,10 @@
 #include "Platform/std3D.h"
 #ifdef TARGET_XBOX
 #include "Platform/Xbox/xbox_debug.h"
+#ifdef __cplusplus
+extern "C"
+#endif
+void std3D_XboxReleaseMenuTextures(void);
 #endif
 
 static wchar_t jkGuiTitle_tmpBuffer[512];
@@ -368,6 +372,10 @@ void jkGuiTitle_ShowLoading(char *a1, wchar_t *a2)
 
 #ifdef TARGET_XBOX
     xbox_debug_Printf("TitleShowLoading: enter level='%s'\n", a1 ? a1 : "(null)");
+    /* Release the previous menu/movie GPU copies before allocating the
+     * world, not just after it has loaded. CPU bitmaps remain available;
+     * painting below uploads the loading screen again on demand. */
+    std3D_XboxReleaseMenuTextures();
 #endif
 
 #ifdef QOL_IMPROVEMENTS

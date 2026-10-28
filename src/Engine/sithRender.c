@@ -2095,6 +2095,16 @@ static void sithRender_XboxSurfaceColorMode(const sithSurface *surface)
     }
 }
 
+static void sithRender_XboxArchitectureColorMode(const sithThing *thing)
+{
+    int mode = thing->rdthing.type == RD_THINGTYPE_MODEL && thing->rdthing.model3
+        && thing->archlightIdx >= 0
+        && thing->archlightIdx < sithWorld_pCurrentWorld->numArchLights;
+    if (rdGetVertexColorMode() != mode) {
+        rdCache_Flush();
+        rdSetVertexColorMode(mode);
+    }
+}
 #endif
 
 // MOTS altered
@@ -2670,6 +2680,10 @@ void sithRender_RenderLevelGeometry()
                 v59 = procEntry->geometryMode;
                 procEntry->light_flags = 0;
                 procEntry->type = v57;
+#ifdef TARGET_XBOX
+                if (bIsSkySurface)
+                    procEntry->type |= RD_FF_XBOX_SKY_DEPTH_EQUAL;
+#endif
                 rend_flags = 1;
                 if ( v59 >= 4 )
                     rend_flags = 3;
@@ -3031,28 +3045,50 @@ LABEL_150:
             else
                 i->rdthing.curLightMode = i->rdthing.desiredLightMode;
 
+#ifdef TARGET_XBOX
+            sithRender_XboxArchitectureColorMode(i);
+#endif
+
             // MOTS added
 #ifdef JKM_LIGHTING
-            if ((i->archlightIdx != -1) && ((i->rdthing).type == RD_THINGTYPE_MODEL)) {
+            if (i->archlightIdx >= 0 && i->archlightIdx < sithWorld_pCurrentWorld->numArchLights
+                && i->rdthing.type == RD_THINGTYPE_MODEL && i->rdthing.model3) {
                 rdModel3* iVar22 = i->rdthing.model3;
-                for (int k = 0; k < 4; k++) {
-                    for (int j = 0; j < iVar22->geosets[k].numMeshes; j++) 
+                sithArchLight* archlight = &sithWorld_pCurrentWorld->aArchlights[i->archlightIdx];
+#ifdef TARGET_XBOX
+                {
+                    static int loggedArchRgb;
+                    if (!loggedArchRgb && archlight->numMeshes > 0 && archlight->aMeshes[0].numVertices > 0
+                        && archlight->aMeshes[0].aRed && archlight->aMeshes[0].aGreen) {
+                        XPERF("MotSArchRGB: mode=%d model=%s index=%d rgb=%.2f,%.2f,%.2f\n",
+                              rdGetVertexColorMode(), iVar22->filename, i->archlightIdx,
+                              archlight->aMeshes[0].aRed[0], archlight->aMeshes[0].aGreen[0],
+                              archlight->aMeshes[0].aBlue[0]);
+                        loggedArchRgb = 1;
+                    }
+                }
+#endif
+                for (int k = 0; k < iVar22->numGeosets; k++) {
+                    for (int j = 0; j < iVar22->geosets[k].numMeshes && j < archlight->numMeshes; j++)
                     {
+                        if (iVar22->geosets[k].meshes[j].numVertices != archlight->aMeshes[j].numVertices)
+                            continue;
                         if (rdGetVertexColorMode() == 0) {
                             iVar22->geosets[k].meshes[j].vertices_unk = iVar22->geosets[k].meshes[j].vertices_i;
-                            iVar22->geosets[k].meshes[j].vertices_i = sithWorld_pCurrentWorld->aArchlights[i->archlightIdx].aMeshes[j].aMono;
+                            iVar22->geosets[k].meshes[j].vertices_i = archlight->aMeshes[j].aMono;
                         }
                         else {
-                            iVar22->geosets[k].meshes[j].paRedIntensities = sithWorld_pCurrentWorld->aArchlights[i->archlightIdx].aMeshes[j].aRed;
-                            iVar22->geosets[k].meshes[j].paGreenIntensities = sithWorld_pCurrentWorld->aArchlights[i->archlightIdx].aMeshes[j].aGreen;
-                            iVar22->geosets[k].meshes[j].paBlueIntensities = sithWorld_pCurrentWorld->aArchlights[i->archlightIdx].aMeshes[j].aBlue;
+                            iVar22->geosets[k].meshes[j].paRedIntensities = archlight->aMeshes[j].aRed;
+                            iVar22->geosets[k].meshes[j].paGreenIntensities = archlight->aMeshes[j].aGreen;
+                            iVar22->geosets[k].meshes[j].paBlueIntensities = archlight->aMeshes[j].aBlue;
                         }
                     }
                 }
             }
-            if ((i->archlightIdx == -1) && (rdGetVertexColorMode() == 1)) {
+            if ((i->archlightIdx == -1) && (rdGetVertexColorMode() == 1)
+                && i->rdthing.type == RD_THINGTYPE_MODEL && i->rdthing.model3) {
                 rdModel3* iVar13 = i->rdthing.model3;
-                for (int k = 0; k < 4; k++) {
+                for (int k = 0; k < iVar13->numGeosets; k++) {
                     for (int j = 0; j < iVar13->geosets[k].numMeshes; j++) 
                     {
                         iVar13->geosets[k].meshes[j].paRedIntensities = iVar13->geosets[k].meshes[j].vertices_i;
@@ -3069,12 +3105,16 @@ LABEL_150:
 
             // MOTS added
 #ifdef JKM_LIGHTING
-            if (((i->archlightIdx != -1) && (i->rdthing.type == RD_THINGTYPE_MODEL)) && (rdGetVertexColorMode() == 0)) {
+            if (i->archlightIdx >= 0 && i->archlightIdx < sithWorld_pCurrentWorld->numArchLights
+                && i->rdthing.type == RD_THINGTYPE_MODEL && i->rdthing.model3
+                && rdGetVertexColorMode() == 0) {
                 rdModel3* iVar14 = i->rdthing.model3;
-                for (int k = 0; k < 4; k++) {
-                    for (int j = 0; j < iVar14->geosets[k].numMeshes; j++) 
+                sithArchLight* archlight = &sithWorld_pCurrentWorld->aArchlights[i->archlightIdx];
+                for (int k = 0; k < iVar14->numGeosets; k++) {
+                    for (int j = 0; j < iVar14->geosets[k].numMeshes && j < archlight->numMeshes; j++)
                     {
-                        iVar14->geosets[k].meshes[j].vertices_i = iVar14->geosets[k].meshes[j].vertices_unk;
+                        if (iVar14->geosets[k].meshes[j].numVertices == archlight->aMeshes[j].numVertices)
+                            iVar14->geosets[k].meshes[j].vertices_i = iVar14->geosets[k].meshes[j].vertices_unk;
                     }
                 }
             }
@@ -4178,5 +4218,3 @@ void sithRender_WorldFlash(flex_t arg1,flex_t arg2)
     sithRender_008d409c = arg2;
   }
 }
-
-

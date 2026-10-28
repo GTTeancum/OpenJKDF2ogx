@@ -11,6 +11,26 @@
 #include "Gui/jkGUI.h"
 #include "Main/jkStrings.h"
 #include "Win95/stdDisplay.h"
+#ifdef TARGET_XBOX
+#include "Gui/jkGUISingleplayer.h"
+#include "Platform/Xbox/xbox_debug.h"
+#endif
+
+#ifdef TARGET_XBOX
+static unsigned int jkGuiDialog_motsNavEntered;
+static void jkGuiDialog_XboxMotsNavConfirm(jkGuiMenu *menu)
+{
+    unsigned int now = stdPlatform_GetTimeMsec();
+    if (!jkGuiDialog_motsNavEntered)
+        jkGuiDialog_motsNavEntered = now;
+    if (now - jkGuiDialog_motsNavEntered >= 2000U)
+    {
+        XPERF("Smoke: MotS menu abort confirmed phase=%d\n",
+              jkGuiSingleplayer_XboxMotsNavPhase());
+        menu->lastClicked = 1;
+    }
+}
+#endif
 
 jkGuiElement jkGuiDialog_Ok_buttons[4] = {
     {ELEMENT_TEXT, 0, 2, 0, 3, {0x82, 0x8C, 0x186, 0x28}, 1, 0, 0, 0, 0, 0, {0}, 0},
@@ -184,7 +204,17 @@ int jkGuiDialog_YesNoDialog(wchar_t *stringA, wchar_t *stringB)
     jkGuiDialog_OkCancel_buttons[3].bIsVisible = 1;
     jkGuiRend_MenuSetReturnKeyShortcutElement(&jkGuiDialog_OkCancel_menu, &jkGuiDialog_OkCancel_buttons[2]);
     jkGuiRend_MenuSetEscapeKeyShortcutElement(&jkGuiDialog_OkCancel_menu, &jkGuiDialog_OkCancel_buttons[3]);
+#ifdef TARGET_XBOX
+    if (jkGuiSingleplayer_XboxMotsNavPhase() > 0 && jkGuiSingleplayer_XboxMotsNavPhase() < 3)
+    {
+        jkGuiDialog_motsNavEntered = 0;
+        jkGuiDialog_OkCancel_menu.idkFunc = jkGuiDialog_XboxMotsNavConfirm;
+    }
+#endif
     v5 = jkGuiRend_DisplayAndReturnClicked(&jkGuiDialog_OkCancel_menu);
+#ifdef TARGET_XBOX
+    jkGuiDialog_OkCancel_menu.idkFunc = NULL;
+#endif
     
 #ifdef STDBITMAP_PARTIAL_LOAD
     stdDisplay_VBufferFree(jkGuiDialog_OkCancel_menu.pTextureOverride);

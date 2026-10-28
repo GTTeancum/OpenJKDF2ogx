@@ -146,6 +146,8 @@ build/xbox/inspect_*_jkl_*/
 build/xbox/mots_jkl_probe/
 data/
 build/xbox/*xemu*.iso
+# XEMU validation runs can write disc images under nested artifact roots.
+build/**/openjkdf2_xemu_smoke_current*.iso
 build/xbox/xemu_*stage*/
 build/xbox/chm_extract/
 build/xbox/chm_text/
@@ -252,3 +254,6 @@ build/xbox/release/debug_openjkdf2.txt
 /xbox_hardware_resource_audit.md
 /build/xbox/issue1_validation/
 build/xbox/integration-backups/
+
+# Repository-local scratch files and tool caches
+/.local/

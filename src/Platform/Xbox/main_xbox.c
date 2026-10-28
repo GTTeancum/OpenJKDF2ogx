@@ -161,10 +161,13 @@ static const char *xbox_read_smoke_autostart_args(char *buf, unsigned int bufSiz
  * ====================================================================== */
 void __cdecl main(void)
 {
+    char smokeArgs[256];
+    const char *startupArgs;
     /* Debug logging must come first — everything else uses XDBG */
     xbox_debug_Startup();
     XDBG("OpenJKDF2 Xbox: main() entered\n");
     xbox_ensure_dashboard_metadata();
+    startupArgs = xbox_read_smoke_autostart_args(smokeArgs, sizeof(smokeArgs));
 
     /* ----------------------------------------------------------------
      * 0. XInput device enumeration — MUST come before D3D init.
@@ -244,8 +247,6 @@ void __cdecl main(void)
      *    Pass empty string for default behaviour (no episode override).
      * -------------------------------------------------------------- */
     {
-        char smokeArgs[256];
-        const char *startupArgs = xbox_read_smoke_autostart_args(smokeArgs, sizeof(smokeArgs));
         if (startupArgs[0])
             xbox_debug_Printf("Smoke: Main_Startup args='%s'\n", startupArgs);
         Main_Startup((char *)startupArgs);

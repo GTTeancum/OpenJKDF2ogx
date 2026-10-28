@@ -49,6 +49,26 @@ static int jkGuiCutscenes_initted;
 
 #ifdef TARGET_XBOX
 #define JKGUI_MAIN_CREDITS_CUTSCENE_ID "__xbox_credits__"
+
+static void jkGuiMain_XboxMotsNavTick(jkGuiMenu *menu)
+{
+    static int lastPhase = -2;
+    static unsigned int entered;
+    int phase = jkGuiSingleplayer_XboxMotsNavPhase();
+    unsigned int now = stdPlatform_GetTimeMsec();
+    if (phase != lastPhase)
+    {
+        lastPhase = phase;
+        entered = now;
+        XPERF("Smoke: MotS menu main phase=%d mode=%s\n", phase,
+              Main_bMotsCompat ? "MotS" : "JK");
+    }
+    if (phase >= 0 && phase < 3 && now - entered >= 3000U)
+    {
+        entered = now;
+        menu->lastClicked = 10; // Single Player menu item.
+    }
+}
 #endif
 
 #ifdef TARGET_XBOX
@@ -192,6 +212,18 @@ static jkGuiElement jkGuiMain_elements[11] = {
 };
 
 static jkGuiMenu jkGuiMain_menu = {jkGuiMain_elements, -1, 0xFFFF, 0xFFFF, 0xF, 0, 0, jkGui_stdBitmaps, jkGui_stdFonts, 0, 0, "thermloop01.wav", "thrmlpu2.wav", 0, 0, 0, 0, 0, 0};
+
+#ifdef TARGET_XBOX
+void jkGuiMain_XboxDrawVersion(jkGuiMenu *menu)
+{
+    if (menu != &jkGuiMain_menu)
+        return;
+    /* Paint once, after the footer backdrop, so it cannot dim the label. */
+    jkGuiMain_elements[8].bIsVisible = 1;
+    jkGuiRend_UpdateAndDrawClickable(&jkGuiMain_elements[8], menu, 0);
+    jkGuiMain_elements[8].bIsVisible = 0;
+}
+#endif
 
 #ifdef TARGET_XBOX
 static jkGuiElement jkGuiMain_xboxMultiplayerElements[6] = {
@@ -1532,8 +1564,9 @@ void jkGuiMain_Show()
     jkGuiMain_elements[7].rect.width = 300;
 #endif
     jkGuiMain_elements[8].bIsVisible = 0;
+    jkGuiMain_elements[8].rect.y = 455;
     jkGuiMain_elements[9].bIsVisible = 0;
-    jkGuiMain_elements[8].wstr = 0;
+    jkGuiMain_elements[8].wstr = OPENJKDF2_XBOX_BETA_VERSION_W;
     jkGuiMain_elements[9].wstr = 0;
 #else
     jkGuiMain_elements[8].wstr = openjkdf2_waReleaseVersion;
@@ -1611,6 +1644,9 @@ void jkGuiMain_Show()
 
 #ifndef TARGET_XBOX
             jkGuiRend_MenuSetEscapeKeyShortcutElement(&jkGuiMain_menu, &jkGuiMain_elements[2]);
+#else
+            if (jkGuiSingleplayer_XboxMotsNavPhase() >= 0)
+                jkGuiMain_menu.idkFunc = jkGuiMain_XboxMotsNavTick;
 #endif
             v1 = jkGuiRend_DisplayAndReturnClicked(&jkGuiMain_menu);
             switch ( v1 )

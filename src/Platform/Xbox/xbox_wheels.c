@@ -4,6 +4,7 @@
 #include "xbox_debug.h"
 #include "xbox_splitscreen.h"
 #include "../../globals.h"
+#include "../../stdPlatform.h"
 #include "../../types_enums.h"
 #include "../../Gameplay/sithInventory.h"
 #include "../../General/stdBitmap.h"
@@ -12,6 +13,7 @@
 #include "../../Main/Main.h"
 #include "../../Platform/std3D.h"
 #include "../../World/sithWeapon.h"
+#include "../../World/jkPlayer.h"
 #include "gl/gl.h"
 #include <math.h>
 #include <string.h>
@@ -26,7 +28,7 @@ void std3D_XboxEndViewportUI(void);
 
 #define XBOX_WHEEL_MAX_PORTS 4
 #define XBOX_WHEEL_HOLD_MS 260
-#define XBOX_WHEEL_MAX_WEAPON_SLOTS 17
+#define XBOX_WHEEL_MAX_WEAPON_SLOTS 16
 #define XBOX_WHEEL_ARRAY_COUNT(a) ((int)(sizeof(a) / sizeof((a)[0])))
 
 typedef enum XboxWheelKind
@@ -100,15 +102,14 @@ static const XboxWheelWeaponSlot s_weaponSlotsMots[] =
     { SITHBIN_MOTS_RAIL_DETONATOR,     "Rail Detonator",          "ui\\bm\\xw_rail.bm",     87.0f, 45.0f },
     { SITHBIN_MOTS_SEQUENCER_CHARGE,   "Sequencer Charge",        "ui\\bm\\xw_seqchg.bm",   84.0f, 72.0f },
     { SITHBIN_MOTS_CONCUSSION_RIFLE,   "Concussion Rifle",        "ui\\bm\\xw_conc.bm",     90.0f, 42.0f },
-    { SITHBIN_MOTS_EWEB,               "EWEB",                    NULL,                     80.0f, 40.0f },
     { SITHBIN_MOTS_LIGHTSABER,         "Lightsaber",              "ui\\bm\\xw_saber.bm",    56.0f, 24.0f },
-    { SITHBIN_MOTS_BLASTECH,           "Blastech",                NULL,                     70.0f, 34.0f },
-    { SITHBIN_MOTS_STORMTROOPER_SCOPE, "Scoped Rifle",            NULL,                     70.0f, 34.0f },
-    { SITHBIN_MOTS_FLASH_BOMB,          "Flash Bomb",              NULL,                     70.0f, 52.0f },
+    { SITHBIN_MOTS_BLASTECH,           "Blastech",                "ui\\bm\\xw_mots_blastech.bm", 70.0f, 34.0f },
+    { SITHBIN_MOTS_STORMTROOPER_SCOPE, "Scoped Rifle",            "ui\\bm\\xw_mots_scope.bm", 70.0f, 34.0f },
+    { SITHBIN_MOTS_FLASH_BOMB,          "Flash Bomb",              "ui\\bm\\xw_mots_flash.bm", 70.0f, 52.0f },
     { SITHBIN_MOTS_TUSKEN_PROD,         "Tusken Prod",             "ui\\bm\\xw_tusken.bm",   116.0f, 64.0f },
-    { SITHBIN_MOTS_RAIL_SEEKER,         "Seeking Rail Detonator",  NULL,                     87.0f, 45.0f },
-    { SITHBIN_MOTS_MANUAL_SEQUENCER,    "Manual Sequencer",        NULL,                     84.0f, 72.0f },
-    { SITHBIN_MOTS_CARBO_GUN,           "Carbonite Gun",           NULL,                     78.0f, 38.0f }
+    { SITHBIN_MOTS_RAIL_SEEKER,         "Seeking Rail Detonator",  "ui\\bm\\xw_mots_seeker.bm", 87.0f, 45.0f },
+    { SITHBIN_MOTS_MANUAL_SEQUENCER,    "Manual Sequencer",        "ui\\bm\\xw_mots_manseq.bm", 84.0f, 72.0f },
+    { SITHBIN_MOTS_CARBO_GUN,           "Carbonite Gun",           "ui\\bm\\xw_mots_carbo.bm", 78.0f, 38.0f }
 };
 
 static const XboxWheelForceSlot s_forceSlotsJk[] =
@@ -321,9 +322,6 @@ static int xbox_wheels_AmmoForWeapon(sithThing *player, int weaponBin)
         case SITHBIN_MOTS_MANUAL_SEQUENCER:
             ammoBin = SITHBIN_MOTS_SEQUENCER_CHARGE;
             break;
-        case SITHBIN_MOTS_EWEB:
-            ammoBin = SITHBIN_EWEB_ROUNDS;
-            break;
         case SITHBIN_MOTS_FLASH_BOMB:
             ammoBin = SITHBIN_MOTS_FLASH_BOMB;
             break;
@@ -341,6 +339,41 @@ static int xbox_wheels_AmmoForWeapon(sithThing *player, int weaponBin)
     if (!item || item->ammoAmt < 0.0f)
         return 0;
     return (int)item->ammoAmt;
+}
+
+/* Opt-in guest-only coverage of every portable MotS slot. Distinct ammo
+ * quantities make an incorrect shared-bin label visible in the result. */
+static void xbox_wheels_GrantFullProbeInventory(sithThing *player)
+{
+    int i, count;
+    const XboxWheelWeaponSlot *weapons = xbox_wheels_WeaponSlots(&count);
+    static const int ammoBins[] = {
+        SITHBIN_ENERGY, SITHBIN_POWER, SITHBIN_RAILCHARGES,
+        SITHBIN_SEEKRAILS, SITHBIN_CARBPELLETS,
+        SITHBIN_MOTS_THERMAL_DETONATOR, SITHBIN_MOTS_SEQUENCER_CHARGE,
+        SITHBIN_MOTS_FLASH_BOMB
+    };
+    static const int ammoAmounts[] = { 47, 39, 11, 7, 13, 4, 6, 5 };
+    const XboxWheelForceSlot *powers;
+    int forceCount;
+    for (i = 0; i < count; ++i) {
+        int bin = weapons[i].bin;
+        sithInventory_SetBinAmount(player, bin,
+            (bin == SITHBIN_MOTS_THERMAL_DETONATOR ||
+             bin == SITHBIN_MOTS_SEQUENCER_CHARGE ||
+             bin == SITHBIN_MOTS_FLASH_BOMB ||
+             bin == SITHBIN_MOTS_MANUAL_SEQUENCER) ? 3.0f : 1.0f);
+        sithInventory_SetAvailable(player, bin, 1);
+    }
+    for (i = 0; i < XBOX_WHEEL_ARRAY_COUNT(ammoBins); ++i)
+        sithInventory_SetBinAmount(player, ammoBins[i], (float)ammoAmounts[i]);
+    powers = xbox_wheels_ForceSlots(&forceCount);
+    for (i = 0; i < forceCount; ++i) {
+        sithInventory_SetBinAmount(player, powers[i].bin, 1.0f);
+        sithInventory_SetAvailable(player, powers[i].bin, 1);
+    }
+    sithInventory_SetBinAmount(player, SITHBIN_FORCEMANA, 200.0f);
+    XPERF("Smoke: MotS full wheel inventory granted weapons=%d powers=%d\n", count, forceCount);
 }
 
 static void xbox_wheels_Open(int port, XboxWheelKind kind)
@@ -504,6 +537,12 @@ void xbox_wheels_UpdateInput(int port, unsigned int tick, int gameplay,
                              float rightX, float rightY)
 {
     XboxWheelState *state;
+    static int selectionProbe = -1;
+    static unsigned int selectionProbeStart;
+    static int selectionProbeLogged;
+    static int fullProbe = -1, fullProbeGranted, fullProbeLastStep = -1;
+    static int fullProbeResults, fullProbeFailures, fullProbeFinished;
+    static unsigned int fullProbeStart;
     if (port < 0 || port >= XBOX_WHEEL_MAX_PORTS)
         return;
 
@@ -512,6 +551,100 @@ void xbox_wheels_UpdateInput(int port, unsigned int tick, int gameplay,
     {
         memset(state, 0, sizeof(*state));
         return;
+    }
+
+    if (port == 0 && Main_bMotsCompat && !sithNet_isMulti && xbox_wheels_Player())
+    {
+        if (fullProbe < 0) {
+            fullProbe = util_FileExists("xbox_smoke_mots_full_wheel.txt") ? 1 : 0;
+            if (fullProbe)
+                fullProbeStart = tick;
+        }
+        /* Wait for level startup COGs to finish initializing Force ranks. */
+        if (fullProbe && !fullProbeGranted && tick - fullProbeStart >= 4000U) {
+            xbox_wheels_GrantFullProbeInventory(xbox_wheels_Player());
+            fullProbeStart = tick;
+            fullProbeGranted = 1;
+        }
+        if (selectionProbe < 0)
+        {
+            selectionProbe = util_FileExists("xbox_smoke_mots_selection.txt") ? 1 : 0;
+            selectionProbeStart = tick;
+        }
+        if (selectionProbe)
+        {
+            unsigned int elapsed = tick - selectionProbeStart;
+            // Guest-only input: select fists, Bryar, then Force Speed through
+            // the same hold/stick/release path used by a controller.
+            blackDown = yDown = bDown = 0;
+            whiteDown = (elapsed < 450 || (elapsed >= 800 && elapsed < 1250));
+            bDown = (elapsed >= 1600 && elapsed < 2100);
+            rightX = (elapsed >= 1600 && elapsed < 2100) ? 0.361242f :
+                     ((elapsed >= 800 && elapsed < 1250) ? 0.382683f : 0.0f);
+            rightY = (elapsed < 450) ? 1.0f :
+                     ((elapsed >= 800 && elapsed < 1250) ? 0.923880f :
+                      (bDown ? 0.932472f : 0.0f));
+            if (elapsed > 10000 && !selectionProbeLogged)
+            {
+                XPERF("Smoke: MotS selection final weapon=%d bryarAmmo=%d force=%d speedLevel=%d\n",
+                      sithInventory_GetCurWeapon(xbox_wheels_Player()),
+                      xbox_wheels_AmmoForWeapon(xbox_wheels_Player(), SITHBIN_MOTS_BRYARPISTOL),
+                      sithInventory_GetCurPower(xbox_wheels_Player()),
+                      (int)sithInventory_GetBinAmount(xbox_wheels_Player(), SITHBIN_F_SPEED));
+                selectionProbeLogged = 1;
+            }
+        }
+        if (fullProbe && fullProbeGranted && !fullProbeFinished)
+        {
+            const int weaponExpectedAmmo[] = {
+                0, 47, 47, 4, 39, 11, 6, 39,
+                0, 47, 47, 5, 39, 7, 6, 13
+            };
+            int weaponCount, forceCount;
+            const XboxWheelWeaponSlot *weapons = xbox_wheels_WeaponSlots(&weaponCount);
+            const XboxWheelForceSlot *powers = xbox_wheels_ForceSlots(&forceCount);
+            unsigned int elapsed = tick - fullProbeStart;
+            int step = (int)(elapsed / 2000U);
+            unsigned int within = elapsed % 2000U;
+            blackDown = whiteDown = yDown = bDown = 0;
+            rightX = rightY = 0.0f;
+            if (step < weaponCount + forceCount)
+            {
+                int force = step >= weaponCount;
+                int slot = force ? step - weaponCount : step;
+                float angle = (force ? xbox_wheels_RadialSlotAngle(slot, forceCount) :
+                                       xbox_wheels_RadialSlotAngle(slot, weaponCount)) * 0.01745329252f;
+                whiteDown = !force && within < 800U;
+                bDown = force && within < 800U;
+                if (within >= 260U && within < 800U) {
+                    rightX = (float)cos((double)angle);
+                    rightY = (float)sin((double)angle);
+                }
+                if (within >= 1500U && fullProbeLastStep != step)
+                {
+                    sithThing *probePlayer = xbox_wheels_Player();
+                    int expectedBin = force ? powers[slot].bin : weapons[slot].bin;
+                    int selectedBin = force ? sithInventory_GetCurPower(probePlayer) :
+                                              sithInventory_GetCurWeapon(probePlayer);
+                    int displayedAmmo = force ? (int)sithInventory_GetBinAmount(probePlayer, expectedBin) :
+                                                xbox_wheels_AmmoForWeapon(probePlayer, expectedBin);
+                    int expectedAmmo = force ? 1 : weaponExpectedAmmo[slot];
+                    if (selectedBin != expectedBin || displayedAmmo != expectedAmmo)
+                        ++fullProbeFailures;
+                    XPERF("Smoke: MotS full wheel kind=%s slot=%d expected=%d selected=%d ammo=%d expectedAmmo=%d failures=%d\n",
+                        force ? "force" : "weapon", slot, expectedBin, selectedBin,
+                        displayedAmmo, expectedAmmo, fullProbeFailures);
+                    fullProbeLastStep = step;
+                    ++fullProbeResults;
+                }
+            }
+            else if (fullProbeLastStep == weaponCount + forceCount - 1) {
+                XPERF("Smoke: MotS full wheel %s weapons=%d powers=%d results=%d\n",
+                    fullProbeFailures || fullProbeResults != weaponCount + forceCount ? "FAIL" : "PASS",
+                    weaponCount, forceCount, fullProbeResults);
+                fullProbeFinished = 1;
+            }
+        }
     }
 
     xbox_wheels_HandleButton(port, &state->weaponPrev, blackDown, tick, XBOX_WHEEL_WEAPON, 0);
@@ -669,13 +802,13 @@ static void xbox_wheels_DrawBitmapCentered(stdBitmap *bitmap, float cx, float cy
                            available ? 245 : 155);
 }
 
-static void xbox_wheels_DrawWeaponIcon(const XboxWheelWeaponSlot *slots, int slot, float cx, float cy, int available)
+static void xbox_wheels_DrawWeaponIcon(const XboxWheelWeaponSlot *weaponSlot, int slot, float cx, float cy, int available)
 {
     const char *path;
     int drewIcon = 0;
-    if (slot < 0 || slot >= XBOX_WHEEL_MAX_WEAPON_SLOTS || !slots)
+    if (slot < 0 || slot >= XBOX_WHEEL_MAX_WEAPON_SLOTS || !weaponSlot)
         return;
-    path = slots[slot].iconPath;
+    path = weaponSlot->iconPath;
     if (!path || !path[0])
         return;
     if (s_weaponIconLoadedPaths[slot] != path)
@@ -701,8 +834,8 @@ static void xbox_wheels_DrawWeaponIcon(const XboxWheelWeaponSlot *slots, int slo
     if (s_weaponIcons[slot])
     {
         xbox_wheels_DrawBitmapCentered(s_weaponIcons[slot], cx, cy,
-                                       slots[slot].iconW,
-                                       slots[slot].iconH,
+                                       weaponSlot->iconW,
+                                       weaponSlot->iconH,
                                        available);
         drewIcon = 1;
     }
@@ -778,7 +911,7 @@ static void xbox_wheels_DrawWeapon(stdFont *font, XboxWheelState *state)
                 endDeg = tmp;
             }
             xbox_wheels_SegmentCenter(320.0f, 238.0f, 122.0f, startDeg, endDeg, &iconX, &iconY);
-            xbox_wheels_DrawWeaponIcon(slots, i, iconX, iconY, available);
+            xbox_wheels_DrawWeaponIcon(&slots[i], i, iconX, iconY, available);
         }
     }
     else
@@ -797,11 +930,15 @@ static void xbox_wheels_DrawWeapon(stdFont *font, XboxWheelState *state)
         {
             float centerDeg = xbox_wheels_RadialSlotAngle(i, count);
             float iconX, iconY;
+            XboxWheelWeaponSlot compactSlot = slots[i];
             int available = xbox_wheels_IsWeaponAvailable(player, slots[i].bin);
+            // Sixteen MotS slots have less arc width than JK's ten slots.
+            if (compactSlot.iconW > 38.0f) compactSlot.iconW = 38.0f;
+            if (compactSlot.iconH > 38.0f) compactSlot.iconH = 38.0f;
             xbox_wheels_SegmentCenter(320.0f, 238.0f, 122.0f,
                                       centerDeg - halfWidth, centerDeg + halfWidth,
                                       &iconX, &iconY);
-            xbox_wheels_DrawWeaponIcon(slots, i, iconX, iconY, available);
+            xbox_wheels_DrawWeaponIcon(&compactSlot, i, iconX, iconY, available);
         }
     }
 
@@ -861,6 +998,51 @@ static void xbox_wheels_DrawForce(stdFont *font, XboxWheelState *state)
 void xbox_wheels_Draw(stdFont *font)
 {
     int i;
+    static int smokeLogged = 0;
+    static int smokeProbeKind = -1;
+    static int selectionInputProbe = -1;
+
+    if (Main_bMotsCompat && !sithNet_isMulti && xbox_wheels_Player())
+    {
+        if (selectionInputProbe < 0)
+            selectionInputProbe = (util_FileExists("xbox_smoke_mots_selection.txt") ||
+                                   util_FileExists("xbox_smoke_mots_full_wheel.txt")) ? 1 : 0;
+        // The smoke can run with no host controller attached. Feed the normal
+        // wheel input path inside the guest game for this opt-in probe only.
+        if (selectionInputProbe)
+            xbox_wheels_UpdateInput(0, stdPlatform_GetTimeMsec(), 1, 0, 0, 0, 0, 0.0f, 0.0f);
+    }
+
+    if (Main_bMotsCompat && xbox_wheels_Player())
+    {
+        XboxWheelKind smokeKind;
+        if (smokeProbeKind < 0)
+        {
+            smokeProbeKind = XBOX_WHEEL_NONE;
+            if (util_FileExists("xbox_smoke_mots_weapon_wheel.txt"))
+                smokeProbeKind = XBOX_WHEEL_WEAPON;
+            else if (util_FileExists("xbox_smoke_mots_force_wheel.txt"))
+                smokeProbeKind = XBOX_WHEEL_FORCE;
+        }
+        smokeKind = (XboxWheelKind)smokeProbeKind;
+        if (smokeKind != XBOX_WHEEL_NONE)
+        {
+            int count;
+            s_wheels[0].openKind = smokeKind;
+            if (!smokeLogged)
+            {
+                if (smokeKind == XBOX_WHEEL_WEAPON)
+                    xbox_wheels_WeaponSlots(&count);
+                else
+                    xbox_wheels_ForceSlots(&count);
+                XPERF("Smoke: MotSWheel kind=%d slots=%d mp=%d\n",
+                      smokeKind, count, sithNet_isMulti);
+                if (sithNet_isMulti)
+                    XPERF("Smoke: MotS MP personality=%d\n", jkPlayer_personality);
+                smokeLogged = 1;
+            }
+        }
+    }
 
     if (xboxSplitScreen_IsEnabled())
     {

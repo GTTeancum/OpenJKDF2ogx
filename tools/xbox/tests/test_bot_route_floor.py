@@ -45,6 +45,12 @@ int main(void) {
  assert(sithBot_IsRouteNodeReached(&actor,&node,.34));
  node.routeFloorKnown=0;
  assert(!sithBot_IsRouteNodeReached(&actor,&node,.34));
+ /* c1 high doorway approach is on a ramp below the opening. Resolve the
+    approach floor, but still require landing on the raised opposite side. */
+ node.routeFloorKnown=1;node.routeFloorZ=.06;node.pos.z=.54;actor.position.z=.18;
+ assert(sithBot_IsRouteNodeReached(&actor,&node,.34));
+ node.routeFloorZ=.50;
+ assert(!sithBot_IsRouteNodeReached(&actor,&node,.34));
 }
 '''.replace('SOURCE',s[a:b])
 with tempfile.TemporaryDirectory() as td:

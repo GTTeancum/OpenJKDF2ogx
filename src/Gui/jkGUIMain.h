@@ -11,6 +11,9 @@
 #define jkGuiMain_FreeCutscenes_ADDR (0x004105B0)
 
 void jkGuiMain_Show();
+#ifdef TARGET_XBOX
+void jkGuiMain_XboxDrawVersion(jkGuiMenu *menu);
+#endif
 void jkGuiMain_ShowCutscenes();
 void jkGuiMain_Startup();
 void jkGuiMain_Shutdown();

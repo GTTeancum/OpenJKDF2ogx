@@ -7,6 +7,7 @@ extern "C" {
 float xboxVideo_GetPixelAspectRatio(void);
 /* Camera's logical pixel aspect; pillarboxed 3P/4P views use a 4:3 canvas. */
 float xboxVideo_GetProjectionPixelAspectRatio(void);
+int xboxVideo_Is720pPrototype(void);
 #ifdef __cplusplus
 }
 #endif

@@ -21,6 +21,7 @@ typedef float flex_t;
 static float par;
 float rdCamera_XboxPixelAspect(void) { return par; }
 float xboxVideo_GetPixelAspectRatio(void) { return par; }
+float xboxVideo_GetProjectionPixelAspectRatio(void) { return par; }
 float std3D_XboxHalfFovTangent(float x) { return tanf(x * 0.00872664626f); }
 void check(float w, float h, float aspect) {
  struct { float fovDx; } cam, *camera = &cam;
@@ -50,7 +51,7 @@ int main(void) {
  float sizes[][2]={{640,480},{640,240},{320,240}};
  int i;
  for(i=0;i<3;i++) { check(sizes[i][0],sizes[i][1],1); check(sizes[i][0],sizes[i][1],4.0f/3); }
- puts("PASS: CPU/GPU agree; 4:3 unchanged; 16:9 expands horizontally for one, two and four views");
+ puts("PASS: CPU/GPU projection agrees for square and anamorphic pixels at full and split viewport sizes");
 }
 """.replace(' CPU\n', cpu_block, 1).replace(' GPU\n', gpu_block, 1).replace('PORTAL_LINE', portal_line)
 with tempfile.TemporaryDirectory() as tmp:

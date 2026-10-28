@@ -22,6 +22,7 @@ SithBotNode sithBot_nodes[2];int sithBot_numNodes=2;
 rdVector3 rdroid_zVector3={0,0,1};
 static int queries,closed,enumerated,walkable=1,clipped;
 static float floorZ=.50f;static sithCollisionSearchEntry hit;
+static int hitInRange;
 void rdVector_Copy3(rdVector3 *a,const rdVector3 *b){*a=*b;}
 void rdVector_Neg3(rdVector3 *a,const rdVector3 *b){a->x=-b->x;a->y=-b->y;a->z=-b->z;}
 sithSector *sithCollision_GetSectorLookAt(sithSector *s,const rdVector3 *a,rdVector3 *b,float r) {
@@ -31,8 +32,9 @@ int sithBot_IsNavSectorUsableForBot(sithSector *s){return s&&s->valid;}
 void sithCollision_SearchRadiusForThings(sithSector *s,void *t,rdVector3 *p,rdVector3 *d,float dist,float radius,int flags) {
  assert(radius==0 && d->z==-1 && (flags&RAYCAST_1));
  ++queries;enumerated=0;hit.distance=p->z-floorZ;hit.hitType=SITHCOLLISION_WORLD;
+ hitInRange=hit.distance>=0 && hit.distance<=dist;
 }
-sithCollisionSearchEntry *sithCollision_NextSearchResult(void){return enumerated++<2?&hit:0;}
+sithCollisionSearchEntry *sithCollision_NextSearchResult(void){return enumerated++<2&&hitInRange?&hit:0;}
 int sithBot_IsSurfaceWalkableForBot(void *s){return walkable;}
 void sithCollision_SearchClose(void){++closed;}
 #define sithBot_Logf(...) ((void)0)
@@ -51,6 +53,18 @@ int main(void) {
  assert(!sithBot_nodes[0].routeFloorKnown && enumerated==1);
  sector.valid=0;sithBot_ResolvePortalRouteFloors();
  assert(!sithBot_nodes[0].routeFloorKnown && queries==3 && closed==3);
+ /* Stock c1 portal 307: opening sample .54, ramp support .06.
+    The old .50 trace stopped .08 above the floor and invented a .50 step. */
+ sector.valid=1;walkable=1;clipped=0;
+ sithBot_nodes[0].pos.z=.54f;floorZ=.06f;
+ sithBot_ResolvePortalRouteFloors();
+ assert(sithBot_nodes[0].routeFloorKnown);
+ assert(fabsf(sithBot_nodes[0].routeFloorZ-.06f)<1e-6);
+ /* Do not treat arbitrarily distant floors or a nonwalkable first hit as support. */
+ floorZ=-2.0f;sithBot_ResolvePortalRouteFloors();
+ assert(!sithBot_nodes[0].routeFloorKnown);
+ floorZ=.06f;walkable=0;sithBot_ResolvePortalRouteFloors();
+ assert(!sithBot_nodes[0].routeFloorKnown && enumerated==1);
 }
 '''.replace('BODY',s[a:b])
 with tempfile.TemporaryDirectory() as d:

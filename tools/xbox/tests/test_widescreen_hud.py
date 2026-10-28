@@ -44,6 +44,18 @@ int main(void) {
    std3D_XboxTransformViewportUiRect(&x,&y,&w,60);
    assert(fabsf((x-g_xboxViewportX)*par-10)<.0001);
   }
+  for(slot=0;slot<2;slot++) { /* Two views inside one physical 4:3 canvas. */
+   float x=580,y=410,w=50;
+   g_xboxUiViewportOverlay=1;
+   g_xboxViewportX=mode?80:0; g_xboxViewportY=slot?0:240;
+   g_xboxViewportW=mode?480:640;g_xboxViewportH=240;
+   std3D_XboxTransformViewportUiRect(&x,&y,&w,60);
+   assert(fabsf((g_xboxViewportX+g_xboxViewportW-x-w)*par-10)<.0001);
+   assert(fabsf(y-(480-g_xboxViewportY-70))<.0001);
+   x=10;y=410;w=50;
+   std3D_XboxTransformViewportUiRect(&x,&y,&w,60);
+   assert(fabsf((x-g_xboxViewportX)*par-10)<.0001);
+  }
   { float x=0,y=0,w=640;
     g_xboxUiViewportOverlay=0;
     std3D_XboxTransformViewportUiRect(&x,&y,&w,480);

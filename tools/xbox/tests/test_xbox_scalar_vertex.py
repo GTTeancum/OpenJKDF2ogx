@@ -8,8 +8,12 @@ code=r'''
 #include <assert.h>
 #include <stdint.h>
 #include <math.h>
+#include "Platform/Xbox/xbox_vertex_submit.h"
+#define JKM_LIGHTING
+static int colorMode;
+int rdGetVertexColorMode(void) {return colorMode;}
 typedef struct {float lightLevel; uint32_t color;} D3DVERTEX;
-typedef struct {float vertexIntensities[2],light_level_static;} rdProcEntry;
+typedef struct {float vertexIntensities[2],light_level_static,paRedIntensities[2],paGreenIntensities[2],paBlueIntensities[2];} rdProcEntry;
 typedef struct {int texture_loaded,texture_id;} rdDDrawSurface;
 int g_pfnBindTexture;
 SOURCE
@@ -30,10 +34,22 @@ int main(void) {
    assert((v.color>>24)==(unsigned)alpha);
   }
  }
+ colorMode=1;
+ for(int alpha=0;alpha<256;alpha++) {
+  f.paRedIntensities[0]=300; f.paGreenIntensities[0]=128; f.paBlueIntensities[0]=-8;
+  rdCache_XboxBuildScalarVertex(&v,&f,0,3,(uint32_t)alpha<<24);
+  assert(v.lightLevel==XBOX_VERTEX_RGB_LIGHT);
+  assert(v.color==(((uint32_t)alpha<<24)|0xff8000));
+  f.paRedIntensities[0]=f.paGreenIntensities[0]=f.paBlueIntensities[0]=0;
+  rdCache_XboxBuildScalarVertex(&v,&f,0,3,(uint32_t)alpha<<24);
+  assert(v.lightLevel==XBOX_VERTEX_RGB_LIGHT && v.color==((uint32_t)alpha<<24));
+  rdCache_XboxBuildScalarVertex(&v,&f,0,0,(uint32_t)alpha<<24);
+  assert(v.lightLevel==1.f);
+ }
 }
 '''.replace('SOURCE',s[a:b]).replace('GATE',r[c:d])
 with tempfile.TemporaryDirectory() as td:
  c=Path(td)/'test.c';e=Path(td)/'test.exe';c.write_text(code)
- subprocess.run([shutil.which('clang') or r'C:\Program Files\LLVM\bin\clang.exe',str(c),'-o',str(e)],check=True)
+ subprocess.run([shutil.which('clang') or r'C:\Program Files\LLVM\bin\clang.exe',str(c),'-I'+str(root/'src'),'-o',str(e)],check=True)
  subprocess.run([str(e)],check=True)
 print('PASS: 524288 light/alpha combinations and unavailable-texture fallback gate')

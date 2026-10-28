@@ -1704,14 +1704,11 @@ int sithThing_Load(sithWorld *pWorld, int a2)
             if ( v23 >= 0 && v23 < sithWorld_pCurrentWorld->numSectors )
             {
                 v24 = &sithWorld_pCurrentWorld->sectors[v23];
-                if ( stdConffile_entry.numArgs >= 11 && (stdConffile_entry.args[10].key == stdConffile_entry.args[10].value)) // MOTS added (w/o comparison)
-                {
-                    // && (!stdConffile_entry.args[10].key || strlen(stdConffile_entry.args[10].key) == 0)
-                    v23 = _atoi(stdConffile_entry.args[10].value);
-                    v21->archlightIdx = v23;
-                    //printf("%p %p %x\n", , v21->archlightIdx);
-                }
                 sithThing_InstantiateFromTemplate(v21, v22);
+                // Instantiation copies the template over the thing, so apply the
+                // MotS per-instance architecture-light index afterwards.
+                if ( stdConffile_entry.numArgs >= 11 && (stdConffile_entry.args[10].key == stdConffile_entry.args[10].value))
+                    v21->archlightIdx = _atoi(stdConffile_entry.args[10].value);
                 sithThing_SetPosAndRot(v21, &pos, &a);
                 sithThing_EnterSector(v21, v24, 1, 1);
                 sithThing_sub_4CD100(v21);

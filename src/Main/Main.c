@@ -884,9 +884,20 @@ void Main_ParseCmdLine(char *cmdline)
             /* A/B performance comparison; normal 3P/4P uses pillarboxing. */
             Main_splitFullWidth = 1;
         }
+#ifdef TARGET_XBOX
+        else if (!__strcmpi(pArgTok, "-probe720p-sp"))
+        {
+            /* Legacy test option: resolution now follows console settings.
+             * Keep accepting it so older launch fixtures still parse. */
+        }
+#endif
         else if (!__strcmpi(pArgTok, "-bot-corridor-probe"))
         {
             Main_botLiftProbe = 2;
+        }
+        else if (!__strcmpi(pArgTok, "-bot-ctf-probe"))
+        {
+            Main_botLiftProbe = 3;
         }
         else if (!__strcmpi(pArgTok, "-bot-lift-probe"))
         {

@@ -871,7 +871,7 @@ void xboxSplitScreen_TickPlayer(sithPlayerInfo *playerInfo, flex_t deltaSecs)
 
 float xboxVideo_GetProjectionPixelAspectRatio(void)
 {
-    if (g_xboxSplitScreenEnabled && g_xboxSplitScreenLocalCount >= 3 && !Main_splitFullWidth)
+    if (g_xboxSplitScreenEnabled && g_xboxSplitScreenLocalCount >= 2 && !Main_splitFullWidth)
         return 1.0f;
     return xboxVideo_GetPixelAspectRatio();
 }
@@ -882,8 +882,12 @@ void xboxSplitScreen_GetViewport(int slot, int *x, int *y, int *w, int *h)
 
     if (g_xboxSplitScreenLocalCount == 2)
     {
-        vw = 640;
+        /* Fit both stacked views inside one physical 4:3 canvas on a 16:9
+         * output. The individual half-height views keep their original shape. */
+        float pixelAspect = xboxVideo_GetPixelAspectRatio();
+        vw = pixelAspect > 1.0f && !Main_splitFullWidth ? (int)(640.0f / pixelAspect + 0.5f) : 640;
         vh = 240;
+        vx = (640 - vw) / 2;
         vy = (slot == 0) ? 240 : 0;
     }
     else if (g_xboxSplitScreenLocalCount >= 3)
@@ -912,7 +916,7 @@ void xboxSplitScreen_GetViewport(int slot, int *x, int *y, int *w, int *h)
             lx = 0; ly = 0; lw = 640; lh = 480;
             if (g_xboxSplitScreenLocalCount == 2)
             {
-                lw = 640; lh = 240; ly = (i == 0) ? 240 : 0;
+                lw = vw; lh = 240; lx = vx; ly = (i == 0) ? 240 : 0;
             }
             else if (g_xboxSplitScreenLocalCount >= 3)
             {
@@ -929,10 +933,12 @@ float xboxSplitScreen_GetCurrentViewportAspect(void)
     if (!g_xboxSplitScreenEnabled)
         return 0.0f;
 
-    /* CPU portal clipping uses the logical 640x480 camera canvas. Match
-     * that canvas in the GPU projection rather than expanding vertical FOV. */
+    /* CPU portal clipping uses the logical 640x480 camera canvas. Keep the
+     * original per-slot vertical tangent when the output viewport is inset. */
     if (g_xboxSplitScreenLocalCount >= 3)
         return 0.75f;
+    if (g_xboxSplitScreenLocalCount == 2)
+        return 0.375f;
 
     xboxSplitScreen_GetViewport(g_xboxSplitScreenCurrentSlot, &x, &y, &w, &h);
     if (w <= 0 || h <= 0)

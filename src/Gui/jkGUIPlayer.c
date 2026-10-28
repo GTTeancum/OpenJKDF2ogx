@@ -105,6 +105,21 @@ static jkGuiElement jkGuiPlayer_menuSelectElements[8] = {
 
 static jkGuiMenu jkGuiPlayer_menuSelect = {jkGuiPlayer_menuSelectElements, 0, 0xFFFF, 0xFFFF, 0xF, 0, 0, jkGui_stdBitmaps, jkGui_stdFonts, (intptr_t)jkGuiPlayer_menuSelectIdk, 0, "thermloop01.wav", "thrmlpu2.wav", 0, 0, 0, 0, 0,0};
 
+#ifdef TARGET_XBOX
+static unsigned int jkGuiPlayer_motsNavEntered;
+static void jkGuiPlayer_XboxMotsNavSelectProfile(jkGuiMenu *menu)
+{
+    unsigned int now = stdPlatform_GetTimeMsec();
+    if (!jkGuiPlayer_motsNavEntered)
+        jkGuiPlayer_motsNavEntered = now;
+    if (now - jkGuiPlayer_motsNavEntered >= 3000U)
+    {
+        XPERF("Smoke: MotS menu selected existing player\n");
+        menu->lastClicked = 1;
+    }
+}
+#endif
+
 static jkGuiElement jkGuiPlayer_menuNewElements[12] = {
     { ELEMENT_TEXT, 0, 0, 0, 3, {0, 410, 280, 14}, 1, 0, 0, 0, 0, 0, {0}, 0},
     { ELEMENT_TEXT, 0, 5, "GUI_NEWPLAYER", 3, {0, 0x82, 0x280, 0x28}, 1, 0, 0, 0, 0, 0, {0}, 0},
@@ -310,14 +325,25 @@ void jkGuiPlayer_ShowNewPlayer(int a1)
             {
                 FILE *previewMarker = fopen("D:\\xbox_smoke_model_preview.txt", "rb");
                 if (!previewMarker)
+                    previewMarker = fopen("D:\\xbox_smoke_main_menu.txt", "rb");
+                if (!previewMarker)
                     previewMarker = fopen("D:\\xbox_smoke_local_match.txt", "rb");
                 if (previewMarker) {
                     fclose(previewMarker);
                     jkGuiPlayer_menuSelectElements[2].selectedTextEntry = 0;
                     v2 = 1;
                 }
-                else
+                else {
+                    FILE *motsNavMarker = fopen("D:\\xbox_smoke_mots_menu.txt", "rb");
+                    if (motsNavMarker) {
+                        fclose(motsNavMarker);
+                        jkGuiPlayer_menuSelectElements[2].selectedTextEntry = 0;
+                        jkGuiPlayer_motsNavEntered = 0;
+                        jkGuiPlayer_menuSelect.idkFunc = jkGuiPlayer_XboxMotsNavSelectProfile;
+                    }
                     v2 = jkGuiRend_DisplayAndReturnClicked(&jkGuiPlayer_menuSelect);
+                    jkGuiPlayer_menuSelect.idkFunc = NULL;
+                }
             }
 #else
             v2 = jkGuiRend_DisplayAndReturnClicked(&jkGuiPlayer_menuSelect);

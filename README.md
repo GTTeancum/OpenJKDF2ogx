@@ -5,9 +5,9 @@ focused on porting the engine to the original Microsoft Xbox console. The base
 engine lineage is preserved underneath; Xbox-specific runtime work lives under
 `src/Platform/Xbox/`.
 
-**Downloads:** get the latest Xbox beta from the
+**Downloads:** get the latest Xbox release from the
 [GitHub Releases page](https://github.com/GTTeancum/OpenJKDF2ogx/releases/latest).
-Report beta bugs on
+Report bugs on
 [GitHub Issues](https://github.com/GTTeancum/OpenJKDF2ogx/issues).
 
 <p align="center">

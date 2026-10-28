@@ -1515,6 +1515,11 @@ int jkPlayer_MPCParse(jkPlayerMpcInfo *info, sithPlayerInfo* unk, wchar_t *profi
                 stdConffile_Close();
                 return 0;
             }
+#ifdef TARGET_XBOX
+            // Xbox MotS multiplayer is class-free. Retain the profile field for
+            // file compatibility, but use the neutral single.per loadout.
+            jkPlayer_personality = 0;
+#endif
         }
         else {
             jkPlayer_personality = 1; // HACK: JK only has Jedi classes.

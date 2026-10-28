@@ -32,17 +32,26 @@ int main() {
    assert(x>=0 && y>=0 && x+w<=640 && y+h<=480);
    area+=w*h;
    if (count==1) assert(x==0 && y==0 && w==640 && h==480);
-   else if (count==2) assert(x==0 && y==(slot?0:240) && w==640 && h==240);
+   else if (count==2) {
+    float camAspect=0.375f;
+    assert(x==(boxed?80:0) && y==(slot?0:240) && w==(boxed?480:640) && h==240);
+    assert(fabs(w*pixelAspect/h-xboxVideo_GetProjectionPixelAspectRatio()/camAspect)<0.00001f);
+    assert(xboxVideo_GetProjectionPixelAspectRatio()==(boxed?1.0f:pixelAspect));
+    assert(xboxSplitScreen_GetCurrentViewportAspect()==camAspect);
+    if (boxed) assert(fabs(w*pixelAspect/480.0f-4.0f/3.0f)<0.00001f);
+   }
    else {
     assert(w==(boxed?240:320) && h==240);
     assert(x==((slot&1)?320:(boxed?80:0)) && y==((slot&2)?0:240));
     // Each physical view is 4:3 and its projection has matching tangents.
     assert(fabs(w*pixelAspect/h-xboxVideo_GetProjectionPixelAspectRatio()/0.75f)<0.00001f);
+    if (boxed) assert(fabs(2.0f*w*pixelAspect/480.0f-4.0f/3.0f)<0.00001f);
     assert(xboxVideo_GetProjectionPixelAspectRatio()==(full?pixelAspect:1.0f));
     assert(xboxSplitScreen_GetCurrentViewportAspect()==0.75f);
    }
   }
   if (count>=3) assert(area==count*(boxed?57600:76800));
+  else if (count==2) assert(area==2*(boxed?115200:153600));
   else assert(xboxVideo_GetProjectionPixelAspectRatio()==pixelAspect);
   // Leaving split-screen must restore the system aspect for SP/menus.
   g_xboxSplitScreenEnabled=0;
@@ -58,4 +67,4 @@ with tempfile.TemporaryDirectory() as temp:
     subprocess.run([shutil.which("clang++") or r"C:\Program Files\LLVM\bin\clang++.exe",
                     str(cpp), "-o", str(exe)], check=True)
     subprocess.run([str(exe)], check=True)
-print("PASS: 1P/2P unchanged, centered 3P/4P physical 4:3 views, 25% fewer widescreen pixels, projection reset")
+print("PASS: 1P true widescreen, 2P-4P centered physical 4:3 canvas, matched projection and reset")

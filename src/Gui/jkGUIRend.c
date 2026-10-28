@@ -16,6 +16,7 @@
 #include "General/stdString.h"
 #include "Primitives/rdRect.h"
 #include "Gui/jkGUI.h"
+#include "Gui/jkGUIMain.h"
 #include "Gui/jkGUIEsc.h"
 #include "Gui/jkGUIBuildMulti.h"
 #include "Gui/jkGUIXboxControls.h"
@@ -1020,6 +1021,7 @@ void jkGuiRend_Paint(jkGuiMenu *menu)
 
 #ifdef TARGET_XBOX
     jkGuiRend_XboxFooterDraw(menu);
+    jkGuiMain_XboxDrawVersion(menu);
 #endif
     
     jkGuiRend_FlipAndDraw(menu, 0);

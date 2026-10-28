@@ -434,6 +434,10 @@ int rdCache_SendFaceListToHardware()
             flags_idk_ |= 0x10000;
         }
 #ifdef TARGET_XBOX
+        if (active_6c->type & RD_FF_XBOX_SKY_DEPTH_EQUAL)
+        {
+            flags_idk_ |= 0x400000;
+        }
         if (active_6c->hasEffectColors) flags_idk_ |= 0x200000;
         if (active_6c->type & RD_FF_ZWRITE_DISABLED)
         {

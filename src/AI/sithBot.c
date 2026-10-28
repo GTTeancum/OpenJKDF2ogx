@@ -97,7 +97,7 @@ void sithCogFunction_FireProjectile(sithCog *ctx);
 #define SITHBOT_SHARED_EDGE_BLOCK_MS 30000
 #define SITHBOT_EDGE_FAILURE_MEMORY_MS 60000
 #define SITHBOT_BNAV_MAGIC 0x56414E42u
-#define SITHBOT_BNAV_VERSION 43u
+#define SITHBOT_BNAV_VERSION 44u
 
 typedef enum SithBotNodeKind
 {
@@ -2163,13 +2163,17 @@ static int sithBot_PositionHasWalkableFloorWithRiseImpl(sithThing *probeThing, s
 
     rdVector_Copy3(&probeStart, pos);
     probeStart.z += stepHeight;
-    searchDist += stepHeight;
     rdVector_Copy3(&probeEnd, &probeStart);
-    searchSector = sithCollision_GetSectorLookAt(sector, pos, &probeEnd, 0.01);
+    searchSector = sithCollision_GetSectorLookAt(sector, pos, &probeEnd, searchRadius);
     if (!searchSector)
         searchSector = sector;
     if (!sithBot_IsSectorSafeForBot(searchSector))
         return 0;
+    /* GetSectorLookAt clips against low ceilings. Keep the downward ray
+     * inside that sector instead of starting above its ceiling, and retain
+     * the same floor-depth budget measured from the requested position. */
+    rdVector_Copy3(&probeStart, &probeEnd);
+    searchDist += probeStart.z - pos->z;
     rdVector_Neg3(&down, &rdroid_zVector3);
     sithCollision_SearchRadiusForThings(searchSector, probeThing, &probeStart, &down, searchDist, searchRadius, RAYCAST_2000 | RAYCAST_2);
     while ((entry = sithCollision_NextSearchResult()) != 0)
@@ -2437,12 +2441,14 @@ static int sithBot_GetWalkableFloorDrop(sithThing *probeThing, sithSector *secto
     rdVector_Copy3(&start, pos);
     start.z += startLift;
     rdVector_Copy3(&end, &start);
-    searchSector = sithCollision_GetSectorLookAt(sector, pos, &end, 0.01);
+    searchSector = sithCollision_GetSectorLookAt(sector, pos, &end, 0.03);
     if (!searchSector)
         searchSector = sector;
+    rdVector_Copy3(&start, &end);
+    startLift = start.z - pos->z;
     rdVector_Neg3(&down, &rdroid_zVector3);
     sithCollision_SearchRadiusForThings(searchSector, probeThing, &start, &down,
-                                        1.45, 0.03, RAYCAST_2000 | RAYCAST_2);
+                                        1.20 + startLift, 0.03, RAYCAST_2000 | RAYCAST_2);
     while ((entry = sithCollision_NextSearchResult()) != 0)
     {
         if (entry->hitType & SITHCOLLISION_WORLD)
@@ -3130,8 +3136,13 @@ static void sithBot_ResolvePortalRouteFloors(void)
         if (!sithBot_IsNavSectorUsableForBot(sector))
             continue;
         rdVector_Neg3(&down, &rdroid_zVector3);
+        /* A high doorway sample can sit more than .50 above its approach
+         * ramp (stock c1 base portals are .58 above support). Missing that
+         * floor makes the approach look like a step and traps jump steering
+         * beneath the adjacent low passage. Stop at the first world hit as
+         * before; only the bounded static support search is extended. */
         sithCollision_SearchRadiusForThings(sector, 0, &start, &down,
-            0.50, 0.0, RAYCAST_1 | RAYCAST_2000 | RAYCAST_2);
+            1.0, 0.0, RAYCAST_1 | RAYCAST_2000 | RAYCAST_2);
         while ((entry = sithCollision_NextSearchResult()) != 0)
         {
             if (!(entry->hitType & SITHCOLLISION_WORLD))
@@ -5941,12 +5952,25 @@ static flex_t sithBot_GetRouteEdgeCost(int fromNode, int toNode)
 {
     flex_t cost;
     flex_t rise;
+    flex_t fromZ;
+    flex_t toZ;
 
     cost = rdVector_Dist3(&sithBot_nodes[fromNode].pos, &sithBot_nodes[toNode].pos);
     if (cost < 0.05)
         cost = 0.05;
 
-    rise = sithBot_nodes[toNode].pos.z - sithBot_nodes[fromNode].pos.z;
+    /* Portal samples describe the opening. A ramp-side sample and the
+     * upper floor opposite it can share a Z despite a substantial climb.
+     * Price that climb using support, in the floor-node +.04 convention. */
+    fromZ = sithBot_nodes[fromNode].kind == SITHBOT_NODE_PORTAL &&
+        sithBot_nodes[fromNode].routeFloorKnown
+        ? sithBot_nodes[fromNode].routeFloorZ + 0.04
+        : sithBot_nodes[fromNode].pos.z;
+    toZ = sithBot_nodes[toNode].kind == SITHBOT_NODE_PORTAL &&
+        sithBot_nodes[toNode].routeFloorKnown
+        ? sithBot_nodes[toNode].routeFloorZ + 0.04
+        : sithBot_nodes[toNode].pos.z;
+    rise = toZ - fromZ;
     if (rise > 0.20 && sithBot_nodes[fromNode].kind != SITHBOT_NODE_JUMPPAD)
     {
         cost += rise * 2.25;
@@ -6148,6 +6172,21 @@ static void sithBot_MarkReachableNodes(int startNode, sithSector *avoidSector,
             queue[tail++] = next;
         }
     }
+}
+
+static int sithBot_IsOptionalPickupReturnable(int startNode, int itemNode)
+{
+    unsigned char reachable[SITHBOT_MAX_NODES];
+
+    if (startNode < 0 || startNode >= sithBot_numNodes ||
+        itemNode < 0 || itemNode >= sithBot_numNodes)
+        return 0;
+
+    /* A reachable pickup can sit beyond a one-way drop or a crawl opening
+       that this locomotion controller cannot leave. Optional equipment must
+       not strand the bot away from the match's objectives. */
+    sithBot_MarkReachableNodes(itemNode, 0, reachable);
+    return reachable[startNode] != 0;
 }
 
 static int sithBot_CanSkipRouteNode(sithThing *thing, int candidateNode)
@@ -7180,7 +7219,7 @@ static int sithBot_ChooseArmGoalNode(SithBotState *state, sithThing *thing)
         if (itemSpec->score >= 900.0)
             score += 10.0;
 
-        if (score > bestScore)
+        if (score > bestScore && sithBot_IsOptionalPickupReturnable(startNode, i))
         {
             bestScore = score;
             best = i;
@@ -7227,7 +7266,7 @@ static int sithBot_ChooseTacticalPickupNode(sithThing *thing)
         }
 
         score = sithBot_GetItemDesire(thing, item) - stdMath_Sqrt(distSq) * 5.0;
-        if (score > bestScore)
+        if (score > bestScore && sithBot_IsOptionalPickupReturnable(startNode, i))
         {
             bestScore = score;
             best = i;
@@ -7810,7 +7849,7 @@ static void sithBot_DriveGroundVelocity(SithBotState *state, sithThing *thing, c
                         : -1;
                     sithBot_BlockRouteEdge(state->playerIdx, failedFrom, failedTo);
                     sithBot_qualityRouteStalls++;
-                    sithBot_Logf("BotMatch: route-probe-blocked slot=%d mode=%d from=%d to=%d goal=%d pos=(%.2f,%.2f,%.2f)\n",
+                    sithBot_Logf("BotMatch: route-probe-blocked slot=%d mode=%d from=%d to=%d goal=%d pos=(%.2f,%.2f,%.2f) time=%u\n",
                                  state->playerIdx,
                                  state->goalMode,
                                  failedFrom,
@@ -7818,7 +7857,7 @@ static void sithBot_DriveGroundVelocity(SithBotState *state, sithThing *thing, c
                                  state->goalNode,
                                  thing->position.x,
                                  thing->position.y,
-                                 thing->position.z);
+                                 thing->position.z, (unsigned int)sithTime_curMs);
                     if (state->goalMode == SITHBOT_GOAL_HUNT)
                     {
                         state->enemyIdx = -1;
@@ -8620,6 +8659,8 @@ static int sithBot_ChooseGoalNode(SithBotState *state, sithThing *thing)
         if (sithBot_nodes[i].kind == SITHBOT_NODE_ITEM)
         {
             sithThing *item = sithThing_GetThingByIdx(sithBot_nodes[i].thingIdx);
+            if (!sithBot_IsOptionalPickupReturnable(startNode, i))
+                continue;
             if (item && sithBot_IsArmThingRejected(state, item->thingIdx))
                 continue;
             if (sithBot_IsItemAvailable(item))
@@ -8896,7 +8937,7 @@ static int sithBot_CheckRouteGoalProgress(SithBotState *state, sithThing *thing)
         sithBot_BlockRouteEdge(state->playerIdx, failedFrom, failedTo);
         alternateNext = sithBot_FindPathNext(state->playerIdx, failedFrom, state->goalNode);
     }
-    sithBot_Logf("BotMatch: route-stalled slot=%d mode=%d goal=%d next=%d moved=%.2f pos=(%.2f,%.2f,%.2f)\n",
+    sithBot_Logf("BotMatch: route-stalled slot=%d mode=%d goal=%d next=%d moved=%.2f pos=(%.2f,%.2f,%.2f) time=%u\n",
                  state->playerIdx,
                  state->goalMode,
                  state->goalNode,
@@ -8904,7 +8945,7 @@ static int sithBot_CheckRouteGoalProgress(SithBotState *state, sithThing *thing)
                  stdMath_Sqrt(movedSq),
                  thing->position.x,
                  thing->position.y,
-                 thing->position.z);
+                 thing->position.z, (unsigned int)sithTime_curMs);
     if (routeCycling)
     {
         sithBot_Logf("BotMatch: route-cycle slot=%d goal=%d prior=%d current=%d flips=%d\n",
@@ -13397,7 +13438,11 @@ static void sithBot_CheckStuck(SithBotState *state, sithThing *thing, const rdVe
     if (sithTime_curMs - state->lastMoveCheckMs < SITHBOT_STUCK_MS)
         return;
 
-    if (sithBot_DistSq(&state->lastMovePos, &thing->position) < 0.06 && sithBot_DistSq(&thing->position, target) > 0.0225)
+    /* Near a waypoint, authored-speed walking advances only about .20-.24
+       units per 600 ms. Comparing squared distance with .06 treated that
+       normal progress as stuck and discarded the route at narrow portals.
+       Require less than .06 units of actual movement before escape steering. */
+    if (sithBot_DistSq(&state->lastMovePos, &thing->position) < 0.06 * 0.06 && sithBot_DistSq(&thing->position, target) > 0.0225)
     {
         rdVector3 escapeDir;
         flex_t safeSpeed = 2.4;
@@ -15422,10 +15467,48 @@ static int sithBot_RunCtfObjective(SithBotState *state, sithThing *thing,
  * route controller; never alter position, sectors, attachment or collision. */
 static int sithBot_liftProbePhase;
 static uint32_t sithBot_liftProbeReadyMs;
+static int sithBot_ctfProbeGoals[2] = { -1, -1 };
 static int sithBot_LiftProbeGoal(SithBotState *state, sithThing *thing)
 {
     int goal;
-    if (!Main_bAutostart || !Main_botLiftProbe || state->playerIdx != 1 ||
+    if (Main_bAutostart && Main_botLiftProbe == 3 && state->playerIdx == 1 &&
+        !__strcmpi(Main_strEpisode, "JK1CTF") && !__strcmpi(Main_strMap, "c1.jkl"))
+    {
+        /* Resolve the stock bases in the current graph, including a freshly
+         * generated cache. Ordinary steering/physics; no position override. */
+        if (!sithBot_liftProbeReadyMs)
+            sithBot_liftProbeReadyMs = sithTime_curMs + 8000;
+        if (sithBot_liftProbePhase >= 3)
+            return -1; /* Resume ordinary CTF after the directed round trip. */
+        if (sithTime_curMs < sithBot_liftProbeReadyMs)
+            return -2;
+        if (sithBot_ctfProbeGoals[0] < 0 || sithBot_ctfProbeGoals[1] < 0)
+        {
+            sithThing *redFlag, *goldFlag, *redBase, *goldBase;
+            if (!sithBot_GetCtfThings(&redFlag, &goldFlag, &redBase, &goldBase))
+                return -2;
+            sithBot_ctfProbeGoals[0] = sithBot_FindNavigableNodeAt(redBase->sector, &redBase->position);
+            sithBot_ctfProbeGoals[1] = sithBot_FindNavigableNodeAt(goldBase->sector, &goldBase->position);
+            if (sithBot_ctfProbeGoals[0] < 0 || sithBot_ctfProbeGoals[1] < 0)
+                return -2;
+        }
+        goal = sithBot_ctfProbeGoals[sithBot_liftProbePhase == 1 ? 1 : 0];
+        if (thing->sector == sithBot_nodes[goal].sector &&
+            sithBot_IsRouteNodeReached(thing, &sithBot_nodes[goal], 0.20) &&
+            (thing->attach_flags & SITH_ATTACH_WORLDSURFACE))
+        {
+            sithBot_Logf("BotMatch: ctf-probe-reached phase=%d node=%d sector=%d pos=(%.3f,%.3f,%.3f) time=%u\n",
+                         sithBot_liftProbePhase, goal, sithBot_GetSectorIndex(thing->sector),
+                         thing->position.x, thing->position.y, thing->position.z,
+                         (unsigned int)sithTime_curMs);
+            ++sithBot_liftProbePhase;
+            if (sithBot_liftProbePhase >= 3)
+                return -1;
+            goal = sithBot_ctfProbeGoals[sithBot_liftProbePhase == 1 ? 1 : 0];
+        }
+        return goal;
+    }
+    if (!Main_bAutostart || (Main_botLiftProbe != 1 && Main_botLiftProbe != 2) || state->playerIdx != 1 ||
         __strcmpi(Main_strEpisode, "JK1MP") || __strcmpi(Main_strMap, "m2.jkl") ||
         sithBot_numNodes <= 144)
         return -1;
@@ -15528,7 +15611,8 @@ static void sithBot_TickState(SithBotState *state, flex_t deltaSeconds, int delt
     if (sithBot_RunControlledHazardEdgeAvoidance(state, thing))
         return;
 
-    if (state->nextProgressLogMs <= sithTime_curMs && sithBot_debugProgressLogged < 160)
+    if (state->nextProgressLogMs <= sithTime_curMs &&
+        sithBot_debugProgressLogged < (Main_botProfile ? 1600 : 160))
     {
         rdVector3 horizontalVel;
         horizontalVel.x = thing->physicsParams.vel.x;
@@ -15551,7 +15635,21 @@ static void sithBot_TickState(SithBotState *state, flex_t deltaSeconds, int delt
                      sithInventory_GetCurWeapon(thing),
                      (unsigned int)thing->jkFlags,
                      thing->playerInfo ? thing->playerInfo->polyline.length : -1.0);
-        state->nextProgressLogMs = sithTime_curMs + 1800;
+        if (Main_botProfile && state->nextNode >= 0 && state->nextNode < sithBot_numNodes)
+        {
+            SithBotNode *node = &sithBot_nodes[state->nextNode];
+            sithBot_Logf("BotMatch: route-detail slot=%d time=%u next=%d kind=%d sector=%d pos=(%.3f,%.3f,%.3f) floor=%.3f known=%d rise=%.3f attach=%X vz=%.3f reliable=%d steerUntil=%u useUntil=%u waitUntil=%u ctf=%d\n",
+                         state->playerIdx, (unsigned int)sithTime_curMs, state->nextNode,
+                         node->kind, sithBot_GetSectorIndex(node->sector),
+                         node->pos.x, node->pos.y, node->pos.z, node->routeFloorZ,
+                         node->routeFloorKnown, sithBot_GetRouteStandingRise(thing, node),
+                         (unsigned int)thing->attach_flags, thing->physicsParams.vel.z,
+                         state->frameTimingReliable, (unsigned int)state->steeringUntilMs,
+                         (unsigned int)state->nextUseMs, (unsigned int)state->interactionWaitUntilMs,
+                         state->ctfObjective);
+        }
+        state->nextProgressLogMs = sithTime_curMs +
+            (Main_bAutostart && Main_botProfile && Main_numBots == 1 ? 200 : 1800);
         sithBot_debugProgressLogged++;
     }
 
@@ -15893,6 +15991,7 @@ static void sithBot_ResetForWorldChange(void)
 {
     sithBot_liftProbePhase = 0;
     sithBot_liftProbeReadyMs = 0;
+    sithBot_ctfProbeGoals[0] = sithBot_ctfProbeGoals[1] = -1;
     memset(sithBot_profileUs, 0, sizeof(sithBot_profileUs));
     memset(sithBot_bots, 0, sizeof(sithBot_bots));
     sithBot_rosterReady = 0;

@@ -1585,7 +1585,11 @@ int jkGuiBuildMulti_ShowEditCharacter(BOOL bIdk)
     jk_snwprintf(jkGuiBuildMulti_waTmp, 0x80u, v2, v1, v21);
     jkGuiBuildMulti_buttons[2].wstr = jkGuiBuildMulti_waTmp;
 
-    if (jkPlayer_personality != 1) {
+    if (jkPlayer_personality != 1
+#ifdef TARGET_XBOX
+        && !(Main_bMotsCompat && jkPlayer_personality == 0)
+#endif
+       ) {
         jkGuiBuildMulti_buttons[2].bIsVisible = 0;
     }
     else {
@@ -1804,7 +1808,11 @@ LABEL_32:
             case 109:
                 jkPlayer_FixStars();
                 jkGuiBuildMulti_bRendering = 0; // Added
-                if (!Main_bMotsCompat || jkPlayer_personality == 1) {
+                if (!Main_bMotsCompat || jkPlayer_personality == 1
+#ifdef TARGET_XBOX
+                    || jkPlayer_personality == 0
+#endif
+                   ) {
                     jkGuiForce_Show(1, 1, 0, &jkGuiBuildMulti_waTmp[32], 0, 0);
                 }
                 else {
@@ -2630,6 +2638,10 @@ int jkGuiBuildMulti_ShowNewCharacter(int rank, int bGameFormatIsJK, int bHasNoVa
 
     // MOTS added
     jkPlayer_personality = 1;
+#ifdef TARGET_XBOX
+    if (Main_bMotsCompat)
+        jkPlayer_personality = 0;
+#endif
     if (Main_bMotsCompat) {
         jkGuiRend_SetClickableString(&jkGuiBuildMulti_pNewCharacterElements[12],&daPersonalities);
         jkGuiBuildMulti_pNewCharacterElements[12].selectedTextEntry = 0;
@@ -2700,6 +2712,12 @@ int jkGuiBuildMulti_ShowNewCharacter(int rank, int bGameFormatIsJK, int bHasNoVa
             jkGuiBuildMulti_pNewCharacterElements[10].bIsVisible = 0;
             jkGuiBuildMulti_pNewCharacterElements[11].bIsVisible = 1;
             jkGuiBuildMulti_pNewCharacterElements[12].bIsVisible = 1;
+#ifdef TARGET_XBOX
+            // MotS multiplayer maps retain their weapons, but Xbox players do
+            // not pick a personality class.
+            jkGuiBuildMulti_pNewCharacterElements[11].bIsVisible = 0;
+            jkGuiBuildMulti_pNewCharacterElements[12].bIsVisible = 0;
+#endif
             if (bHasNoValidChars != 0) {
                 jkGuiBuildMulti_pNewCharacterElements[6].bIsVisible = 0;
             }
@@ -2769,6 +2787,9 @@ LABEL_16:
     sithPlayer_SetBinAmt(SITHBIN_SPEND_STARS, (flex_d_t)jkPlayer_GetJediRank() * 3.0);
     sithPlayer_SetBinAmt(SITHBIN_NEW_STARS, 0.0);
     if (Main_bMotsCompat) {
+#ifdef TARGET_XBOX
+        jkPlayer_personality = 0;
+#else
         if (jkGuiBuildMulti_pNewCharacterElements[5].selectedTextEntry == 0) {
             jkPlayer_personality = 1;
         }
@@ -2776,11 +2797,14 @@ LABEL_16:
             jkPlayer_SetRank(7);
             jkPlayer_personality = jkGuiBuildMulti_pNewCharacterElements[12].selectedTextEntry + 1;
         }
+#endif
         jkPlayer_SetAmmoMaximums(jkPlayer_personality);
     }
     jkPlayer_ResetPowers();
     if (Main_bMotsCompat) {
+#ifndef TARGET_XBOX
         jkPlayer_SyncForcePowers(jkPlayer_GetJediRank(), 1);
+#endif
     }
     jkPlayer_SetPlayerName(jkGuiBuildMulti_aWchar_5594C8);
     jkPlayer_mpcInfoSet = 0;

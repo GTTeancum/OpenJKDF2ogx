@@ -1,6 +1,7 @@
 param(
     [int]$DurationSeconds = 300,
     [ValidateSet("System", "4:3", "16:9")][string]$SystemAspect = "System",
+    [ValidateSet("System", "480i", "480p", "720p")][string]$SystemScanMode = "System",
     [int]$PollIntervalSeconds = 15,
     [string]$RunLabel = "xemu-smoke",
     [int]$MonitorPort = 4477,
@@ -36,6 +37,13 @@ param(
     [switch]$SetupNavigationProbe,
     [switch]$SetupPairsProbe,
     [switch]$DisplaySettingsProbe,
+    [switch]$StaticRgbProbe,
+    [switch]$MotsArchitectureProbe,
+    [ValidateSet("", "Weapon", "Force")][string]$MotsWheelProbe = "",
+    [switch]$MotsSelectionProbe,
+    [switch]$MotsFullWheelProbe,
+    [ValidateSet('', 'Palace', 'Spaceport')][string]$MotsPickupProbe = '',
+    [switch]$MotsMenuNavigationProbe,
     [ValidateRange(-1,1)][int]$ModernSaberProbe = -1,
     [switch]$ModernSaberProof,
     [switch]$ModernSaberPovProof,
@@ -50,6 +58,8 @@ param(
     [switch]$TeamMatch,
     [switch]$FallProbe,
     [switch]$WaterProbe,
+    [ValidateRange(-1,4095)][int]$MotsMaterialProbeIndex = -1,
+    [string]$MotsMaterialProbeName = '',
     [switch]$WaterBlendProbe,
     [switch]$MenuReturn,
     [switch]$KeepIso,
@@ -93,6 +103,8 @@ $PollScript = Join-Path $RepoRoot "scripts\xbox\poll_xemu_ram_log.py"
 $NativeScreenshotScript = Join-Path $RepoRoot "scripts\xbox\xemu_native_screenshot.py"
 $XbePath = Join-Path $ReleaseRoot "default.xbe"
 $MapPath = Join-Path $ReleaseRoot "openjkdf2_xbox.exe.map"
+$PollMapPath = Join-Path $RunDir "poll_build.map"
+$PollXbePath = Join-Path $RunDir "poll_build.xbe"
 $XemuExeSource = Join-Path $XemuRoot "xemu.exe"
 $XemuExe = Join-Path $InstanceDir "xemu.exe"
 $BootRom = Join-Path $XemuRoot "MCPX\mcpx_1.0.bin"
@@ -129,7 +141,18 @@ function Remove-SafeGeneratedPath([string]$Path) {
         return
     }
     Assert-UnderPath $ArtifactRoot $Path
-    Remove-Item -LiteralPath $Path -Recurse -Force
+    for ($attempt = 0; $attempt -lt 10; $attempt++) {
+        try {
+            Remove-Item -LiteralPath $Path -Recurse -Force -ErrorAction Stop
+            return
+        } catch [System.IO.IOException] {
+            if ($attempt -eq 9) { throw }
+            Start-Sleep -Seconds 1
+        } catch [System.UnauthorizedAccessException] {
+            if ($attempt -eq 9) { throw }
+            Start-Sleep -Seconds 1
+        }
+    }
 }
 
 function Find-XisoTool {
@@ -289,8 +312,42 @@ function New-Stage {
     }
 
     # Package the namespaced multiplayer HUD; stock resource paths stay intact.
+    if ($StaticRgbProbe) {
+        python (Join-Path $RepoRoot "tools/xbox/tests/stage_static_rgb_probe.py") $StagePath
+        if ($LASTEXITCODE -ne 0) { throw "Static RGB fixture failed" }
+    }
+    if ($MotsArchitectureProbe) {
+        python (Join-Path $RepoRoot "tools/xbox/tests/stage_mots_arch_rgb_probe.py") $StagePath
+        if ($LASTEXITCODE -ne 0) { throw "MotS architecture RGB fixture failed" }
+    }
     if ($ModernSaberPovProof) {
         Set-Content -LiteralPath (Join-Path $StagePath "xbox_smoke_modern_saber.txt") -Value "1 2" -Encoding ASCII
+    }
+    if ($MotsWheelProbe) {
+        Set-Content -LiteralPath (Join-Path $StagePath "xbox_smoke_mots_$($MotsWheelProbe.ToLowerInvariant())_wheel.txt") -Value "1" -Encoding ASCII
+    }
+    if ($MotsSelectionProbe) {
+        Set-Content -LiteralPath (Join-Path $StagePath "xbox_smoke_mots_selection.txt") -Value "1" -Encoding ASCII
+    }
+    if ($MotsFullWheelProbe) {
+        Set-Content -LiteralPath (Join-Path $StagePath "xbox_smoke_mots_full_wheel.txt") -Value "1" -Encoding ASCII
+    }
+    if ($MotsMaterialProbeIndex -ge 0) {
+        if ($MotsMaterialProbeName -notmatch '^[A-Za-z0-9_]+\.mat$') {
+            throw 'MotsMaterialProbeName must be a material filename such as 00wglas1.mat'
+        }
+        Set-Content -LiteralPath (Join-Path $StagePath "xbox_smoke_material.txt") -Value "$MotsMaterialProbeIndex $MotsMaterialProbeName" -Encoding ASCII
+    }
+    if ($MotsPickupProbe) {
+        $pickupCases = if ($MotsPickupProbe -eq 'Palace') {
+            @('17 128 138', '18 134 -1', '23 140 -1', '89 127 137', '105 133 -1', '27 123 -1')
+        } else {
+            @('75 132 -1')
+        }
+        Set-Content -LiteralPath (Join-Path $StagePath "xbox_smoke_mots_pickups.txt") -Value $pickupCases -Encoding ASCII
+    }
+    if ($MotsMenuNavigationProbe) {
+        Set-Content -LiteralPath (Join-Path $StagePath "xbox_smoke_mots_menu.txt") -Value "1" -Encoding ASCII
     }
     elseif ($ModernSaberProof) {
         Set-Content -LiteralPath (Join-Path $StagePath "xbox_smoke_modern_saber.txt") -Value "1 1" -Encoding ASCII
@@ -319,6 +376,8 @@ function New-Stage {
     $glyphDestination = Join-Path $StagePath "Resource/ui/bm"
     New-Item -ItemType Directory -Force -Path $glyphDestination | Out-Null
     Get-ChildItem -LiteralPath (Join-Path $RepoRoot "resource/ui/bm") -Filter "xbtn_tc_*.bm" |
+        Copy-Item -Destination $glyphDestination -Force
+    Get-ChildItem -LiteralPath (Join-Path $RepoRoot "resource/ui/bm") -Filter "xw_*.bm" |
         Copy-Item -Destination $glyphDestination -Force
 
     Copy-Item -LiteralPath $XbePath -Destination (Join-Path $StagePath "default.xbe") -Force
@@ -464,18 +523,21 @@ function Initialize-XemuInstance {
         }
     }
     Copy-Item -LiteralPath $EepromSource -Destination $EepromPath -Force
-    if ($SystemAspect -ne "System") {
-        & python (Join-Path $RepoRoot "scripts/xbox/set_test_eeprom_aspect.py") --test-copy $EepromPath --aspect $SystemAspect
-        if ($LASTEXITCODE -ne 0) { throw "Test EEPROM aspect configuration failed" }
+    if ($SystemAspect -ne "System" -or $SystemScanMode -ne "System") {
+        & python (Join-Path $RepoRoot "scripts/xbox/set_test_eeprom_aspect.py") --test-copy $EepromPath --aspect $SystemAspect --scan $SystemScanMode
+        if ($LASTEXITCODE -ne 0) { throw "Test EEPROM video configuration failed" }
     }
 
 
     $backgroundInput = if ($NoHostInput) { "false" } else { "true" }
     $controllerBinding = if ($NoHostInput) { "" } else { "keyboard" }
-    # Match the host window to the disposable Xbox EEPROM's aspect. XEMU's
-    # default 1280x960 window adds bars around correctly rendered 16:9 output.
+    # XEMU's Auto aspect may present a 480p anamorphic framebuffer as 4:3
+    # inside a 16:9 window. Match its display aspect to the disposable Xbox
+    # EEPROM as well as sizing the window; the game still selects its mode
+    # from the emulated dashboard flags.
     $testVideoFlags = [BitConverter]::ToUInt32([IO.File]::ReadAllBytes($EepromPath), 0x94)
     $testWindowSize = if (($testVideoFlags -band 0x10000) -ne 0) { '1280x720' } else { '1280x960' }
+    $testDisplayAspect = if (($testVideoFlags -band 0x10000) -ne 0) { '16x9' } else { '4x3' }
     $config = @"
 [general]
 show_welcome = false
@@ -491,7 +553,7 @@ check = false
 startup_size = '$testWindowSize'
 
 [display.ui]
-aspect_ratio = 'auto'
+aspect_ratio = '$testDisplayAspect'
 fit = 'scale'
 
 [input]
@@ -586,6 +648,10 @@ $aliveAtEnd = $false
 
 try {
     New-Stage
+    # Poll symbols must remain paired with the staged executable even if a
+    # subsequent build replaces release/default.xbe during this run.
+    Copy-Item -LiteralPath (Join-Path $StagePath 'default.xbe') -Destination $PollXbePath
+    Copy-Item -LiteralPath $MapPath -Destination $PollMapPath
     @(
         "stockSaberAssets=$([bool]$StockSaberAssets)"
         "xbeSha256=$((Get-FileHash -LiteralPath (Join-Path $StagePath 'default.xbe')).Hash)"
@@ -645,7 +711,7 @@ try {
         $previousErrorPreference = $ErrorActionPreference
         try {
             $ErrorActionPreference = 'Continue'
-            & python $PollScript --ports ([string]$MonitorPort) --map $MapPath --xbe $XbePath --out-dir $LatestPollDir --timeout 3 *> $pollOut
+            & python $PollScript --ports ([string]$MonitorPort) --map $PollMapPath --xbe $PollXbePath --out-dir $LatestPollDir --timeout 3 *> $pollOut
         }
         finally { $ErrorActionPreference = $previousErrorPreference }
         if ($LASTEXITCODE -eq 0 -and (Test-Path -LiteralPath $latestPath)) {
@@ -754,6 +820,7 @@ $summary = @(
     "disableMusic=$([bool]$DisableMusic)",
     "muteHostAudio=$([bool]$MuteHostAudio)",
     "systemAspect=$SystemAspect",
+    "systemScanMode=$SystemScanMode",
     "disableCutscenes=$([bool]$DisableCutscenes)",
     "alwaysOnSoakPlanPath=$AlwaysOnSoakPlanPath",
     "openEscapeAfterSeconds=$OpenEscapeAfterSeconds",
@@ -785,6 +852,12 @@ $summary = @(
     "controlsProbe=$([bool]$ControlsProbe)",
     "setupNavigationProbe=$([bool]$SetupNavigationProbe)",
     "displaySettingsProbe=$([bool]$DisplaySettingsProbe)",
+    "staticRgbProbe=$([bool]$StaticRgbProbe)",
+    "motsMenuNavigationProbe=$([bool]$MotsMenuNavigationProbe)",
+    "motsFullWheelProbe=$([bool]$MotsFullWheelProbe)",
+    "motsMaterialProbeIndex=$MotsMaterialProbeIndex",
+    "motsMaterialProbeName=$MotsMaterialProbeName",
+    "motsPickupProbe=$MotsPickupProbe",
     "botSetupProbe=$([bool]$BotSetupProbe)",
     "teamMatch=$([bool]$TeamMatch)",
     "fallProbe=$([bool]$FallProbe)",
@@ -794,6 +867,8 @@ $summary = @(
     "runtimeSource=$RuntimeSource",
     "xbe=$XbePath",
     "map=$MapPath",
+    "pollMap=$PollMapPath",
+    "pollXbe=$PollXbePath",
     "xemuExe=$XemuExe",
     "hddPath=$HddPath",
     "isoCleaned=$(!$KeepIso)",
@@ -821,10 +896,23 @@ Get-Content -LiteralPath $SummaryPath
 if ($pollOkCount -eq 0 -or $fatalCount -gt 0 -or ($ReloadAfterSeconds -gt 0 -and !$reloadResumed) -or
     ($Roundtrip -and !(Test-AnyPattern $ramLogs "Smoke: roundtrip resumed success=1")) -or
     ($DeathProbe -and !(Test-AnyPattern $ramLogs "Smoke: respawn probe resumed")) -or
+    ($MotsMenuNavigationProbe -and (
+        !(Test-AnyPattern $ramLogs "Smoke: MotS menu episode selected=JKM phase=0") -or
+        !(Test-AnyPattern $ramLogs "Smoke: MotS menu episode selected=JK1 phase=1") -or
+        !(Test-AnyPattern $ramLogs "Smoke: MotS menu episode selected=JKM phase=2") -or
+        !(Test-AnyPattern $ramLogs "Smoke: MotS menu gameplay phase=1 episode=JKM mode=MotS") -or
+        !(Test-AnyPattern $ramLogs "Smoke: MotS menu gameplay phase=2 episode=JK1 mode=JK") -or
+        !(Test-AnyPattern $ramLogs "Smoke: MotS menu gameplay phase=3 episode=JKM mode=MotS"))) -or
     ($FallProbe -and (!(Test-AnyPattern $ramLogs "Smoke: fall probe entered") -or
         !(Test-AnyPattern $ramLogs "FallDeath: fade complete"))) -or
     ($WaterProbe -and (!(Test-AnyPattern $ramLogs "Smoke: water probe entered") -or
         !(Test-AnyPattern $ramLogs "Smoke: water probe returned to spawn") -or
-        !(Test-AnyPattern $ramLogs "Smoke: water camera sector=[0-9]+ wet=1")))) {
+        !(Test-AnyPattern $ramLogs "Smoke: water camera sector=[0-9]+ wet=1"))) -or
+    ($MotsFullWheelProbe -and !(Test-AnyPattern $ramLogs "Smoke: MotS full wheel PASS weapons=16 powers=17 results=33")) -or
+    ($MotsMaterialProbeIndex -ge 0 -and (
+        !(Test-AnyPattern $ramLogs "Smoke: material authored index=$MotsMaterialProbeIndex") -or
+        !(Test-AnyPattern $ramLogs "Smoke: material opaque index=$MotsMaterialProbeIndex") -or
+        !(Test-AnyPattern $ramLogs "Smoke: material restored index=$MotsMaterialProbeIndex"))) -or
+    ($MotsPickupProbe -and !(Test-AnyPattern $ramLogs "Smoke: MotS pickup PASS count=$(if ($MotsPickupProbe -eq 'Palace') { 6 } else { 1 }) failures=0"))) {
     exit 1
 }

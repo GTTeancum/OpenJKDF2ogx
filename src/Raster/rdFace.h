@@ -25,6 +25,7 @@ enum RdFaceFlag // Polygon face flags i.e face type -> 3DO & SithSurface
     RD_FF_UNKNOWN_80 = 0x80,
     RD_FF_FOG_ENABLED = 0x100, // Jones specific
     RD_FF_3DO_WHIP_AIM = 0x200, // Jones specific
+    RD_FF_XBOX_SKY_DEPTH_EQUAL = 0x400, // 720p D16 sky sits at the clear-depth value
 };
 
 rdFace *rdFace_New();
